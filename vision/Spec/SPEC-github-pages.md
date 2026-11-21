@@ -78,7 +78,7 @@ The site is the launcher's own surface. Every rule from `reidcc_design_motion_sy
 
 Rev 1 said "no scroll-triggered animation". That's withdrawn. Every animation below still keeps the
 design doc's rules:
-- **No timed step longer than 240ms**, on one curve `cubic-bezier(.2,0,0,1)`. A longer move is either
+- **No timed step longer than 240ms**, on the design doc's one curve `cubic-bezier(0.16, 1, 0.3, 1)`. A longer move is either
   a sequence of such steps (like the app's gate) or follows the scroll position. A scroll-driven
   move has no duration, so the reader never waits for it.
 - **One emerald point in view.**

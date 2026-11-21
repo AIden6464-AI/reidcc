@@ -13,17 +13,48 @@
 
 Reidcc is a launcher built on Claude Code and Codex for people who want things simple. Pick a folder and a profile and you are coding in seconds, with your persona, long-term memory and settings already set up. Every session shows where it is, which profile is running, and how much context and limit you have used. Its memory system (`aca`) and request proxy (`proxy`) live here too.
 
+**Status:** Windows 10 and 11 · beta · no installer yet, so build from source (below). The
+installer and updater are specced in [`vision/Spec/SPEC-github-repo.md`](vision/Spec/SPEC-github-repo.md).
+
 <p align="center">
   <img src="docs/launcher.png" alt="Reidcc launcher" width="900" />
 </p>
 
 ---
 
+## Get started
+
+You need [Rust](https://rustup.rs) (stable), [Node.js](https://nodejs.org) 22, and
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and signed in once (`claude` on your PATH).
+Codex is optional. The window uses WebView2, which ships with Windows 11 and current Windows 10.
+
+```powershell
+git clone https://github.com/AIden6464-AI/reidcc
+cd reidcc\rs\ui; npm ci; npm run build        # the window's UI
+cd ..; cargo build --release                  # reid.exe (terminal) + Reidcc.exe (window)
+
+# where your profiles, memory and personas live (any folder works)
+mkdir "$env:USERPROFILE\Reidcc"; setx REIDCC_HOME "$env:USERPROFILE\Reidcc"
+```
+
+Open a new terminal (so it sees `REIDCC_HOME`), then run `rs\target\release\Reidcc.exe` for the
+window or `rs\target\release\reid.exe` for the terminal launcher. The first run writes `reid.json`
+there with one profile, `main` (Opus, memory on). Pick a folder, then **open gate**.
+
+- **Without `REIDCC_HOME`**, Reidcc uses the first folder above the exe that holds a `reid.json`.
+  Put one in the clone's root to keep everything in the clone, which is how the author runs it. With neither,
+  it falls back to `rs\target`, which `cargo clean` deletes.
+- **Tests:** `cargo test --workspace` in `rs\` (CI runs the same on every push).
+
+---
+
 ## Layout
 
+Items marked *local* are created on your machine and never committed (see `.gitignore`).
+
 ```text
-E:\Reidcc
-├─ app\               THE APP (built): Reidcc.exe = window, reidcc.com / reid.com = terminal
+reidcc\
+├─ app\               local: the Python app's build (Reidcc.exe = window, reidcc.com / reid.com = terminal)
 ├─ python\            the Python app's source (what app\ is built from)
 │  ├─ reid.py         TUI, CLI and engine
 │  ├─ reid_gui.py     the app window
@@ -34,21 +65,25 @@ E:\Reidcc
 │  ├─ SPEC-vision-v1.md  vision version 1: sizes, session windows, snap, headless, rigs (session window and snap betas built)
 │  └─ Spec\           proxy, gate (built), tui (proposed), codex-opencode (Codex built, OpenCode proposed),
 │                     codex-signin-persona (built), codex-proxy (proposed), rust-rewrite (stage 0 built),
-│                     rust-tui-gui (1:1 TUI + GUI in Rust, built, awaiting sign-off), app
+│                     rust-tui-gui (1:1 TUI + GUI in Rust, built, awaiting sign-off), app,
+│                     github-repo (installer + updater, proposed), github-pages (website, proposed;
+│                     a working mock with its motion is in Spec\github-pages\mock\)
 ├─ assets\            banner.png, gate frames (gate_*.png) and TUI half-block gate frames (tui\gate_*.json.gz)
+├─ docs\              README images
 ├─ reidcc.ico         app icon: the engraved RC logo (vision\branding\), cut by make_assets.py
-├─ reid.json          profiles: engine, model, auth, persona, memory, proxy, tools, mcp, switches
-├─ reid_state.json    last session + recent folders (written by reid)
-├─ reidcc_memory.md   long-term memory injected into sessions with memory on
-├─ personas\          persona prompts used by profiles
-├─ json\              Claude Code settings files (API mode); THESE HOLD API KEYS
-├─ codex\             Codex sign-in files (*.toml, may hold keys) + prompts\ (persona + memory per launch);
-│                     made on first use
-├─ mds\               other persona / prompt drafts
+├─ reid.json          local: profiles (engine, model, auth, persona, memory, proxy, tools, mcp, switches)
+├─ reid_state.json    local: last session + recent folders (written by reid)
+├─ reidcc_memory.md   local: long-term memory injected into sessions with memory on
+├─ personas\          persona prompts used by profiles (only plain.md is committed)
+├─ json\              local: Claude Code settings files (API mode); THESE HOLD API KEYS
+├─ codex\             local: Codex sign-in files (*.toml, may hold keys) + prompts\ (persona + memory per launch)
+├─ mds\               local: other persona / prompt drafts
 ├─ aca\               ACA memory server (port 8420), its hooks and MCP server
 │  └─ docs\           ACA + Firing System specs
 ├─ proxy\             mitmproxy add-ons + lean launchers (slim, ultra-slim, mini, stripped)
-└─ legacy\            old GUI split attempt, config backups
+├─ legacy\            local: old GUI split attempt, config backups
+├─ LICENSE.md         PolyForm Noncommercial 1.0.0 (see License below)
+└─ .github\workflows\ ci.yml: UI build + Rust tests on Windows
 ```
 
 ---
@@ -121,7 +156,9 @@ Researched for `--standalone` per-launch config via `OPENCODE_CONFIG` / `OPENCOD
 
 ## Wired up outside this folder
 
-- **User PATH** includes `E:\reidcc\app` (`reid`, `reidcc`; extensionless shims there are for Git Bash).
+The installed Python launcher (the author's setup) adds:
+
+- **User PATH** includes this folder's `app\` (`reid`, `reidcc`; extensionless shims there are for Git Bash).
 - **`~\.claude\commands\reid.md`** (the `/reid` slash command).
 - **Start Menu** `Reidcc.lnk` → `app\Reidcc.exe`.
 
@@ -134,7 +171,7 @@ Long-term cognitive memory server (separate from `reidcc_memory.md`; Reidcc does
 - **Start:** `aca\start.bat` (prints the server window; closing it stops the server).
 - **Health:** `http://127.0.0.1:8420/health` · **Inspector:** `http://127.0.0.1:8420/inspector`
 
-Wired up outside this folder (paths point at `E:/Reidcc/aca/...`):
+Wired up outside this folder (paths point at this folder's `aca\`):
 - `~\.claude\settings.json`: `UserPromptSubmit`, `PostToolUse(Bash)`, `PostToolUseFailure(Bash)` hooks run `aca\integrations\claude_code\aca_hook.py`.
 - `~\.claude.json`: user MCP server `aca` runs `aca\integrations\claude_code\aca_mcp.py`.
 - `~\.aca\claude_code.key`: the write key the hook and MCP server use.
@@ -164,7 +201,8 @@ Reidcc is being rebuilt in Rust (`rs\`: Tauri 2 + TypeScript + `portable-pty` + 
 | **Stage 1 · 1:1 TUI + GUI** | Built, awaiting sign-off | 48/48 TUI parity, 175/175 GUI `reid.json` parity (`rs\target\release\Reidcc.exe`) |
 | **Stage 2 · session windows** | Beta built in Rust | Embedded ConPTY + xterm.js window with Telemetry Bar and drag shimmer |
 | **Stage 3 · snap and fuse** | Beta built in Rust | Drag session windows together for a shared frame of up to four live panes. Drag the frame header to move them together or a pane header to pull it out. |
-| **Vision v1 · sizes, headless, rigs** | Proposed | `full` / `medium` / `mini pod` dock, headless run strips, orchestrator rigs, TUI redesign |
+| **Vision v1 · sizes** | Built in Rust | The launcher folds to `full` (`Alt+1`), `medium` (`Alt+2`) and the `mini pod` (`Alt+3`, or drag it small): a capsule with one slot per running session |
+| **Vision v1 · headless, rigs** | Proposed | Headless run strips, orchestrator rigs, TUI redesign |
 
 <p align="center">
   <img src="docs/session-window.png" alt="Reidcc session window beta" width="900" />
