@@ -518,7 +518,9 @@ impl Model {
     pub fn new_profile(&mut self) {
         if let Some(mut cfg) = self.cfg() {
             let n = Self::unique(&cfg, "new");
-            profiles_mut(&mut cfg).insert(n.clone(), json!({"model": "opus"}));
+            // the settings page's default engine; a Codex profile starts on Codex's own default model
+            let codex = cfg.get("default_engine").and_then(Value::as_str) == Some("codex");
+            profiles_mut(&mut cfg).insert(n.clone(), if codex { json!({"engine": "codex"}) } else { json!({"model": "opus"}) });
             self.save(&cfg);
             self.reload(Some(&n));
         }

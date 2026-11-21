@@ -21,9 +21,31 @@ What this means for every screen:
    `new profile` / `duplicate` / `delete` / `make default`, the selected profile's fields
    (model, sign-in, persona, persona mode, proxy, tools, mcp, switches, extra args), folder and
    `open recent ▾`, `open memory`, `open reid.json`, `resume`, `open gate` and the command preview.
-   No separate settings view for any of that. **Exception (2026-11-20):** app-wide choices that
-   belong to no profile, starting with where sessions open, go on a settings page
-   ("In a settings page", Reid, 2026-11-20). A profile's fields never move there.
+   No separate settings view for any of that. **Exception:** app-wide choices that belong to no
+   profile go on one settings page ("In a settings page", Reid, 2026-11-20).
+
+   > "In the Reidcc app we do need a settings page but the thange you quoted about not putting stuff in a settings is because before everything was in settings all of the stuff in the page does not need to be in settings but the plugin or default engine pages ya they do or switching to dev releases updates or the default for the custom Reidcc terminal or the windows default" (Reid, 2026-11-21)
+
+   The 2026-11-17 rule was about the old launcher, where *everything* sat in settings. The settings
+   page is wanted; it just never takes what's on the main screen. It holds, each as its own section:
+   - **Plugins:** installed plugins and the `reidcc` marketplace.
+   - **Default engine:** which engine (Claude, Codex) a new profile starts with.
+   - **Updates:** stable releases or dev releases.
+   - **Where sessions open:** Reidcc's own session window (the default) or Windows Terminal.
+
+   > "Default local stuff, temp files.   And the temp work the ai uses location, etc" (Reid, 2026-11-21)
+
+   - **Locations:** where Reidcc keeps its local data by default (reid.json, memory, personas, prompts),
+     where its temp files go, and where the AI's temp work goes (the scratch folder a session writes
+     intermediate files to). Each shows the current path, with change and open buttons.
+
+   > "on the Reidcc app we need a button for opening the settings page" (Reid, 2026-11-21)
+
+   Built 2026-11-21 in the Rust GUI (palette §5 lists what's still to do). The way in is a plain `settings` button in the bottom action row, after `open memory` and
+   `open reid.json`, in the same quiet style. No gear icon, no menu. The page replaces the launcher
+   view in the same window, and `back` returns to the launcher.
+
+   A profile's fields never move there, including which plugins *that profile* turns on.
 3. **Order is how you get simplicity.** The eye and the keyboard still run
    `folder → profile → open gate`; the profile's fields sit beside the profile list, quieter (`text-2`
    labels, `surface-1` fields), so they're there when you need them and calm when you don't.
@@ -209,7 +231,7 @@ Animations in Reidcc feel like a well-machined hardware switch. Nothing floats, 
    - Only show the steps the profile actually has: no persona, no `loading persona…`.
 
 2. **Launcher Flow (`folder → profile → open gate`)**
-   - One screen: folder row, profile list, the selected profile's fields, `resume` / `open gate`. Nothing a profile has goes behind a settings view; only app-wide choices (where sessions open) live on the settings page.
+   - One screen: folder row, profile list, the selected profile's fields, `resume` / `open gate`, and the `settings` button beside `open reid.json`. Nothing a profile has goes behind a settings view; only app-wide choices (plugins, default engine, updates, where sessions open, locations) live on the settings page.
    - Selecting a folder snaps the path into place immediately; the profile selector highlights automatically for keyboard continuity.
    - Hovering (or tabbing to) `open gate` or `resume` shows a light ghost of the gate over the launcher:
      the gate's blueprint lines and its emerald point, at `0.14` strength, after a `60ms` delay, fading in over `140ms` and out

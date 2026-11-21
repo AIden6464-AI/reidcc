@@ -4,6 +4,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Gate, Meta } from "./gate";
+import { Settings } from "./settings";
 import { C, Check, Combo, Listbox, button, closePopups, el, entry, label, measure, setMetrics, wrap } from "./widgets";
 
 const PAD = 40;
@@ -44,6 +45,7 @@ class App {
   recheck = 0;
   previewText = "";
   gate: Gate | null = null;
+  settings!: Settings;
   /** vision v1 §1: the window's size is its mode */
   size: "full" | "medium" = "full";
   fullMin: [number, number] = [960, 820];
@@ -83,6 +85,8 @@ class App {
     this.buildMsgbar();
     this.buildMain();
     this.buildMedium();
+    this.settings = new Settings(() => this.closeSettings());
+    this.root.append(this.settings.root);
     this.keys();
     new ResizeObserver(() => { this.fit(); this.wrapTexts(); }).observe(document.body);
   }
@@ -190,10 +194,13 @@ class App {
     bConfig.style.marginLeft = "8px";
     // DOM order = Tk's creation order (open gate before resume); placed with `order`
     const bMem = button("open memory", () => this.action("open_memory"));
-    for (const [b, o] of [[bMem, 1], [bConfig, 2], [this.bGo, 5], [this.bResume, 4]] as const) b.style.order = String(o);
-    spacer.style.order = "3";
-    for (const b of [bMem, bConfig, this.bGo, this.bResume]) b.style.height = "auto";
-    act.append(bMem, bConfig, spacer, this.bGo, this.bResume);
+    // the way into the settings page (Reid, 2026-11-21): after open reid.json, same quiet style
+    const bSettings = button("settings", () => this.openSettings());
+    bSettings.style.marginLeft = "8px";
+    for (const [b, o] of [[bMem, 1], [bConfig, 2], [bSettings, 3], [this.bGo, 6], [this.bResume, 5]] as const) b.style.order = String(o);
+    spacer.style.order = "4";
+    for (const b of [bMem, bConfig, bSettings, this.bGo, this.bResume]) b.style.height = "auto";
+    act.append(bMem, bConfig, bSettings, spacer, this.bGo, this.bResume);
     col.append(h, act);
     this.root.append(m);
   }
@@ -415,6 +422,11 @@ class App {
         this.gate.skip();
         return;
       }
+      if (this.settings.isOpen) { // the launcher's keys stay with the launcher
+        if (e.key === "Escape") { e.preventDefault(); this.closeSettings(); }
+        else if (e.key === "Enter" && document.activeElement instanceof HTMLButtonElement) { e.preventDefault(); document.activeElement.click(); }
+        return;
+      }
       if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); this.go(false); }
       else if (e.key === "Enter") this.onReturn(e);
       else if (e.key === "Escape") this.clearMsg();
@@ -590,8 +602,19 @@ class App {
     window.addEventListener("keydown", esc, true);
   }
 
+  openSettings() {
+    closePopups();
+    this.clearMsg();
+    this.settings.open();
+  }
+
+  closeSettings() {
+    this.settings.close();
+    this.lb.root.focus();
+  }
+
   async go(resume: boolean) {
-    if (this.gate?.active) return; // one session per press
+    if (this.gate?.active || this.settings.isOpen) return; // one session per press
     type Go = { kind: "ops"; ops: Op[] } | { kind: "gate"; note: string; uses_wt: boolean; found: boolean; title: string; sub: string; ops: Op[] };
     // The gate plays in the full layout; a smaller size opens the session window straight away.
     const r = await invoke<Go>("go", { resume, gateOk: !!this.gate && this.size === "full" });
@@ -674,6 +697,7 @@ function testHooks(app: App) {
     folderIn: (id: string) => document.getElementById(id)!.contains(app.eFolder),
     sessions: () => app.mSessions.textContent,
     combos: () => [...app.mCombos.children].map((r) => r.textContent),
+    settings: () => ({ open: app.settings.isOpen, text: app.settings.root.innerText }),
   };
 }
 

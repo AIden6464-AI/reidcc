@@ -90,6 +90,9 @@ whose `defaultEnabled` is false, for that session only. If it doesn't, the fallb
 the installed copy's folder (`claude plugin list --json` gives the path).
 
 ### 3b. The launcher
+- The **settings page** gets a **plugins** section: installed plugins, the `reidcc` marketplace, install /
+  update / remove ("the plugin or default engine pages ya they do", Reid, 2026-11-21: plugins are app-wide).
+  Built 2026-11-21: the list only (id, version, on/off, from `claude plugin list --json`); no install or toggle yet.
 - The profile editor gets a **plugins** row: the installed plugins (from `claude plugin list --json`) as
   checkboxes. Codex profiles show it greyed out, like the other Claude-only fields.
 - `reid -l` and `reid --dry` show a profile's plugins.

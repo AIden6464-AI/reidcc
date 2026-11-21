@@ -95,6 +95,20 @@ async fn install(app: &AppHandle) {
     }
 }
 
+/// The settings page's `check for updates`: the answer shows in the footer, as with `reid --update`.
+#[tauri::command]
+pub async fn update_check(app: AppHandle) {
+    if !reidcc::installed_copy() {
+        return show(&app, "updates come with the installed copy".into(), false);
+    }
+    show(&app, "checking for updates".into(), false);
+    match check(&app).await {
+        Ok(Some(_)) => {} // check() put the offer up
+        Ok(None) => show(&app, format!("Reidcc {} is the latest", env!("CARGO_PKG_VERSION")), false),
+        Err(e) => show(&app, format!("couldn't check for updates: {e}"), false),
+    }
+}
+
 #[tauri::command]
 pub fn update_foot(st: State<Updates>) -> Foot {
     st.foot.lock().unwrap().clone()

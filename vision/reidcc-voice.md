@@ -28,8 +28,11 @@ once Reidcc itself shows them.
 > "if it's supposed to be simple to use, why are we hiding in settings?" (Reid, 2026-11-17)
 
 Simple means nothing to hunt for, not fewer things on screen. See "Direction from Reid" in
-`reidcc_design_motion_system.md`. The one settings page (not built; "In a settings page", Reid,
-2026-11-20) holds only app-wide choices, like where sessions open. A profile's fields never go there.
+`reidcc_design_motion_system.md`. The settings page *is* wanted ("In the Reidcc app we do need a
+settings page", Reid, 2026-11-21; built in the Rust GUI the same day): it holds only app-wide choices, in five sections:
+`plugins`, `default engine`, `updates` (stable / dev), `sessions open in` (Reidcc / Windows Terminal),
+`locations` (`local data`, `temp files`, `ai temp work`).
+A profile's fields never go there.
 
 ---
 
@@ -306,7 +309,9 @@ confirmations appear inline in the window, never as a system popup.
 ### Settings / about
 | Spot | Text |
 |---|---|
+| Button that opens it | `settings` (bottom action row, beside `open reid.json`) |
 | Settings title | `settings` |
+| Back to the launcher | `back` |
 | About footer | `Reidcc · built on Claude Code · only the essentials` |
 | Reset | `reset settings` → confirm: `Reset all settings? Profiles and memory stay.` |
 
