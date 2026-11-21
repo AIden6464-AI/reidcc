@@ -1,0 +1,19 @@
+[package]
+name = "reidcc-core"
+edition.workspace = true
+version.workspace = true
+
+[lib]
+name = "reidcc"
+
+[dependencies]
+indexmap = "=2.14.2"
+serde_json = { version = "=1.0.154", features = ["preserve_order"] }
+toml = { version = "=0.9.11", features = ["preserve_order"] }
+sha1_smol = "=1.0.1"
+uuid = { version = "=1.20.0", features = ["v4"] }
+windows-sys = { version = "=0.59.0", features = [
+  "Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Registry", "Win32_System_Console",
+  "Win32_System_JobObjects", "Win32_System_Threading", "Win32_System_Environment",
+  "Win32_System_SystemInformation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging",
+] }

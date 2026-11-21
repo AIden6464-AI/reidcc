@@ -1,0 +1,40 @@
+# Secrets: every file in json\ holds an API key; codex\*.toml may too
+/json/
+/codex/
+
+# Personal data, written at runtime
+/reid.json
+/reid_state.json
+/reidcc_memory.md
+/reid.json.bak-*
+/memory/
+/personas/*
+!/personas/plain.md
+/mds/
+aca/data/
+aca/docs/*.zip
+
+# Proxy captures (your prompts and traffic) and logs
+proxy/claude_audit/
+proxy/claude_prompts/
+proxy/audit/
+proxy/logs/
+proxy/report.html
+
+# Build output
+/app/
+rs/target/
+rs/ui/node_modules/
+rs/ui/dist/
+rs/app/binaries/
+python/build/dist/
+python/build/work/
+aca/build/dist/
+**/__pycache__/
+**/.venv/
+.webview/
+
+# Scratch
+/legacy/
+/.test/
+New Text Document.txt

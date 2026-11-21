@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reidcc session</title>
+    <link rel="stylesheet" href="/src/session.css" />
+  </head>
+  <body>
+    <div id="frame">
+      <header id="bar" data-pane-drag>
+        <div id="where"></div>
+        <div id="meters"></div>
+        <div id="ctl">
+          <button id="min" data-dock-action tabindex="-1" aria-label="minimise">&#x2013;</button>
+          <button id="max" data-dock-action tabindex="-1" aria-label="maximise">&#x25A2;</button>
+          <button id="close" tabindex="-1" aria-label="close">&#x00D7;</button>
+        </div>
+      </header>
+      <main id="term"><div id="xt"></div></main>
+    </div>
+    <div id="shimmer"></div>
+    <div id="seam"></div>
+    <script type="module" src="/src/session.ts"></script>
+  </body>
+</html>

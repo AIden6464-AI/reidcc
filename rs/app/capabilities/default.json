@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The launcher window and its mini pod: core events only; the app's own commands need no permission.",
+  "windows": ["main", "pod"],
+  "permissions": ["core:default"]
+}

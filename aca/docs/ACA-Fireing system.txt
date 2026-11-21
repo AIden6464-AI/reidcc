@@ -1,0 +1,834 @@
+The Firing System
+
+**My overall verdict: this is a promising design for stateful context selection, but it is not yet a complete memory mechanism.** The strongest idea is that relevance should persist and evolve across work rather than be recomputed from scratch. The weakest parts are the claim that retrieval has disappeared, the definition of surprise, and the assumption that useful regions and stable thinking will emerge automatically.
+
+There is a worthwhile prototype here. But several things presented as consequences of the mechanism are actually hypotheses that need testing.
+
+I’ll separate what is strong, what is underspecified, what is internally inconsistent, and what I would change.
+
+---
+
+## 1. The central idea is genuinely useful
+
+The best sentence in the document is:
+
+> “This system treats relevance as a state each piece of memory is already in.”
+
+
+
+That is the real proposition.
+
+A CLI agent works through trajectories, not isolated questions. It opens a file, follows an import, changes a function, runs a test, interprets an error, and revises its approach. Relevant context generally changes gradually along that trajectory, with occasional sharp shifts.
+
+A memory system that treats every turn as an independent retrieval problem throws away some of that continuity.
+
+Your carried activation could preserve:
+
+- The constraints that still govern the current change.
+- The hypothesis currently being investigated.
+- The decisions that explain why a seemingly obvious approach was rejected.
+- Facts about the environment that remain useful across several tool calls.
+- Related knowledge that the next step is likely to need.
+
+
+**The important distinction is not “retrieval versus no retrieval.” It is “stateless selection versus history-dependent selection.”**
+
+That version of the claim is narrower, but stronger and more defensible.
+
+### The trade-off
+
+Persistence helps when work continues along the same trajectory. It can hurt when the user changes tasks.
+
+The same activation that preserves continuity can preserve the wrong context.
+
+Your system therefore needs to demonstrate both:
+
+1. Better continuity within a task.
+2. Fast disengagement when the task changes.
+
+
+Otherwise, it is just a sticky retriever.
+
+---
+
+## 2. The document overstates what existing memory systems do
+
+> “Every existing approach to agent memory treats relevance as something you compute at query time.”
+
+
+
+That is too broad.
+
+There are existing approaches involving working memory, persistent state, recurrent memory, associative activation, caches, graph traversal, and combinations of these with retrieval. I would not treat this document as establishing novelty over those families without a literature review.
+
+Likewise:
+
+> “Not a database.”
+
+
+
+It still has an append-only log, persistent fragments, identifiers, mutable activation, and weighted relationships. Those objects need storage and access machinery.
+
+> “Not a learning system with a separate runtime.”
+
+
+
+There may be no *separate training phase*, but changing links and encoding fragments from experience is still online adaptation.
+
+These objections do not invalidate the design. They concern how you position it.
+
+**A better description would be:**
+
+> An online associative memory layer that maintains task-conditioned activation and uses that state to allocate a bounded model context.
+
+
+
+That says what it does without depending on categorical claims that are easy to challenge.
+
+---
+
+## 3. INJECT hides the hardest retrieval problem
+
+The firing pass begins:
+
+> “The input hits fragments directly → activation rises proportional to match.”
+
+
+
+What computes the match?
+
+This is the most consequential missing implementation detail.
+
+Possible answers include:
+
+| Matching mechanism | Main benefit | Main limitation
+|-----|-----|-----
+| Lexical overlap | Cheap and inspectable | Misses paraphrases and implicit relationships
+| Embedding similarity | Semantic matching | Introduces similarity-based retrieval machinery
+| Entity, file, or symbol matching | Strong fit for CLI work | Requires extraction and dependency tracking
+| Model-based matching | Flexible | Expensive and potentially inconsistent
+| Learned cue-to-fragment associations | Can adapt through use | Cold-start and generalization problems
+
+
+None is inherently wrong. But the choice determines much of the system’s cost, behavior, and scalability.
+
+If every input is compared with every fragment, you have a global scan. If an index selects candidate fragments first, you have a retrieval stage. If cues activate graph entry points, you still need an addressing mechanism for those entry points.
+
+**Activation changes what you do with matching evidence. It does not eliminate the need to find that evidence.**
+
+I would replace “nothing is fetched” with:
+
+> Matching supplies activation evidence; persistent activation, rather than current-turn similarity alone, determines admission.
+
+
+
+That preserves your distinctive idea.
+
+---
+
+## 4. The selection mechanism is not quite what the prose claims
+
+You reject “similarity ranking” and “top-k,” but ADMIT says:
+
+> “Working set ← top |W| of F by activation.”
+
+
+
+That is a ranking stage with a fixed-size selection.
+
+There is no contradiction if the intended distinction is:
+
+- Similarity is not the final admission score.
+- Activation includes history and graph effects.
+- Thresholding excludes insufficiently activated fragments before budget allocation.
+
+
+But it is misleading to say ranking has disappeared.
+
+There are really three separate operations:
+
+1. **Addressing:** Which fragments receive evidence?
+2. **Eligibility:** Which fragments cross the threshold?
+3. **Allocation:** Which eligible fragments fit the context budget?
+
+
+Make those explicit. It will make the design easier to reason about and compare with baselines.
+
+Also, your working-set description implies retained membership with eviction, while the pseudocode appears to replace the set with the current firing winners. Those are different algorithms.
+
+---
+
+## 5. Fragments are a good abstraction, but need an operational envelope
+
+Small pieces of settled state are a sensible unit.
+
+A useful fragment might say:
+
+> The integration tests depend on a local service. Running the unit-test command does not validate that path.
+
+
+
+That is much more reusable than several pages of terminal output.
+
+However, fragments cannot safely contain only prose, activation, and links.
+
+At minimum, the system needs to know:
+
+- Where a fragment came from.
+- Whether it is observed, user-provided, inferred, or reconstructed.
+- Which project, environment, or task it applies to.
+- When it was established or last verified.
+- Whether it supersedes another fragment.
+- Whether it is still valid.
+- Whether it is trusted as an instruction.
+
+
+Your argument against schemas is understandable:
+
+> “Any schema pre-decides what matters.”
+
+
+
+But there is a distinction between **restricting the meaning of a memory** and **tracking its provenance and lifecycle**.
+
+Keep the content open-ended prose. Put it inside a small structured envelope.
+
+**Free-form meaning does not require unstructured bookkeeping.**
+
+Without that envelope, several of your invariants cannot actually be enforced.
+
+---
+
+## 6. “Canonical” is an objective, not yet a mechanism
+
+> “Canonical: one form per settled thing.”
+
+
+
+How do two differently worded fragments become one settled thing?
+
+Consider:
+
+- “The test service uses port 5433.”
+- “Use 5433 for the local database.”
+- “The development database listens on 5433, except in CI.”
+
+
+These might be duplicates, related facts, or distinct scoped statements.
+
+Surprise-gated encoding does not resolve that automatically.
+
+You need policies for:
+
+- Duplicate detection.
+- Scope-sensitive equivalence.
+- Refinement.
+- Contradiction.
+- Supersession.
+- Preserving the reason behind a decision.
+
+
+There is also a naming ambiguity: “atomic” sounds like a property of individual fragments, while the CAN is assembled from multiple fragments.
+
+I would clarify:
+
+- A **fragment** is an atomic memory unit.
+- A **CAN** is a coherent, temporary composition of selected units.
+
+
+Calling the composition canonical should not imply that canonicalization has already been solved.
+
+---
+
+## 7. Surprise is a valuable signal—but insufficient as the only write gate
+
+The intuition is strong:
+
+> Remember the moments when the current understanding failed.
+
+
+
+Unexpected tool behavior, a failed assumption, or an environment mismatch can be highly valuable memories.
+
+But the rule:
+
+> “Otherwise write nothing.”
+
+
+
+is too strict.
+
+### Important information can be unsurprising
+
+Suppose the user says:
+
+> “Never deploy without my approval.”
+
+
+
+That may not violate any prediction. It still needs to be retained.
+
+Other examples:
+
+- A newly chosen architecture.
+- A task acceptance criterion.
+- A user preference.
+- A discovered dependency.
+- A successful recovery procedure.
+- An explicit request to remember something.
+
+
+### Surprising information can be worthless
+
+Examples include:
+
+- A transient network timeout.
+- An irrelevant warning.
+- Randomly varying command output.
+- A one-off infrastructure failure.
+- A deliberately unusual test fixture.
+
+
+Surprise measures unexpectedness, not future usefulness.
+
+**My recommendation: surprise should trigger candidate encoding, not automatically determine durable memory.**
+
+Use explicit write reasons such as:
+
+- User instruction or commitment.
+- Verified decision.
+- Durable environmental observation.
+- Prediction error.
+- Reusable successful procedure.
+
+
+Then assess scope, durability, redundancy, and evidence.
+
+That adds a little machinery, but avoids a fundamental blind spot.
+
+---
+
+## 8. “Confirmation teaches nothing” is incorrect
+
+Confirmation can teach several things:
+
+- A tentative belief is reliable.
+- A fact remains current.
+- A procedure works across multiple contexts.
+- An intermittent issue has become reproducible.
+- A previous surprising result was not random noise.
+
+
+You do not need to create a fresh fragment for every confirmation.
+
+But you should be able to update:
+
+- Confidence.
+- Last-verified time.
+- Supporting evidence.
+- Estimated reliability.
+- Applicability.
+
+
+The more defensible principle is:
+
+> Routine confirmation should not create duplicate memories, but may strengthen evidence for existing ones.
+
+
+
+That preserves the low-write-rate goal without discarding useful information.
+
+---
+
+## 9. Surprise requires an actual prediction
+
+> “Compare outcome to what the lit set predicted.”
+
+
+
+Fragments do not directly produce predictions. Something must turn them into expectations.
+
+You need to specify:
+
+1. Who predicts: the acting model, a separate predictor, or deterministic rules?
+2. When the prediction is recorded.
+3. What is predicted.
+4. How uncertainty is represented.
+5. How the result is compared with the prediction.
+6. How the error is attributed to particular memories.
+
+
+For CLI work, useful predictions might be:
+
+- Expected exit status.
+- Expected failing test.
+- Expected error category.
+- Expected change in test results.
+- Expected file modification.
+- Expected availability of a symbol or command.
+
+
+**Record the prediction before observing the result.** Otherwise the model can explain the outcome after the fact and call that prediction assessment.
+
+Also, a surprising outcome does not necessarily mean:
+
+> “The current region is wrong.”
+
+
+
+It could mean the command was mistyped, the environment changed, a dependency failed, or a relevant fact was absent.
+
+Error attribution matters. Otherwise, the system may broaden activation and strengthen links around unrelated memories whenever something unusual happens.
+
+---
+
+## 10. Directed links are not learned by symmetric co-firing
+
+You specify directed links, then potentiate every pair in the firing set:
+
+> “For every pair (f, g) in F: w(f, g) += η.”
+
+
+
+If both directions receive the same update, co-firing provides no directional evidence. Starting from symmetric weights, this rule preserves symmetry.
+
+Direction needs an asymmetric signal, such as:
+
+- One fragment activated before another.
+- One fragment’s use led to the discovery of another.
+- One fragment supplied the cue that activated another.
+- A transition repeatedly occurred from one task state to another.
+
+
+Co-firing can learn association. It does not establish causality, prerequisite structure, or useful direction by itself.
+
+### It also creates incidental associations
+
+Two fragments may enter context together without being meaningfully related.
+
+For example:
+
+- A project formatting convention.
+- A temporary database outage.
+- A user’s response-length preference.
+
+
+Uniform pairwise reinforcement links all three.
+
+Over time, frequently present fragments can become broad hubs, causing unrelated regions to activate together.
+
+I would consider:
+
+- Sparse outgoing links.
+- Normalized reinforcement.
+- Temporal credit assignment.
+- Reduced reinforcement for generic, frequently active fragments.
+- Outcome-sensitive updates.
+- Explicit exclusions for self-links.
+
+
+Also distinguish the **fired set** from the **admitted set**. Fragments that fired but never reached the model should not automatically receive the same outcome credit as fragments that did.
+
+---
+
+## 11. Regions do not yet provide the promised scalability
+
+> “Growth elsewhere does not compete—nothing competes globally.”
+
+
+
+As written, that is not established.
+
+Your pass includes:
+
+- Matching input against fragments.
+- Considering active fragments for spreading.
+- Selecting winners for a working set.
+- Decaying all activations.
+- Decaying all links.
+
+
+The working-set budget also creates global competition unless there are separate regional budgets.
+
+Regions may help memory quality, but **emergent clusters are not automatically a computational access strategy**.
+
+To make locality real, you need implementation choices such as:
+
+- A bounded active frontier.
+- Sparse neighbor traversal.
+- Indexed cue entry points.
+- Lazy decay calculated when an object is accessed.
+- Limits on graph expansion.
+- Explicit project and environment scoping.
+
+
+On the open question of granularity: **I would let fragments fire individually and treat regions as observed structure initially.** Making clusters atomic introduces boundary decisions before you know whether the clusters are meaningful.
+
+Use region labels for inspection first, not as unquestioned semantic truth.
+
+---
+
+## 12. The recurrent dynamics have no demonstrated stability
+
+The document correctly recognizes that parameters are coupled. That deserves more emphasis.
+
+Persistent activation, positive spreading, and potentiation create feedback:
+
+> A fragment fires → its links strengthen → its neighbors fire more easily → co-firing increases → the links strengthen again.
+
+
+
+Decay may counteract that feedback, but it does not guarantee stability.
+
+For an illustrative linearized activation update,
+
+$$a_{t+1} \approx \delta_a a_t + \lambda W^\top a_t + u_t$$a local stability consideration is the spectral radius of the recurrent operator:
+
+$$\rho\!\left(\delta_a I + \lambda W^\top\right) < 1$$Your actual thresholded, refractory, weight-changing system is more complicated, so this is not a proof or a direct tuning rule. It illustrates why choosing each parameter independently is insufficient.
+
+You also define activations and weights within a bounded interval, but the updates only add to them. You need explicit clamping, normalization, or saturation.
+
+Finally, spreading from every above-threshold fragment needs precise semantics:
+
+- Does a refractory fragment still prime neighbors?
+- Are updates synchronous?
+- Can newly activated fragments spread within the same pass?
+- Is spreading proportional to the source activation or just its threshold status?
+
+
+Those choices can produce very different behavior.
+
+---
+
+## 13. The refractory period may remove exactly the context you need
+
+Biological inspiration is not automatically appropriate for prompt allocation.
+
+Suppose this fragment fires:
+
+> “This project must remain compatible with Python 3.10.”
+
+
+
+The model uses it for one turn. Then it becomes refractory.
+
+Does that mean the compatibility constraint disappears during the next code edit?
+
+You need to separate:
+
+- **Eligibility to fire again.**
+- **Eligibility to remain resident in context.**
+- **Eligibility to spread activation.**
+
+
+A refractory period could reduce repeated graph events without removing a still-relevant working-set member.
+
+Likewise, repeatedly firing the same fragment is not necessarily a failure. Stable work often requires stable constraints.
+
+I would use refractory behavior to control repeated reinforcement or activation loops—not as a blanket ban on context inclusion.
+
+---
+
+## 14. CAN composition is both valuable and dangerous
+
+A temporary coherent narrative could be easier for the model to use than disconnected fragments. That is worth testing.
+
+But composition introduces:
+
+- Additional inference cost.
+- Additional latency.
+- A new point where qualifiers can disappear.
+- A risk of merging distinct scopes.
+- A risk of presenting inference as fact.
+
+
+This sentence is particularly concerning:
+
+> “Gaps are filled with defaults.”
+
+
+
+For an operational agent, a smooth narrative is not necessarily desirable. A visible unknown is often safer than a plausible completion.
+
+A good CAN should preserve distinctions such as:
+
+- Observed.
+- User-directed.
+- Inferred.
+- Uncertain.
+- Potentially stale.
+
+
+**Allow connective prose. Do not allow connective prose to invent evidence.**
+
+Also compare generated CANs against a simpler baseline: selected fragments presented directly with compact source labels. If narrative composition does not improve outcomes, it may be unnecessary complexity.
+
+The budget should be token-based, not merely slot-based. A fixed number of variable-length fragments does not impose a reliable context limit.
+
+---
+
+## 15. “Think until it settles” does not guarantee convergence
+
+> “It stops when the lit set stops changing. Convergence falls out of the mechanism—no separate detector.”
+
+
+
+Checking whether the lit set changed is already a detector.
+
+More importantly, there is no guarantee it will stop changing.
+
+The system could:
+
+- Alternate between two regions.
+- Cycle through several sets.
+- Keep perturbing activation through new model wording.
+- Produce a stable lit set while the actual reasoning remains unresolved.
+- Settle on a self-reinforcing but incorrect interpretation.
+
+
+A lower self-cue gain is sensible, but repeated low-gain self-input can still accumulate.
+
+You need:
+
+- A maximum pass count.
+- A latency or token budget.
+- Cycle detection.
+- A defined stability criterion.
+- A rule preventing model-generated speculation from becoming external evidence.
+
+
+There is also tension with the claim that a CAN never becomes input to a later CAN: even if that is literally true, model reasoning generated from a CAN is fed back as a cue. That is an indirect feedback path for reconstruction errors.
+
+I would postpone this loop until one-pass context selection shows measurable value.
+
+---
+
+## 16. Decay does not solve staleness or abstraction by itself
+
+### Staleness
+
+A frequently used wrong fact may remain highly active.
+
+An old database-port fragment can keep firing because current work mentions the same service. Decay will not reliably suppress it if each turn reactivates it.
+
+You need a distinction between:
+
+- Relevant but wrong.
+- Correct but irrelevant.
+- Historically correct.
+- Superseded.
+- Unverified.
+
+
+**Relevance and truth are different state variables.**
+
+### Abstraction
+
+> “A category is what remains after the differences have decayed.”
+
+
+
+This is evocative, but not mechanically established.
+
+Decaying activation and links does not rewrite fragment content into a general concept. It may expose a cluster, but cluster formation is not the same as abstraction.
+
+If three environment-specific failures support a general lesson, something must infer and encode that lesson. Otherwise, you have associated examples, not a category representation.
+
+---
+
+## 17. The raw-log rules need reconciliation
+
+Several claims conflict:
+
+- The raw log is never model input.
+- CAN composition can use raw material.
+- The model receives the last few raw turns.
+- The raw log is the recovery path.
+- Nothing is looked up.
+
+
+The clean resolution is to distinguish:
+
+1. **Recent interaction context:** a bounded raw window routinely included.
+2. **Historical archive:** not routinely included.
+3. **Evidence recovery:** deliberate inspection of specific historical records.
+
+
+A workable invariant would be:
+
+> The full historical log is never used as routine context. Recent turns and explicitly selected source records may be provided under a bounded evidence policy.
+
+
+
+Also, retaining a raw log does not guarantee recovery. You need fragment-to-source references and a way to locate relevant records.
+
+An archive is a safety net only if you can find the evidence and know when to consult it.
+
+---
+
+## 18. Confabulation should be treated as a failure mode, not accepted design behavior
+
+The document is commendably honest about reconstruction risk.
+
+But:
+
+> “This is how biological memory works and it is acceptable…”
+
+
+
+is not sufficient justification for an agent that edits files and executes commands.
+
+Some imprecision is harmless in narrative recollection. It is not harmless in:
+
+- File paths.
+- Versions.
+- Permissions.
+- Deployment instructions.
+- User constraints.
+- Reasons a dangerous action was prohibited.
+
+
+Frequently fired fragments should not silently drift toward their last telling.
+
+Use immutable source assertions and versioned interpretations. A reconstructed fragment can be revised, but it should not overwrite its evidentiary basis.
+
+Your invariant that reconstruction never becomes assertion is excellent. It needs enforcement through provenance, not just instructions to the composing model.
+
+---
+
+## 19. Security and deletion are missing
+
+Persistent agent memory creates a persistent attack surface.
+
+A malicious repository file or tool output might introduce a surprising statement that is then encoded, reinforced, and repeatedly injected into later contexts.
+
+That creates a possible loop:
+
+> Untrusted content → durable fragment → repeated context inclusion → apparent authority.
+
+
+
+You need:
+
+- Source trust labels.
+- Separation between observations and authorized instructions.
+- Project or tenant boundaries.
+- Restrictions on cross-project activation.
+- Secret-handling rules.
+- Memory inspection and correction controls.
+
+
+“Nothing is deleted” also cannot be an absolute production invariant. Credentials, personal data, poisoned content, and user deletion requests may require actual removal.
+
+A better principle:
+
+> Ordinary forgetting is decay; explicit security, privacy, and user-directed deletion remains possible.
+
+
+
+---
+
+## 20. The trace viewer is one of the strongest parts
+
+Build it early. That recommendation is exactly right.
+
+But make it an explanation interface, not just a graph visualization.
+
+For any fragment, it should answer:
+
+- Why did activation rise?
+- Was the cause external input, persistence, spreading, or self-cueing?
+- Why did it fire—or fail to fire?
+- Was it admitted?
+- What did it displace?
+- Did the model actually use it?
+- What prediction was attached to the action?
+- How was surprise measured?
+- Why was a new fragment written?
+- Which links changed, and why?
+- What source supports the resulting memory?
+
+
+Two especially useful views:
+
+**Counterfactual selection:** What would have entered context without persistence, spreading, or self-cues?
+
+**Failure reconstruction:** Was the needed fact absent from storage, missed by matching, below threshold, evicted, distorted during composition, or ignored by the model?
+
+That second view turns “the agent was dumb” into a diagnosable failure.
+
+---
+
+## 21. The minimal experiment needs stronger controls
+
+Your proposed staged build is sensible. But beating “last turns plus a project file” does not establish that carried activation is responsible.
+
+At minimum, compare:
+
+| Variant | What it tests
+|-----|-----|-----
+| Recent turns + static project context | Basic baseline
+| Current-turn matching over fragments | Value of fragment retrieval
+| Same matcher + carried activation | Incremental value of persistence
+| Persistence + graph spreading | Incremental value of associations
+| Direct fragment presentation vs CAN | Value and risk of composition
+
+
+Then test surprise-gated writing separately from selection.
+
+**Keep the fragment store fixed initially.** Otherwise, a system may win because it wrote better memories rather than because it selected them better.
+
+Hold model, tool access, context budget, and task conditions comparable. Report extra inference calls and total cost rather than treating them as free.
+
+Test situations that expose both benefits and weaknesses:
+
+- Long debugging trajectories.
+- Abrupt task changes.
+- Returning to an earlier task.
+- Corrected environmental facts.
+- Similar vocabulary across unrelated projects.
+- Repeated transient failures.
+- Long quiet periods.
+- Misleading tool output.
+- Critical constraints competing with fresh error messages.
+
+
+Measure task outcomes first, then memory diagnostics:
+
+- Completion and regression rate.
+- Tool-call count.
+- Time and token cost.
+- Constraint violations.
+- Stale or unsupported claims.
+- Task-switch recovery.
+- Critical-fragment misses.
+- Working-set churn.
+- Graph density.
+- Encoding rate.
+
+
+A low encoding rate is not inherently success. During initial project discovery, many turns may contain genuinely new information.
+
+---
+
+## What I would change before implementation
+
+In priority order:
+
+1. **Define INJECT concretely.** This determines addressing quality and cost.
+2. **Separate relevance, validity, provenance, and trust.**
+3. **Define working-set residency independently of firing.**
+4. **Specify predictions and surprise measurement before using them as write gates.**
+5. **Permit explicit instructions, decisions, and verified knowledge to be written without surprise.**
+6. **Add contradiction and supersession handling.**
+7. **Use a token budget and sparse activation traversal.**
+8. **Start with direct fragment presentation; test CAN composition separately.**
+9. **Defer graph learning and recursive thinking until persistence proves useful.**
+10. **Build traces that explain failures, not merely show activity.**
+
+
+## Final assessment
+
+**The design’s strongest contribution is treating context allocation as a persistent dynamical process. Its biggest weakness is assuming that several separate problems—addressing, truth maintenance, learning, abstraction, and convergence—will be solved by the same activation loop.**
+
+Keep activation as the relevance mechanism, but give provenance, validity, and memory admission explicit rules. The decisive experiment is whether carried activation improves task outcomes over the same matcher and fragment store without persistence—not whether the surface forms interesting-looking regions.

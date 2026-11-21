@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reidcc session frame</title>
+    <link rel="stylesheet" href="/src/session.css" />
+  </head>
+  <body class="group-header">
+    <header id="bar" data-pane-drag>
+      <div id="where"><span class="tag">Reidcc</span></div>
+      <div id="ctl">
+        <button id="min" data-dock-action aria-label="minimise frame">&#x2013;</button>
+        <button id="max" data-dock-action aria-label="maximise frame">&#x25A2;</button>
+        <button id="close" data-dock-action aria-label="close frame">&#x00D7;</button>
+      </div>
+    </header>
+    <div id="shimmer"></div>
+    <div id="seam"></div>
+    <script type="module">
+      import { bindDock } from "./src/dock";
+      bindDock();
+    </script>
+  </body>
+</html>

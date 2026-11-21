@@ -1,0 +1,147 @@
+/* The launcher's look, 1:1 with python\reid_gui.py: tokens from vision\reidcc-palette.md (`C`),
+   fonts and pixel sizes from `_fonts`, sizes measured off the Tk window at 1000x880. */
+:root {
+  --canvas: #040404; --s1: #0E0D0C; --s2: #171513; --stone: #292723;
+  --line: #2A2724; --line2: #4A4540; --linework: #928A82;
+  --text: #D6D0C8; --text2: #9F978E; --text3: #746F69;
+  --emerald: #00C463; --bronze: #C99A45; --oxide: #C0584B;
+  --ui: Inter, Geist, "Segoe UI Variable Text", "Segoe UI", Helvetica, "Lucida Sans Unicode", sans-serif;
+  --mono: "Geist Mono", "JetBrains Mono", "Cascadia Mono", Consolas, Menlo, monospace;
+  --pad: 40px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--canvas); color: var(--text); overflow: hidden; }
+body { font-family: var(--ui); -webkit-user-select: none; user-select: none; cursor: default; }
+button, input { font: inherit; color: inherit; margin: 0; }
+:focus { outline: none; }
+
+/* Tk font roles: size / Tk linespace */
+.f-title { font: 20px/27px var(--ui); }
+.f-head  { font: 16px/21px var(--ui); }
+.f-body  { font: 14px/19px var(--ui); }
+.f-btn, .f-label { font: 13px/17px var(--ui); }
+.f-mono  { font: 12px/16px var(--mono); letter-spacing: var(--ls12); }
+.f-tag   { font: 11px/15px var(--mono); letter-spacing: var(--ls11); }
+
+/* tk.Label: border 2 + pad 1 on every side */
+.lbl { padding: 3px; white-space: pre; flex: none; }
+.lbl.f-mono, .lbl.f-tag { padding: 4px 3px 2px; } /* GDI puts Cascadia Mono's glyphs a pixel lower in the line */
+.lbl:empty::before { content: "\200b"; } /* an empty Tk label still has one line's height */
+.ch { display: inline-block; white-space: pre; } /* one character at its GDI advance (widgets.ts fit) */
+.c-text { color: var(--text); } .c-text2 { color: var(--text2); } .c-text3 { color: var(--text3); }
+.c-emerald { color: var(--emerald); } .c-oxide { color: var(--oxide); } .c-bronze { color: var(--bronze); }
+
+#root { display: flex; flex-direction: column; height: 100%; }
+#footer { order: 3; flex: none; }
+#msgbar { order: 2; flex: none; height: 34px; display: flex; align-items: center; overflow: hidden; }
+#main { order: 1; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+.hair { height: 1px; background: var(--line); flex: none; }
+
+/* tk.Button: flat, 34 px tall, a 1 px ring that Tk on Windows paints in the button's own colour; with
+   focus it draws a dotted rectangle in the text colour just inside it (dots from the corner's next pixel) */
+.btn {
+  height: 34px; padding: 0; border: 1px solid transparent; background: var(--s1); color: var(--text);
+  font: 13px/17px var(--ui); white-space: pre; flex: none; overflow: hidden; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; position: relative;
+}
+.btn:hover, .btn:active { background: var(--s2); }
+.btn:focus::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  --h: repeating-linear-gradient(to right, transparent 0 1px, currentColor 1px 2px);
+  --v: repeating-linear-gradient(to bottom, transparent 0 1px, currentColor 1px 2px);
+  background: var(--h) left top / 100% 1px no-repeat, var(--h) left bottom / 100% 1px no-repeat,
+    var(--v) left top / 1px 100% no-repeat, var(--v) right top / 1px 100% no-repeat;
+}
+.btn.primary { background: var(--text); color: var(--canvas); }
+.btn.primary:hover, .btn.primary:active { background: var(--linework); }
+.btn.dim { color: var(--text3); }
+
+/* tk.Entry: s1 field, 1 px ring, mono */
+.entry {
+  height: 26px; border: 1px solid var(--line); background: var(--s1); color: var(--text); caret-color: var(--text);
+  font: 12px/16px var(--mono); letter-spacing: var(--ls12); padding: 2px 2px 0; min-width: 0; -webkit-user-select: text; user-select: text;
+}
+.entry:focus { border-color: var(--line2); }
+.entry::selection { background: var(--stone); color: var(--text); }
+
+/* ttk Combobox (clam) */
+.combo { position: relative; height: 30px; border: 1px solid var(--line); background: var(--s1); min-width: 0; }
+.combo.short { height: 26px; }
+.combo.focus { border-color: var(--line2); }
+.combo input {
+  position: absolute; left: 0; top: 0; bottom: 0; right: 12px; width: calc(100% - 12px); border: 0; background: transparent;
+  font: 12px/16px var(--mono); letter-spacing: var(--ls12); color: var(--text); padding: 2px 0 0 9px; caret-color: var(--text);
+}
+.combo.readonly input { cursor: default; -webkit-user-select: none; user-select: none; }
+.combo input::selection { background: var(--stone); color: var(--text); }
+.combo.readonly input::selection { background: var(--s1); }
+.combo .arrow { position: absolute; right: 0; top: 0; bottom: 0; width: 12px; border-left: 1px solid var(--line); }
+.combo.focus .arrow { border-left-color: var(--line2); }
+.combo:not(.disabled):hover .arrow { background: var(--s2); }
+.combo .arrow i { position: absolute; left: 2px; top: calc(50% - 2px); width: 7px; height: 4px; background: var(--text3);
+  clip-path: polygon(0 0, 7px 0, 7px 1px, 6px 1px, 6px 2px, 5px 2px, 5px 3px, 4px 3px, 4px 4px, 3px 4px, 3px 3px, 2px 3px, 2px 2px, 1px 2px, 1px 1px, 0 1px); }
+.combo:not(.disabled):hover .arrow i { background: var(--text); }
+.combo.disabled input { color: var(--text3); }
+.combo.disabled .arrow i { background: var(--line2); }
+
+/* the combobox's drop-down list and the open recent menu */
+.popdown { position: fixed; z-index: 50; border: 1px solid var(--line); background: var(--s2); display: flex; }
+.popdown .rows { flex: 1; overflow: hidden; position: relative; }
+.row { font: 12px/16px var(--mono); letter-spacing: var(--ls12); height: 17px; padding: 1px 0 0 0; white-space: pre; color: var(--text); }
+.row.sel { background: var(--stone); }
+.menu { position: fixed; z-index: 50; background: var(--s2); padding: 2px 0; border: 1px solid var(--line); }
+.menu .item { font: 12px/16px var(--mono); letter-spacing: var(--ls12); padding: 2px 20px 2px 20px; white-space: pre; color: var(--text); }
+.menu .item:not(.off):hover { background: var(--stone); }
+.menu .item.off { color: var(--text3); }
+
+/* tk.Listbox + ttk scrollbar */
+.lb { flex: 1; min-width: 0; position: relative; overflow: hidden; background: var(--s1); border: 1px solid var(--line); }
+.lb:focus { border-color: var(--line2); }
+.lb .rows { position: absolute; left: 0; right: 0; top: 0; }
+.sb { width: 15px; flex: none; position: relative; background: var(--s1); border: 1px solid var(--line); }
+.sb .up, .sb .down { position: absolute; left: -1px; right: -1px; height: 15px; background: var(--s2); border: 1px solid var(--line); }
+.sb .up { top: -1px; } .sb .down { bottom: -1px; }
+.sb .up i, .sb .down i { position: absolute; left: 2px; width: 9px; height: 5px; background: var(--text3); }
+.sb .up i { top: 4px; clip-path: polygon(4px 0, 5px 0, 5px 1px, 6px 1px, 6px 2px, 7px 2px, 7px 3px, 8px 3px, 8px 4px, 9px 4px, 9px 5px, 0 5px, 0 4px, 1px 4px, 1px 3px, 2px 3px, 2px 2px, 3px 2px, 3px 1px, 4px 1px); }
+.sb .down i { top: 4px; clip-path: polygon(0 0, 9px 0, 9px 1px, 8px 1px, 8px 2px, 7px 2px, 7px 3px, 6px 3px, 6px 4px, 5px 4px, 5px 5px, 4px 5px, 4px 4px, 3px 4px, 3px 3px, 2px 3px, 2px 2px, 1px 2px, 1px 1px, 0 1px); }
+.sb .thumb { position: absolute; left: -1px; right: -1px; background: var(--s2); border: 1px solid var(--line); }
+.sb .thumb:hover, .sb .up:hover, .sb .down:hover { background: var(--stone); }
+
+/* ttk Checkbutton / Radiobutton (clam) */
+.check { display: flex; align-items: center; height: 23px; padding: 2px 0; font: 13px/17px var(--ui); color: var(--text); white-space: pre; flex: none; }
+.check .ind { width: 11px; height: 11px; flex: none; margin: 0 4px 0 1px; }
+.check.disabled { color: var(--text3); }
+.check .txt { padding: 0; border: 1px solid transparent; margin-right: -1px; } /* Tk: 1 px focus pad left, none right */
+.check:focus .txt { border-color: var(--line2); }
+
+/* gate (SPEC-gate.md): the ghost and the opening, a layer over the whole page */
+#gate { position: fixed; inset: 0; z-index: 100; opacity: 0; pointer-events: none; display: none; }
+#gate.solid { background: #030202; pointer-events: auto; }
+#gate canvas { position: absolute; left: 0; top: 0; }
+#gate .gtxt { position: absolute; white-space: pre; }
+
+/* medium (vision v1 §1): a fold of the same window, below the size the full layout fits in */
+/* "semi-mini" (Reid, 2026-11-21): tight edges, no folder label, no footer hint */
+#medium { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 16px; overflow: hidden; }
+body[data-size="medium"] #main { display: none; }
+body[data-size="medium"] #medium { display: flex; }
+body[data-size="medium"] #medium > div:first-child { margin: 12px 0 4px !important; }
+body[data-size="medium"] .flabel, body[data-size="medium"] .hint { display: none; }
+body[data-size="medium"] #medium .btn { margin-left: 6px !important; }
+body[data-size="medium"] #footer > div:last-child { padding: 7px 16px !important; }
+body[data-size="medium"] #msgbar:has(> .lbl:empty):not(:has(button)) { height: 0; }
+body[data-size="medium"] #msgbar > .lbl { margin-left: 16px !important; }
+#medium > .lbl:first-of-type { margin-top: 0; }
+.mlist { flex: none; display: flex; flex-direction: column; margin-bottom: 8px; overflow: hidden; }
+.mcombos { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 24px; align-content: start; column-gap: 8px; }
+.mrow { display: flex; align-items: center; height: 24px; padding: 0 8px; white-space: pre; overflow: hidden; cursor: pointer;
+  font: 12px/16px var(--mono); letter-spacing: var(--ls12); color: var(--text2); }
+.mrow:hover { background: var(--s2); color: var(--text); }
+.mrow.cur { color: var(--text); }
+.mrow .k { color: var(--text3); width: 2ch; flex: none; }
+.mrow .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+.mrow .dot { flex: none; margin-left: 12px; }
+.mrow .st { flex: none; color: var(--text2); font-variant-numeric: tabular-nums; }
+.mlist > .lbl { padding-left: 8px; }

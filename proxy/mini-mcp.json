@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "mini": {
+      "command": "python",
+      "args": [
+        "E:\\Reidcc\\proxy\\mini_tools_mcp.py"
+      ]
+    }
+  }
+}
