@@ -14,7 +14,7 @@
 Reidcc is a launcher built on Claude Code and Codex for people who want things simple. Pick a folder and a profile and you are coding in seconds, with your persona, long-term memory and settings already set up. Every session shows where it is, which profile is running, and how much context and limit you have used. Its request proxy (`proxy`) lives here too; its memory system, ACA, is a plugin with its own repo.
 
 **Status:** Windows 10 and 11 · **beta** (everything is) · installer and self-updates from
-[Releases](https://github.com/AIden6464-AI/reidcc/releases/latest).
+[Releases](https://github.com/AIden6464-AI/reidcc/releases/latest) · **docs:** [aiden6464-ai.github.io/reidcc](https://aiden6464-ai.github.io/reidcc/) (built from `site\`).
 
 **Branches:** `dev` (this one) has everything: specs, vision, the Python original, proxy, tests. ACA moved to its own repo.
 [`main`](https://github.com/AIden6464-AI/reidcc/tree/main) is the user-facing subset, rebuilt from
@@ -89,8 +89,9 @@ reidcc\
 │  └─ Spec\           proxy, gate (built), tui (proposed), codex-opencode (Codex built, OpenCode proposed),
 │                     codex-signin-persona (built), codex-proxy (proposed), rust-rewrite (stage 0 built),
 │                     rust-tui-gui (1:1 TUI + GUI in Rust, built, awaiting sign-off), app,
-│                     github-repo (installer + updater, proposed), github-pages (website, proposed;
-│                     a working mock with its motion is in Spec\github-pages\mock\)
+│                     github-repo (installer + updater, built), github-pages (website, built in site\;
+│                     the mock it was ported from is in Spec\github-pages\mock\)
+├─ site\             the website: VitePress landing page + docs, deployed by .github\workflows\pages.yml
 ├─ assets\            banner.png, gate frames (gate_*.png) and TUI half-block gate frames (tui\gate_*.json.gz)
 ├─ docs\              README images
 ├─ reidcc.ico         app icon: the engraved RC logo (vision\branding\), cut by make_assets.py

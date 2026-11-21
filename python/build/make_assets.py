@@ -1,7 +1,54 @@
-"""Build Reidcc's UI assets from the branding art: banner.png (image 1 crop) and reidcc.ico (the logo)."""
+"""Build Reidcc's UI assets from the branding art: banner.png (image 1 crop) and reidcc.ico (the logo).
+
+    python python\\build\\make_assets.py          the app's assets (banner, icon, gate frames)
+    python python\\build\\make_assets.py --site   only the website's WebP cuts (SPEC-github-pages.md Part 4)
+"""
+import sys
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter
 BRAND = r"E:\reidcc\vision\branding"
 OUT = r"E:\reidcc\assets"
+
+
+def site():
+    """The site never links the 1-2.5 MB branding PNGs: WebP cuts at the sizes it shows, from the app's own
+    gate frames (assets\\gate_*) and the art. Writes site\\public\\{frames,art,shots}."""
+    import os
+    root = os.path.dirname(OUT)
+    pub = os.path.join(root, "site", "public")
+    for d in ("frames", "art", "shots"):
+        os.makedirs(os.path.join(pub, d), exist_ok=True)
+
+    def cut(src, dst, width, q=80):
+        im = Image.open(src).convert("RGB")
+        im = im.resize((width, round(im.height * width / im.width)), Image.LANCZOS)
+        im.save(os.path.join(pub, dst), "WEBP", quality=q, method=6)
+
+    # the gate: rise 6 + ignite 8 + open 30, 1000x880 -> 800x704 (r00, i00, o00 ...)
+    for step, pre in (("rise", "r"), ("ignite", "i"), ("open", "o")):
+        d = os.path.join(OUT, "gate_" + step)
+        for f in sorted(os.listdir(d)):
+            cut(os.path.join(d, f), os.path.join("frames", pre + f.replace(".png", ".webp")), 800, 74)
+    cut(os.path.join(OUT, "gate_ghost.png"), r"art\ghost-800.webp", 800, 74)  # the 404's ghost lines
+    cut(BRAND + r"\Classical Blueprint Flow with Emerald Signal-1.png", r"art\flow-1120.webp", 1120)
+    cut(BRAND + r"\Engraved Compass and Marble Hand Emblem.png", r"art\emblem-144.webp", 144, 85)
+    cut(BRAND + r"\Reidcc Logo - Engraved RC.png", r"art\logo-52.webp", 52, 90)
+    # the favicon: 32px PNG (reidcc.ico carries every size up to 256 and weighs 150 KB)
+    Image.open(BRAND + r"\Reidcc Logo - Engraved RC.png").convert("RGBA").resize((32, 32), Image.LANCZOS).save(
+        os.path.join(pub, "favicon.png"), optimize=True)
+    for shot in ("session-window", "launcher"):
+        cut(os.path.join(root, "docs", shot + ".png"), os.path.join("shots", shot + ".webp"), 1000, 82)
+    cut(os.path.join(root, "rs", "tests", "gui_shots", "settings.png"), r"shots\settings.webp", 1000, 82)
+    # og image 1200x630: the flow band on canvas
+    band = Image.open(BRAND + r"\Classical Blueprint Flow with Emerald Signal-1.png").convert("RGB").crop((40, 250, 1632, 640))
+    band = band.resize((1200, round(band.height * 1200 / band.width)), Image.LANCZOS)
+    og = Image.new("RGB", (1200, 630), (4, 4, 4))
+    og.paste(band, (0, (630 - band.height) // 2))
+    og.save(os.path.join(pub, "og.png"), optimize=True)
+
+
+if "--site" in sys.argv:
+    site()
+    sys.exit()
 
 # banner: the folder -> persona -> signal band, 720px wide so the whole launcher fits one screen
 art = Image.open(BRAND + r"\Classical Blueprint Flow with Emerald Signal-1.png").convert("RGB")

@@ -1,7 +1,22 @@
 # SPEC: the Reidcc website (GitHub Pages: landing page and docs)
 
-Status: PROPOSED. Rev 1 2026-11-21. Rev 2 2026-11-21: motion (Part 2b). Nothing is built except the mock in
-`vision\Spec\github-pages\mock\` (open `index.html` and `docs.html` in a browser) and its screenshots.
+Status: BUILT 2026-11-21 in `site\` (VitePress 1.6.4), deployed by `.github\workflows\pages.yml`. Rev 1 2026-11-21.
+Rev 2 2026-11-21: motion (Part 2b). The mock it was ported from stays in `vision\Spec\github-pages\mock\`.
+
+**As built (where it differs from the text below):**
+- The top bar is VitePress's own (with local search on every page); the landing page uses `layout: page`
+  and adds the progress hairline. The version tag reads `rs\Cargo.toml`, not `tauri.conf.json`.
+- Fonts are self-hosted from `@fontsource/inter` and `@fontsource/geist-mono` (latin 400/500), not `publiconts`.
+- The download is decided at build time from GitHub's latest release: with an installer, `download for
+  windows` + the installer steps; without one, `build from source` + the build steps (truth rule, Part 7.6).
+- Only `r00` is in the first load; the other gate frames are fetched after the page's load event.
+  Measured: **391 KB first load** in 9 requests (budget 700 KB). 390px: no sideways scroll. Reduced
+  motion: 0 hidden, hero 455px. `dist\` scanned clean for personal paths, emails and keys.
+- `pages.yml` can't use a `push` trigger: main is pushed by `publish main` with `GITHUB_TOKEN`, which
+  starts no workflows, so it runs on that workflow's completion (`workflow_run`), on `release: published`
+  and by hand. It builds from main, where `publish main` copies `site\`.
+- Favicon is a 32px PNG cut by `make_assets.py --site` (the 150 KB `reidcc.ico` would eat the budget).
+- Code blocks are bone, not syntax colours. ACA isn't in the docs while its repo is private.
 
 Asked by Reid 2026-11-21:
 > "Spec a github pages website with docs and the feel that the Reidcc project/app feels"

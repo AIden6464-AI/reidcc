@@ -1,6 +1,6 @@
 # main is what users see: the app's source, assets, docs, license and a user README. dev has
 # everything (specs, vision, the Python original, proxy, tests). Every push to dev rewrites main's
-# files from the list below, as one commit on main. Never commit to main by hand: the next sync
+# files from the list below, as one commit on main (site/ is the website; pages.yml deploys it after this). Never commit to main by hand: the next sync
 # overwrites it. Releases are tagged on main (release.yml).
 name: publish main
 
@@ -32,7 +32,7 @@ jobs:
           git rm -rq --ignore-unmatch . && git clean -fdq   # start empty, keep main's history
           cd ../dev
           for p in LICENSE.md .gitignore reidcc.ico assets docs personas/plain.md \
-                   .github/workflows/ci.yml .github/workflows/release.yml \
+                   .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/pages.yml site \
                    rs/.gitignore rs/Cargo.toml rs/Cargo.lock rs/app rs/cli rs/core rs/ui; do
             cp -r --parents "$p" ../main/
           done
