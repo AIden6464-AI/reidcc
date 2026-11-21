@@ -427,6 +427,35 @@ To build, in this order (each step is shippable on its own):
 | 4 | Updater: plugin, footer states, sessions-running guard, `reid --update`, installed-copy check | medium |
 | 5 | ACA fixes (5f) → `reid --aca-hook` → per-session wiring + `"aca"` field → server start → PyInstaller build → installer component | large |
 
+### As built (2026-11-21): steps 1–4 done, version 0.2.0
+Where the build differs from Parts 3 and 4:
+- **Two config files.** Bundle settings (`externalBin`, `resources`, NSIS) live in
+  `rs\app\tauri.bundle.json`, merged only by `tauri build --config tauri.bundle.json`. That's because
+  tauri-build fails a plain `cargo build` when `binaries\reid-*.exe` is missing. The updater's
+  `plugins.updater` stays in `tauri.conf.json`, because the plugin reads it in every build.
+- **Size:** the installer is 28 MB, not ~8. The gate's PNG frames (26 MB) don't compress.
+- **`reid --install` output** goes to the installer's details list, not to the finish page.
+- **`/reid` is removed only if install wrote it.** Install leaves `reid-slash.installed` in the
+  program folder. Without that marker, uninstall keeps a `/reid` that was already there (a dev or
+  portable copy's).
+- **PATH keeps its registry type** (REG_SZ stays REG_SZ). The round trip is byte-identical.
+- **The sessions guard counts processes, not windows.** It counts every `reid.exe` / `Reidcc.exe`
+  running from the program folder, because Windows Terminal sessions run there too, and the installer
+  can't replace a running file. `reid --update` refuses with the count; the footer says
+  `finish your N sessions first`.
+- **`release.yml` is plain steps**, not `tauri-action`: test → `reid.exe` → `tauri build` → `latest.json`
+  → `gh release create`. Releases are **titled "beta", never marked pre-release**: GitHub's
+  `/releases/latest` (the updater's endpoint) skips pre-releases.
+- **Keys:** `%USERPROFILE%\.tauri\reidcc.key` (+ `.password`), mirrored in the repo secrets
+  `TAURI_SIGNING_PRIVATE_KEY` / `_PASSWORD`. Losing the key means installed copies can't take updates
+  any more, so back it up.
+- **Verified locally:**
+  - Silent install to a scratch folder, then uninstall: PATH restored exactly, shortcuts and the
+    registry entry removed, an existing `/reid` kept, `%USERPROFILE%\Reidcc` untouched.
+  - A full update 0.2.0 → 0.2.1 through `reid --update`, against a local `latest.json`: download,
+    signature check, passive install, relaunch.
+  - The guard refusing while Reidcc runs.
+
 ## Open questions
 1. ~~**License:**~~ Decided 2026-11-21: PolyForm Noncommercial 1.0.0 (`LICENSE.md`, README "License").
 2. ~~**Public or private?**~~ Decided: pushed private 2026-11-21, made public the same day.

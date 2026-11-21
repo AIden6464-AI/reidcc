@@ -339,9 +339,14 @@ def is_claude_model(model):
     return bool(model) and (model in BASE_MODELS or str(model).lower().startswith("claude"))
 
 
+def as_args(v):
+    """A profile's extra args. A string is split like a command line (args_parse), not into letters."""
+    return args_parse(v) if isinstance(v, str) else list(v or [])
+
+
 def args_text(args):
     """Extra args as one line people can edit; args_parse() reads it back to the same list."""
-    return subprocess.list2cmdline(list(args or []))
+    return subprocess.list2cmdline(as_args(args))
 
 
 def args_parse(text):
@@ -599,7 +604,7 @@ def build_codex(cfg, name, prof, extra, cwd=None, prepare=True):
     ppath = need(prof["persona"], "persona file") if prof.get("persona") else ""
     prompt_on = bool(ppath or prof.get("memory"))
 
-    args = list(prof.get("args") or []) + list(extra)
+    args = as_args(prof.get("args")) + list(extra)
     for a in args:
         if a in ("-C", "--cd") or a.startswith("--cd=") or (a.startswith("-C") and len(a) > 2):
             raise ReidError("Leave -C / --cd out of the extra args: Codex opens in the folder you picked.")
@@ -801,7 +806,7 @@ def build(cfg, name, extra, cwd=None, prepare=True):
         else:
             env[k] = str(v)
 
-    argv += list(prof.get("args") or []) + list(extra)
+    argv += as_args(prof.get("args")) + list(extra)
     return argv, env, temps
 
 

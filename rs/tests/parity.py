@@ -198,9 +198,9 @@ def main():
                 os.remove(os.path.join(home, "codex", "prompts", name))
         rs = run("rs", home, args, work)
         if label in ("-h", "--help"):
-            # The version flag is specific to the versioned Rust build.
+            # The version and update flags are specific to the versioned, installable Rust build.
             rc, stdout, stderr = rs
-            rs = rc, re.sub(r"^    reid --version +show the Reidcc version\r?\n", "", stdout, count=1, flags=re.M), stderr
+            rs = rc, re.sub(r"^    reid --(version|update) +.*\r?\n", "", stdout, flags=re.M), stderr
         after_rs = prompts(home)
         problems = []
         if py != rs and TRACEBACK in py[2] and TRACEBACK not in rs[2]:

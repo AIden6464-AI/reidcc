@@ -13,8 +13,13 @@
 
 Reidcc is a launcher built on Claude Code and Codex for people who want things simple. Pick a folder and a profile and you are coding in seconds, with your persona, long-term memory and settings already set up. Every session shows where it is, which profile is running, and how much context and limit you have used. Its memory system (`aca`) and request proxy (`proxy`) live here too.
 
-**Status:** Windows 10 and 11 · beta · no installer yet, so build from source (below). The
-installer and updater are specced in [`vision/Spec/SPEC-github-repo.md`](vision/Spec/SPEC-github-repo.md).
+**Status:** Windows 10 and 11 · **beta** (everything is) · installer and self-updates from
+[Releases](https://github.com/AIden6464-AI/reidcc/releases/latest).
+
+**Branches:** `dev` (this one) has everything: specs, vision, the Python original, aca, proxy, tests.
+[`main`](https://github.com/AIden6464-AI/reidcc/tree/main) is the user-facing subset, rebuilt from
+`dev` on every push (`.github/workflows/publish-main.yml`, README from `.github/main/README.md`). Work and
+pull requests go to `dev`; releases are tagged on `main`.
 
 <p align="center">
   <img src="docs/launcher.png" alt="Reidcc launcher" width="900" />
@@ -22,7 +27,25 @@ installer and updater are specced in [`vision/Spec/SPEC-github-repo.md`](vision/
 
 ---
 
-## Get started
+## Install
+
+1. You need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and signed in once
+   (`claude` on your PATH). Codex is optional.
+2. Download `Reidcc_<version>_x64-setup.exe` from the
+   [latest release](https://github.com/AIden6464-AI/reidcc/releases/latest) and run it. No admin needed.
+   It isn't code-signed yet, so SmartScreen may say *Windows protected your PC*: *More info* → *Run anyway*.
+3. Open **Reidcc** from the Start Menu or desktop, or type `reid` in a new terminal.
+
+| | Where |
+|---|---|
+| The program (replaced on every update) | `%LOCALAPPDATA%\Reidcc` |
+| Your profiles, memory, personas, keys (made on first launch) | `%USERPROFILE%\Reidcc` |
+
+**Updates:** when a newer release is out, the footer shows `update <version> · install`. Click it
+once your sessions have finished. In a terminal: `reid --update`. Nothing installs unless you ask.
+**Uninstall:** Settings → Apps → Reidcc. Your folder is kept.
+
+## Build from source
 
 You need [Rust](https://rustup.rs) (stable), [Node.js](https://nodejs.org) 22, and
 [Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and signed in once (`claude` on your PATH).
@@ -43,7 +66,7 @@ there with one profile, `main` (Opus, memory on). Pick a folder, then **open gat
 
 - **Without `REIDCC_HOME`**, Reidcc uses the first folder above the exe that holds a `reid.json`.
   Put one in the clone's root to keep everything in the clone, which is how the author runs it. With neither,
-  it falls back to `rs\target`, which `cargo clean` deletes.
+  it uses `%USERPROFILE%\Reidcc`, the same folder an installed copy uses.
 - **Tests:** `cargo test --workspace` in `rs\` (CI runs the same on every push).
 
 ---
@@ -156,7 +179,9 @@ Researched for `--standalone` per-launch config via `OPENCODE_CONFIG` / `OPENCOD
 
 ## Wired up outside this folder
 
-The installed Python launcher (the author's setup) adds:
+The installer (through `reid --install`, undone by `reid --uninstall`) adds the program folder to
+your user PATH, Start Menu and desktop shortcuts, and the `/reid` slash command if `~\.claude`
+exists and has none yet. The author's older Python setup adds:
 
 - **User PATH** includes this folder's `app\` (`reid`, `reidcc`; extensionless shims there are for Git Bash).
 - **`~\.claude\commands\reid.md`** (the `/reid` slash command).

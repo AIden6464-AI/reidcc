@@ -135,7 +135,7 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
         }
     }
     apply_env(&mut env, prof);
-    argv.extend(list(prof, "args"));
+    argv.extend(crate::args(prof));
     argv.extend(extra.iter().cloned());
     Ok(Launch { argv, env, temps })
 }

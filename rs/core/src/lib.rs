@@ -103,7 +103,7 @@ impl Default for Ctx {
 }
 
 /// The Reidcc data folder: REIDCC_HOME, else the nearest folder above this exe with a reid.json
-/// (E:\reidcc for rs\target\release\reid.exe and for app\reid.exe), else the exe folder's parent.
+/// (E:\reidcc for rs\target\release\reid.exe and for app\reid.exe), else %USERPROFILE%\Reidcc (an installed copy).
 pub fn home_dir() -> String {
     if let Ok(h) = std::env::var("REIDCC_HOME") {
         if !h.is_empty() {
@@ -119,7 +119,11 @@ pub fn home_dir() -> String {
         }
         let up = py::dirname(&d);
         if up == d {
-            return py::dirname(&exe_dir);
+            // an installed copy: your own folder, made by the first load_config, never by the installer
+            return match std::env::var("USERPROFILE") {
+                Ok(u) if !u.is_empty() => py::join(&u, &["Reidcc"]),
+                _ => py::dirname(&exe_dir),
+            };
         }
         d = up;
     }
@@ -187,6 +191,7 @@ pub fn save_json(path: &str, data: &Value) -> std::io::Result<()> {
 
 pub fn load_config(ctx: &Ctx) -> R<Obj> {
     if !py::exists(&ctx.config) {
+        let _ = std::fs::create_dir_all(&ctx.home); // first run of an installed copy: %USERPROFILE%\Reidcc
         save_json(&ctx.config, &default_config()).map_err(|e| ReidError(e.to_string()))?;
     }
     let bad = |e: String| ReidError(format!("reid.json has an error ({e}). Fix it, then try again."));
@@ -277,6 +282,49 @@ fn remember_locked(ctx: &Ctx, name: &str, cwd: &str, sid: Option<&str>, last: bo
     save_json(&ctx.state, &Value::Object(st))
 }
 
+// ------------------------------------------------------------- updates ---
+// vision/Spec/SPEC-github-repo.md Part 4. The launcher checks; reid only reads what it saved.
+
+/// The folder the installer registered (its Add/Remove Programs entry), if Reidcc is installed.
+pub fn install_dir() -> Option<String> {
+    win::hkcu_str(r"Software\Microsoft\Windows\CurrentVersion\Uninstall\Reidcc", "InstallLocation")
+        .map(|d| d.trim_matches('"').to_string()).filter(|d| !d.is_empty())
+}
+
+/// Only installed copies update: dev builds and portable folders never try to.
+pub fn installed_copy() -> bool {
+    let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    install_dir().is_some_and(|d| py::normcase(d.trim_end_matches('\\')) == py::normcase(&py::dirname(&exe)))
+}
+
+/// `a` is a later version than `b` ("0.10.0" > "0.9.3").
+pub fn newer(a: &str, b: &str) -> bool {
+    let nums = |v: &str| v.split('.').map(|p| p.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
+    nums(a) > nums(b)
+}
+
+/// The update the launcher last saw, while it's still newer than this build.
+pub fn pending_update(ctx: &Ctx) -> Option<String> {
+    let v = load_state(ctx).get("update").map(pyjson::py_str)?;
+    newer(&v, env!("CARGO_PKG_VERSION")).then_some(v)
+}
+
+/// Save (or clear) the update the launcher saw, for the TUI's footer.
+pub fn save_update(ctx: &Ctx, version: Option<&str>) {
+    let lock = take_lock(&format!("{}.lock", ctx.state), 5.0, 10.0);
+    let mut st = load_state(ctx);
+    let changed = match version {
+        Some(v) => st.insert("update".into(), Value::String(v.into())) != Some(Value::String(v.into())),
+        None => st.remove("update").is_some(),
+    };
+    if changed {
+        let _ = save_json(&ctx.state, &Value::Object(st));
+    }
+    if let Some(l) = lock {
+        let _ = std::fs::remove_file(l);
+    }
+}
+
 /// A profile field, if Python would call it true.
 pub fn on<'a>(prof: &'a Obj, key: &str) -> Option<&'a Value> {
     prof.get(key).filter(|v| pyjson::truthy(v))
@@ -302,9 +350,85 @@ pub fn list(prof: &Obj, key: &str) -> Vec<String> {
     }
 }
 
+/// A profile's extra args. A string is split like a command line, not into letters:
+/// `"args": "--verbose --x \"a b\""` is ["--verbose", "--x", "a b"].
+pub fn args(prof: &Obj) -> Vec<String> {
+    match on(prof, "args") {
+        Some(Value::String(s)) => args_parse(s),
+        _ => list(prof, "args"),
+    }
+}
+
+/// Split an extra-args line the way Windows does (reid.py's args_parse): spaces separate, double quotes
+/// group, \" is a quote, backslashes stay as typed.
+pub fn args_parse(text: &str) -> Vec<String> {
+    let t: Vec<char> = text.chars().collect();
+    let (mut out, mut cur, mut quoted, mut started, mut i) = (vec![], String::new(), false, false, 0);
+    while i < t.len() {
+        let c = t[i];
+        if c == '\\' {
+            let n = t[i..].iter().take_while(|&&c| c == '\\').count();
+            if i + n < t.len() && t[i + n] == '"' {
+                cur.push_str(&"\\".repeat(n / 2));
+                if n % 2 == 1 {
+                    cur.push('"');
+                    i += n + 1;
+                } else {
+                    i += n;
+                }
+                started = true;
+                continue;
+            }
+            cur.push_str(&"\\".repeat(n));
+            i += n;
+            started = true;
+            continue;
+        }
+        if c == '"' {
+            quoted = !quoted;
+            started = true;
+        } else if py::isspace(c) && !quoted {
+            if started {
+                out.push(std::mem::take(&mut cur));
+                started = false;
+            }
+        } else {
+            cur.push(c);
+            started = true;
+        }
+        i += 1;
+    }
+    if started {
+        out.push(cur);
+    }
+    out
+}
+
 pub fn memory_path(ctx: &Ctx, cfg: &Obj, prof: Option<&Obj>) -> String {
     let p = prof.map(|p| text(p, "memory_file")).filter(|s| !s.is_empty())
         .or_else(|| on(cfg, "memory_file").map(pyjson::py_str))
         .unwrap_or_else(|| "reidcc_memory.md".into());
     ctx.resolve(&p)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn string_args_split_like_a_command_line_not_into_letters() {
+        let prof = |v: Value| v.as_object().unwrap().clone();
+        assert_eq!(args(&prof(serde_json::json!({"args": "--version"}))), vec!["--version"]);
+        assert_eq!(args(&prof(serde_json::json!({"args": r#"--add-dir "D:\Shared Work" -v"#}))),
+                   vec!["--add-dir", r"D:\Shared Work", "-v"]);
+        assert_eq!(args(&prof(serde_json::json!({"args": ["--a", "b c"]}))), vec!["--a", "b c"]);
+        assert!(args(&prof(serde_json::json!({}))).is_empty());
+    }
+
+    #[test]
+    fn versions_compare_by_number_not_by_text() {
+        assert!(newer("0.10.0", "0.9.3"));
+        assert!(newer("0.2.1", "0.2.0") && newer("1.0", "0.99.99"));
+        assert!(!newer("0.2.0", "0.2.0") && !newer("0.1.9", "0.2.0"));
+    }
 }

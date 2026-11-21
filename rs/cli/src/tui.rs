@@ -131,52 +131,7 @@ fn strip_sgr(s: &str) -> String {
 
 /// Extra args as one line people can edit; args_parse() reads it back to the same list.
 fn args_text(p: &Obj) -> String {
-    py::list2cmdline(&reidcc::list(p, "args"))
-}
-
-/// Split an extra-args line the way Windows does: spaces separate, double quotes group, \" is a
-/// quote. Backslashes stay as typed.
-fn args_parse(text: &str) -> Vec<String> {
-    let t: Vec<char> = text.chars().collect();
-    let (mut out, mut cur, mut quoted, mut started, mut i) = (vec![], String::new(), false, false, 0usize);
-    while i < t.len() {
-        let c = t[i];
-        if c == '\\' {
-            let n = t[i..].iter().take_while(|&&x| x == '\\').count();
-            if i + n < t.len() && t[i + n] == '"' {
-                cur += &"\\".repeat(n / 2);
-                if n % 2 == 1 {
-                    cur.push('"');
-                    i += n + 1;
-                } else {
-                    i += n;
-                }
-                started = true;
-                continue;
-            }
-            cur += &"\\".repeat(n);
-            i += n;
-            started = true;
-            continue;
-        }
-        if c == '"' {
-            quoted = !quoted;
-            started = true;
-        } else if py::isspace(c) && !quoted {
-            if started {
-                out.push(std::mem::take(&mut cur));
-                started = false;
-            }
-        } else {
-            cur.push(c);
-            started = true;
-        }
-        i += 1;
-    }
-    if started {
-        out.push(cur);
-    }
-    out
+    py::list2cmdline(&reidcc::args(p))
 }
 
 fn persona_name(p: &Obj) -> String {
@@ -286,6 +241,8 @@ pub struct Tui {
     idx: usize,
     login: Option<std::thread::JoinHandle<()>>,
     art: HashMap<String, std::rc::Rc<Vec<Vec<String>>>>,
+    /// a newer version the launcher saw (reid_state.json): the footer says how to get it
+    update: Option<String>,
 }
 
 fn getkey() -> T<String> {
@@ -297,7 +254,7 @@ fn getkey() -> T<String> {
 
 impl Tui {
     pub fn new(ctx: &'static Ctx, cwd: &str, msg: &str) -> Tui {
-        Tui { ctx, cwd: cwd.into(), msg: msg.into(), idx: 0, login: None, art: HashMap::new() }
+        Tui { ctx, cwd: cwd.into(), msg: msg.into(), idx: 0, login: None, art: HashMap::new(), update: reidcc::pending_update(ctx) }
     }
 
     // ---------------------------------------------------------- drawing ---
@@ -601,8 +558,11 @@ impl Tui {
         let status = if error.is_some() { "not ready".to_string() }
                      else if have.is_empty() { "ready".to_string() }
                      else { format!("ready · {}", have.join(" + ")) };
-        let flow = "folder → profile → open gate";
-        let gap = 1.max(w - 2 - clen(flow) - clen(&status) - 3);
+        let flow = match &self.update {
+            Some(v) => format!("update {v}: reid --update"),
+            None => "folder → profile → open gate".to_string(),
+        };
+        let gap = 1.max(w - 2 - clen(&flow) - clen(&status) - 3);
         bottom.push(format!(" {DIM}{flow}{R}{}{}●{R} {TEXT2}{status}{R}", rep(" ", gap), if error.is_some() { OXIDE } else { EMERALD }));
 
         // the list scrolls if the window is short; the banner only shows when everything else fits
@@ -1145,7 +1105,7 @@ impl Tui {
                 match v.as_deref() {
                     Some("-") | Some("−") => setk(prof_mut(cfg, name), "args", Value::Null),
                     Some(v) => {
-                        let list = args_parse(v).into_iter().map(Value::String).collect();
+                        let list = reidcc::args_parse(v).into_iter().map(Value::String).collect();
                         setk(prof_mut(cfg, name), "args", Value::Array(list));
                     }
                     None => {}
@@ -1214,7 +1174,7 @@ mod tests {
         assert_eq!(center("●", 9), "    ●    ");
         assert_eq!(wrap_text("aa bb cc dd", 5, 3), vec!["aa bb", "cc dd"]);
         assert_eq!(wrap_text("", 5, 3), vec![""]);
-        assert_eq!(args_parse(r#"--a "b c" d\"e f\\"#), vec!["--a", "b c", "d\"e", "f\\\\"]);
+        assert_eq!(reidcc::args_parse(r#"--a "b c" d\"e f\\"#), vec!["--a", "b c", "d\"e", "f\\\\"]);
         assert_eq!(strip_sgr("\x1b[38;2;1;2;3mhi\x1b[0m\x1b[K"), "hi\x1b[K");
     }
 }

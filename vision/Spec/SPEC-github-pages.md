@@ -212,8 +212,7 @@ site\
 page's first load ≤ 700 KB**, fonts included. The mock links the full PNGs and is about 9 MB, which is
 fine for a mock and not fine for the site.
 
-**Images not to use:** the two unnamed branding PNGs (`36f0c166…`, `4899f286…`), one of which is the
-duplicate the repo spec flags for deletion.
+**Images not to use:** the unnamed branding PNG `36f0c166…`. (Its duplicate twin `4899f286…` was deleted.)
 
 ---
 
