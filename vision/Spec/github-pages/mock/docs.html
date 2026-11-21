@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install · Reidcc</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="site.css">
+<link rel="stylesheet" href="motion.css">
+</head>
+<body>
+<header class="bar"><div class="wrap" style="max-width:1280px">
+  <a class="brand" href="index.html"><img src="../../../branding/Reidcc%20Logo%20-%20Engraved%20RC.png" alt="">Reidcc</a>
+  <nav class="nav"><a href="docs.html" aria-current="page">docs</a><a href="index.html#download">download</a><a href="#">changelog</a><a href="#">github</a></nav>
+  <span class="spacer"></span>
+  <div class="search">search docs <kbd>ctrl k</kbd></div>
+</div></header>
+
+<div class="docs">
+  <aside class="side">
+    <span class="tag">start</span>
+    <a href="#" aria-current="page">install</a>
+    <a href="#">first session</a>
+    <a href="#">update and uninstall</a>
+    <span class="tag">the launcher</span>
+    <a href="#">profiles</a>
+    <a href="#">personas</a>
+    <a href="#">memory</a>
+    <a href="#">engines: claude code, codex</a>
+    <a href="#">sizes and the mini pod</a>
+    <a href="#">session windows</a>
+    <a href="#">keys</a>
+    <span class="tag">reference</span>
+    <a href="#">reid.json</a>
+    <a href="#">reid cli</a>
+    <a href="#">folders and files</a>
+    <a href="#">troubleshooting</a>
+    <span class="tag">extras</span>
+    <a href="#">aca memory server</a>
+    <a href="#">proxy</a>
+    <a href="#">build from source</a>
+  </aside>
+
+  <main class="page">
+    <div class="tag crumb">docs · start</div>
+    <h1>Install</h1>
+    <p>Reidcc runs on Windows 10 and 11. The installer is per user: no admin rights, nothing in Program Files.</p>
+
+    <h2 id="before">Before you start</h2>
+    <ul>
+      <li><strong>Claude Code</strong>, installed and signed in once. Reidcc launches it; it doesn't replace it.</li>
+      <li><strong>Codex</strong>, only if you want Codex profiles.</li>
+      <li><strong>Windows Terminal</strong>, only if you open sessions there instead of in Reidcc's own window.</li>
+    </ul>
+
+    <h2 id="run">Run the installer</h2>
+    <ol>
+      <li>Download <code>Reidcc_0.1.1_x64-setup.exe</code> from the latest release.</li>
+      <li>Run it. Windows SmartScreen may ask once, since the installer isn't signed yet.</li>
+      <li>Reidcc opens on the launcher. Pick a folder, then <strong>open gate</strong>.</li>
+    </ol>
+    <div class="note"><span class="tag">note · unsigned</span>SmartScreen shows "Windows protected your PC". Choose <strong>More info → Run anyway</strong>. The checksum for each release is on its release page.</div>
+
+    <h2 id="where">Where things go</h2>
+    <table>
+      <tr><th>What</th><th>Where</th><th>On update</th></tr>
+      <tr><td>The app</td><td><code>%LOCALAPPDATA%\Reidcc</code></td><td>replaced</td></tr>
+      <tr><td>Profiles, memory, personas</td><td><code>%USERPROFILE%\Reidcc</code></td><td>kept</td></tr>
+      <tr><td><code>reid</code> in your terminal</td><td>added to your user PATH</td><td>kept</td></tr>
+    </table>
+
+    <h2 id="check">Check it works</h2>
+    <p>Open a new terminal and run:</p>
+<pre><code><span class="k">reid --version</span>
+<span class="c"># reid 0.1.1</span>
+<span class="k">reid</span>                 <span class="c"># the launcher, in the terminal</span></code></pre>
+
+    <nav class="pager">
+      <a href="#"><span class="tag">previous</span>overview</a>
+      <a href="#"><span class="tag">next</span>first session</a>
+    </nav>
+  </main>
+
+  <aside class="toc">
+    <span class="tag">on this page</span>
+    <a href="#before" aria-current="true">before you start</a>
+    <a href="#run">run the installer</a>
+    <a href="#where">where things go</a>
+    <a href="#check">check it works</a>
+  </aside>
+</div>
+<script src="motion.js"></script>
+</body>
+</html>

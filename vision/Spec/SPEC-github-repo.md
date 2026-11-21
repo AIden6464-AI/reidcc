@@ -33,7 +33,7 @@ which no install, update or uninstall ever touches.
 | ACA | Optional installer component, **after** its fixes (Part 5f) | Python server; recall quality isn't ready for other users yet |
 | proxy | Not in the installer (v1) | mitmproxy venv is 115 MB; rewrites requests and can break on Claude Code updates |
 | Python app | In the repo as the parity oracle, never in releases | Delete after Rust sign-off |
-| License | **Reid's call** (open question 1) | |
+| License | **PolyForm Noncommercial 1.0.0**; name and art reserved (decided 2026-11-21) | Reid: free to edit, change and fork with credit; companies "need to talk with me or even payment" |
 
 ---
 
@@ -428,9 +428,8 @@ To build, in this order (each step is shippable on its own):
 | 5 | ACA fixes (5f) → `reid --aca-hook` → per-session wiring + `"aca"` field → server start → PyInstaller build → installer component | large |
 
 ## Open questions
-1. **License:** MIT, or source-available?
-2. **Public or private to start?** Private first lets Part 8, items 1–2 be checked on GitHub
-   itself before anyone else can see it.
+1. ~~**License:**~~ Decided 2026-11-21: PolyForm Noncommercial 1.0.0 (`LICENSE.md`, README "License").
+2. ~~**Public or private?**~~ Decided: pushed private 2026-11-21, made public the same day.
 3. **Code signing:** ship unsigned for the beta (a SmartScreen warning on first run, every
    version), or buy a certificate? This also decides whether winget will accept it.
 4. **winget:** list it once releases are stable? (It's a manifest PR to `microsoft/winget-pkgs`.)
