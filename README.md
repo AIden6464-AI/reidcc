@@ -11,12 +11,12 @@
 
 ---
 
-Reidcc is a launcher built on Claude Code and Codex for people who want things simple. Pick a folder and a profile and you are coding in seconds, with your persona, long-term memory and settings already set up. Every session shows where it is, which profile is running, and how much context and limit you have used. Its memory system (`aca`) and request proxy (`proxy`) live here too.
+Reidcc is a launcher built on Claude Code and Codex for people who want things simple. Pick a folder and a profile and you are coding in seconds, with your persona, long-term memory and settings already set up. Every session shows where it is, which profile is running, and how much context and limit you have used. Its request proxy (`proxy`) lives here too; its memory system, ACA, is a plugin with its own repo.
 
 **Status:** Windows 10 and 11 · **beta** (everything is) · installer and self-updates from
 [Releases](https://github.com/AIden6464-AI/reidcc/releases/latest).
 
-**Branches:** `dev` (this one) has everything: specs, vision, the Python original, aca, proxy, tests.
+**Branches:** `dev` (this one) has everything: specs, vision, the Python original, proxy, tests. ACA moved to its own repo.
 [`main`](https://github.com/AIden6464-AI/reidcc/tree/main) is the user-facing subset, rebuilt from
 `dev` on every push (`.github/workflows/publish-main.yml`, README from `.github/main/README.md`). Work and
 pull requests go to `dev`; releases are tagged on `main`.
@@ -101,8 +101,7 @@ reidcc\
 ├─ json\              local: Claude Code settings files (API mode); THESE HOLD API KEYS
 ├─ codex\             local: Codex sign-in files (*.toml, may hold keys) + prompts\ (persona + memory per launch)
 ├─ mds\               local: other persona / prompt drafts
-├─ aca\               ACA memory server (port 8420), its hooks and MCP server
-│  └─ docs\           ACA + Firing System specs
+├─ aca\               local, untracked: working copy of the ACA repo (its own repo now)
 ├─ proxy\             mitmproxy add-ons + lean launchers (slim, ultra-slim, mini, stripped)
 ├─ legacy\            local: old GUI split attempt, config backups
 ├─ LICENSE.md         PolyForm Noncommercial 1.0.0 (see License below)
@@ -192,6 +191,8 @@ exists and has none yet. The author's older Python setup adds:
 ## aca
 
 Long-term cognitive memory server (separate from `reidcc_memory.md`; Reidcc does not read ACA directly yet).
+
+ACA now has its own repo, [AIden6464-AI/aca](https://github.com/AIden6464-AI/aca), and ships as a Claude Code plugin from the [reidcc marketplace](https://github.com/AIden6464-AI/reidcc-plugins) (`/plugin install aca@reidcc`; see `vision/Spec/SPEC-plugins.md`). The `aca\` folder here is a local working copy that git no longer tracks: the hooks below still point at it until the move to the plugin (spec Part 4e).
 
 - **Start:** `aca\start.bat` (prints the server window; closing it stops the server).
 - **Health:** `http://127.0.0.1:8420/health` · **Inspector:** `http://127.0.0.1:8420/inspector`

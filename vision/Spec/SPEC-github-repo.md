@@ -212,6 +212,9 @@ The memory block tells the persona where the file is, and to append facts under
 `## Pinned facts` and dated lines under `## Journal` with its file tools. The next launch reads the
 updated file, so memory carries across sessions, profiles and both engines.
 
+> **Superseded 2026-11-21:** 5c-5e (per-session hook wiring, the PyInstaller server, the installer
+> component) are replaced by the ACA plugin; see `SPEC-plugins.md`. 5f and 5g still apply.
+
 ### 5c. Per prompt, with `"aca": true` (Claude only: Codex has no hooks)
 ```text
 you type a prompt
@@ -462,5 +465,6 @@ Where the build differs from Parts 3 and 4:
 3. **Code signing:** ship unsigned for the beta (a SmartScreen warning on first run, every
    version), or buy a certificate? This also decides whether winget will accept it.
 4. **winget:** list it once releases are stable? (It's a manifest PR to `microsoft/winget-pkgs`.)
-5. **ACA for other people at all**, or Reid-only? If Reid-only, step 5 shrinks to the per-session
+5. ~~**ACA for other people at all**, or Reid-only?~~ Decided 2026-11-21: for other people, as a Claude Code
+   plugin (`aca@reidcc`) from its own repo; see `SPEC-plugins.md`. The original question: If Reid-only, step 5 shrinks to the per-session
    wiring (5d) and his own migration (5g), with no PyInstaller build and no installer component.

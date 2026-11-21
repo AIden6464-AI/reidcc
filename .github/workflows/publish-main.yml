@@ -1,5 +1,5 @@
 # main is what users see: the app's source, assets, docs, license and a user README. dev has
-# everything (specs, vision, the Python original, aca, proxy, tests). Every push to dev rewrites main's
+# everything (specs, vision, the Python original, proxy, tests). Every push to dev rewrites main's
 # files from the list below, as one commit on main. Never commit to main by hand: the next sync
 # overwrites it. Releases are tagged on main (release.yml).
 name: publish main

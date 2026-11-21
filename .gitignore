@@ -11,8 +11,8 @@
 /personas/*
 !/personas/plain.md
 /mds/
-aca/data/
-aca/docs/*.zip
+# ACA has its own repo (AIden6464-AI/aca); aca/ is an untracked local copy
+/aca/
 
 # Proxy captures (your prompts and traffic) and logs
 proxy/claude_audit/
@@ -29,7 +29,6 @@ rs/ui/dist/
 rs/app/binaries/
 python/build/dist/
 python/build/work/
-aca/build/dist/
 **/__pycache__/
 **/.venv/
 .webview/
