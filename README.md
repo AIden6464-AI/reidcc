@@ -181,6 +181,23 @@ Reidcc is being rebuilt in Rust (`rs\`: Tauri 2 + TypeScript + `portable-pty` + 
 
 ---
 
+## License
+
+Reidcc is source-available under the [PolyForm Noncommercial License 1.0.0](LICENSE.md).
+
+- **Free for people:** use it, change it, fork it and share your changes, for personal use, hobby
+  projects, study, research, and noncommercial organizations (charities, schools, public bodies).
+- **Credit:** every copy and fork keeps the `Required Notice:` line from [LICENSE.md](LICENSE.md).
+- **Companies and paid work** (including client work) need a commercial license. Open an issue
+  titled `commercial license` to talk terms.
+- **Name and art:** the Reidcc name, the RC logo and the art in `vision/branding/` and `assets/` are
+  not under the license. Copies of Reidcc may include them unchanged; a fork under another name
+  uses its own.
+- **Contributing:** by sending a pull request, you agree that your contribution is licensed under
+  these terms, and that Reid may also include it in Reidcc's commercial licenses.
+
+---
+
 <p align="center">
   <img src="vision/branding/Reidcc%20Logo%20-%20Engraved%20RC.png" alt="Reidcc Logo" width="64" /><br />
   <code>Reidcc · built on Claude Code and Codex · only the essentials</code>
