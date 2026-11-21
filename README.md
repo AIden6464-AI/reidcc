@@ -16,7 +16,8 @@ a profile and you're coding in seconds, with your persona, long-term memory and 
 up. Every session shows where it is, which profile is running, and how much context and limit you've used.
 
 **Status:** Windows 10 and 11 · **beta** (everything is) ·
-[download the latest release](https://github.com/AIden6464-AI/reidcc/releases/latest)
+[download the latest release](https://github.com/AIden6464-AI/reidcc/releases/latest) ·
+[website and docs](https://aiden6464-ai.github.io/reidcc/)
 
 <p align="center">
   <img src="docs/launcher.png" alt="Reidcc launcher" width="900" />

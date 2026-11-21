@@ -1,0 +1,93 @@
+/* The docs: VitePress's layout in the app's look (tokens.css is the app's own :root, kept in step by CI).
+   Flat canvas, hairlines, no radius, no shadow. One emerald: the current page's sidebar edge. */
+:root {
+  --emerald-hot: #07E86A;
+  --fast: 140ms; --panel: 200ms; --ease: cubic-bezier(0.16, 1, 0.3, 1); /* the design doc's one curve */
+
+  --vp-font-family-base: var(--ui);
+  --vp-font-family-mono: var(--mono);
+  --vp-c-bg: var(--canvas); --vp-c-bg-alt: var(--canvas); --vp-c-bg-elv: var(--s2); --vp-c-bg-soft: var(--s1);
+  --vp-c-divider: var(--line); --vp-c-border: var(--line); --vp-c-gutter: var(--line);
+  --vp-c-text-1: var(--text); --vp-c-text-2: var(--text2); --vp-c-text-3: var(--text2); /* text-3 is too dim for words a reader needs */
+  --vp-c-brand-1: var(--text); --vp-c-brand-2: var(--linework); --vp-c-brand-3: var(--text);
+  --vp-c-brand-soft: rgba(146, 138, 130, .14);
+  --vp-c-default-1: var(--line2); --vp-c-default-2: var(--line); --vp-c-default-3: var(--line); --vp-c-default-soft: var(--s2);
+  --vp-c-tip-1: var(--bronze); --vp-c-tip-soft: var(--s1);
+  --vp-c-note-1: var(--bronze); --vp-c-note-soft: var(--s1);
+  --vp-c-warning-1: var(--oxide); --vp-c-warning-soft: var(--s1);
+  --vp-c-danger-1: var(--oxide); --vp-c-danger-soft: var(--s1);
+  --vp-code-bg: var(--s2); --vp-code-color: var(--text);
+  --vp-code-block-bg: var(--s1); --vp-code-block-divider-color: var(--line);
+  --vp-code-copy-code-bg: var(--s1); --vp-code-copy-code-hover-bg: var(--s2); --vp-code-copy-code-border-color: var(--line);
+  --vp-code-copy-copied-text-content: "copied";
+  --vp-nav-bg-color: var(--canvas); --vp-local-nav-bg-color: var(--canvas); --vp-sidebar-bg-color: var(--canvas);
+  --vp-local-search-bg: var(--canvas); --vp-local-search-result-bg: var(--s1); --vp-local-search-highlight-bg: var(--stone);
+  --vp-local-search-highlight-text: var(--text);
+  --vp-shadow-1: none; --vp-shadow-2: none; --vp-shadow-3: none; --vp-shadow-4: none; --vp-shadow-5: none;
+  --vp-layout-max-width: 1280px;
+}
+.VPNav *, .VPLocalNav *, .VPSidebar *, .VPContent *, .VPLocalSearchBox * { border-radius: 0 !important; }
+body { -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: 1px solid var(--line2); outline-offset: 2px; }
+
+/* top bar: a hairline under it, lowercase mono-quiet links */
+.VPNavBar, .VPNavBar.has-sidebar .content-body, .VPNavBar .divider-line { background: var(--canvas) !important; }
+.VPNavBar .divider-line { background: var(--line) !important; }
+.VPNavBarTitle .title { font-weight: 500; letter-spacing: -.01em; font-size: 15px; }
+.VPNavBarTitle .logo { height: 26px; width: 26px; }
+.VPNavBarMenuLink { font-size: 13px !important; color: var(--text2) !important; }
+.VPNavBarMenuLink:hover, .VPNavBarMenuLink.active { color: var(--text) !important; }
+.VPNavBarAppearance, .VPNavScreenAppearance { display: none !important; }
+.DocSearch-Button { background: var(--s1) !important; border: 1px solid var(--line) !important; }
+.DocSearch-Button:hover { border-color: var(--line2) !important; }
+
+/* sidebar: group tags in mono caps (text-2, for contrast), the current page's edge in emerald */
+.VPSidebarItem.level-0 > .item .text { font: 500 11px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--text2); }
+.VPSidebarItem.level-1 .text { font-size: 14px; color: var(--text2); transition: color var(--fast) var(--ease); }
+.VPSidebarItem.level-1 .item:hover .text { color: var(--text); }
+.VPSidebarItem.is-active > .item .text { color: var(--text) !important; }
+.VPSidebarItem.is-active > .item > .indicator { background: var(--emerald) !important; width: 1px; }
+
+/* the page: crumb tag, h1, lead, h2 sections opened by a hairline */
+.vp-doc .tag { display: block; font: 500 11px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--text2); margin-bottom: 14px; }
+.vp-doc h1 { font-size: 32px; font-weight: 500; letter-spacing: -.02em; line-height: 1.2; }
+.vp-doc h1 + p { font-size: 16px; color: var(--text2); }
+.vp-doc h2 { font-size: 20px; font-weight: 500; letter-spacing: -.01em; border-top: 1px solid var(--line); }
+.vp-doc h3 { font-size: 15px; font-weight: 500; }
+.vp-doc p, .vp-doc li { color: var(--text2); }
+.vp-doc strong { color: var(--text); font-weight: 500; }
+.vp-doc a { color: var(--text); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px;
+  transition: text-decoration-color var(--fast) var(--ease); }
+.vp-doc a:hover { text-decoration-color: var(--linework); }
+.vp-doc :not(pre) > code { font-size: 13px; padding: 1px 5px; }
+.vp-doc div[class*="language-"] { border: 1px solid var(--line); }
+.vp-doc div[class*="language-"] > span.lang { font: 500 11px var(--mono); text-transform: uppercase; color: var(--text2); }
+.vp-doc [class*="language-"] > button.copy { border: 1px solid var(--line); }
+/* code in bone, not syntax colours: the palette has no blue */
+.vp-doc [class*="language-"] code span { color: var(--text2) !important; }
+.vp-doc [class*="language-"] code span[style*="--shiki-dark:#9ECBFF"] { color: var(--text) !important; } /* strings */
+.vp-doc table { display: table; width: 100%; border-collapse: collapse; font-size: 14px; }
+.vp-doc tr { border-top: 0; background: none !important; }
+.vp-doc th, .vp-doc td { border: 0; border-bottom: 1px solid var(--line); background: none; padding: 9px 12px 9px 0; vertical-align: top; }
+.vp-doc th { font: 500 11px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--text2); border-bottom-color: var(--line2); }
+.vp-doc td { color: var(--text2); }
+.vp-doc img { border: 1px solid var(--line); }
+.mono, .vp-doc code, .vp-doc table { font-variant-numeric: tabular-nums; }
+
+/* callouts: a 2px left edge. NOTE bronze, WARNING oxide; never emerald (emerald means ready, not tip) */
+.custom-block { border: 1px solid var(--line); border-left: 2px solid var(--bronze); background: var(--s1) !important; color: var(--text2); }
+.custom-block.danger, .custom-block.warning { border-left-color: var(--oxide); }
+.custom-block .custom-block-title { font: 500 11px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--bronze); }
+.custom-block.danger .custom-block-title, .custom-block.warning .custom-block-title { color: var(--oxide); }
+
+/* pager and outline */
+.VPDocFooter .pager-link { border: 1px solid var(--line) !important; transition: border-color var(--fast) var(--ease); }
+.VPDocFooter .pager-link:hover { border-color: var(--linework) !important; }
+.VPDocFooter .desc { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--text2) !important; }
+.VPDocFooter .title { color: var(--text) !important; font-weight: 500; }
+.VPDocAsideOutline .outline-title { font: 500 11px var(--mono); text-transform: uppercase; letter-spacing: .04em; color: var(--text2); }
+.VPDocAsideOutline .outline-link { color: var(--text2); }
+.VPDocAsideOutline .outline-link:hover, .VPDocAsideOutline .outline-link.active { color: var(--text); }
+.VPDocAsideOutline .outline-marker { background-color: var(--linework); width: 1px; }
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }

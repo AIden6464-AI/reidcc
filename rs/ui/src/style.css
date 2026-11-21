@@ -145,3 +145,23 @@ body[data-size="medium"] #msgbar > .lbl { margin-left: 16px !important; }
 .mrow .dot { flex: none; margin-left: 12px; }
 .mrow .st { flex: none; color: var(--text2); font-variant-numeric: tabular-nums; }
 .mlist > .lbl { padding-left: 8px; }
+
+/* settings page (vision "Direction from Reid", 2026-11-21): takes the launcher's place; app-wide choices only */
+#settings { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 var(--pad); }
+body[data-view="settings"] #main, body[data-view="settings"] #medium { display: none; }
+body[data-view="settings"] #settings { display: flex; }
+body[data-size="medium"] #settings { padding: 0 16px; }
+.shead { display: flex; align-items: center; margin: 18px 0 12px; flex: none; }
+.sbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
+.ssec { display: flex; flex-direction: column; padding: 14px 0 12px; border-bottom: 1px solid var(--line); }
+.ssec > .lbl:first-child { margin-bottom: 6px; }
+.srow { display: flex; align-items: center; min-height: 34px; }
+.snote { margin-top: 2px; }
+.spath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; margin-right: 12px; }
+.slist { display: flex; flex-direction: column; }
+.slist .mrow { cursor: default; padding: 0; }
+.slist .mrow:hover { background: none; color: var(--text2); }
+.sbody::-webkit-scrollbar { width: 9px; }
+.sbody::-webkit-scrollbar-track { background: transparent; }
+.sbody::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--canvas); }
+.sbody::-webkit-scrollbar-thumb:hover { background: var(--line2); }

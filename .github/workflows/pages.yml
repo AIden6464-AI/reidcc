@@ -1,0 +1,55 @@
+# The website (vision/Spec/SPEC-github-pages.md), built from main's site/ and deployed to GitHub Pages.
+# main is pushed by "publish main" with GITHUB_TOKEN, and such pushes don't start other workflows, so
+# this runs when that workflow finishes. A release re-runs it so the download button finds the installer.
+name: pages
+
+on:
+  workflow_run:
+    workflows: [publish main]
+    types: [completed]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - name: Tokens match the app
+        run: diff <(sed -n '/^:root/,/^}/p' rs/ui/src/style.css) site/.vitepress/theme/tokens.css
+      - name: Build
+        working-directory: site
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: npm ci && npm run build
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site/.vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.d.outputs.page_url }}
+    steps:
+      - id: d
+        uses: actions/deploy-pages@v4

@@ -8,6 +8,7 @@ mod fonts;
 mod gate;
 mod model;
 mod session;
+mod settings;
 mod sizes;
 mod update;
 
@@ -25,8 +26,8 @@ const CANVAS: u32 = 0x040404;
 const LINE: u32 = 0x2A2724;
 const TEXT2: u32 = 0x9F978E;
 
-struct App {
-    m: Mutex<Model>,
+pub struct App {
+    pub m: Mutex<Model>,
     gate: gate::Shared,
     /// test hooks on (REIDCC_GUI_TEST=1)
     test: bool,
@@ -34,7 +35,7 @@ struct App {
     focus_list: bool,
 }
 
-type S<'a> = State<'a, App>;
+pub type S<'a> = State<'a, App>;
 
 /// Test runs only (REIDCC_GUI_TEST=1): every window's WebView2 profile folder.
 pub static WEBVIEW_DIR: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
@@ -541,7 +542,8 @@ fn main() {
             init, folder_text, select, apply, rename, action, open_persona, pick_folder, browse_persona, recent,
             set_folder, go, gate_handover, gate_skip, gate_finish, test_login, show, metrics,
             session::sess_attach, session::sess_write, session::sess_resize, session::sess_meters, session::sess_close,
-            session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control, update::update_foot, update::update_install
+            session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control, update::update_foot, update::update_install,
+            update::update_check, settings::settings_get, settings::settings_set, settings::settings_plugins, settings::settings_open
         ])
         .run(tauri::generate_context!())
         .expect("Reidcc couldn't start");
