@@ -9,6 +9,7 @@ mod gate;
 mod model;
 mod session;
 mod sizes;
+mod update;
 
 use model::{Model, Op, Vars};
 use reidcc::engines::{self, codex, is_codex};
@@ -472,6 +473,7 @@ fn main() {
         _ => py::expanduser("~"),
     };
     let focus_list = !recents.is_empty() || cwd.is_some();
+    let update_now = args.iter().any(|a| a == "--update"); // from `reid --update`
     let folder = reidcc::show_path(&start);
     let cli = ctx.cli.clone();
     if test {
@@ -484,6 +486,8 @@ fn main() {
         .manage(app_state)
         .manage(session::Sessions::default())
         .manage(dock::Dock::default())
+        .manage(update::Updates::default())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .on_window_event(|w, e| {
             dock::window_event(w, e);
             sizes::window_event(w, e);
@@ -526,6 +530,7 @@ fn main() {
                 }
             }
             let w = b.build()?;
+            update::start(app.handle(), update_now);
             if let Ok(h) = w.hwnd() {
                 gate::MAIN.store(h.0 as isize, std::sync::atomic::Ordering::Relaxed);
                 theme_titlebar(h.0 as isize);
@@ -536,7 +541,7 @@ fn main() {
             init, folder_text, select, apply, rename, action, open_persona, pick_folder, browse_persona, recent,
             set_folder, go, gate_handover, gate_skip, gate_finish, test_login, show, metrics,
             session::sess_attach, session::sess_write, session::sess_resize, session::sess_meters, session::sess_close,
-            session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control
+            session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control, update::update_foot, update::update_install
         ])
         .run(tauri::generate_context!())
         .expect("Reidcc couldn't start");

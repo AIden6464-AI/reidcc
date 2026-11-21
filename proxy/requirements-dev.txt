@@ -1,5 +1,0 @@
-pytest
-fastapi
-httpx
-uvicorn
-mitmproxy

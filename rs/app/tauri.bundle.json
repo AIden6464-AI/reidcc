@@ -1,0 +1,19 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "Reidcc",
+    "shortDescription": "Reidcc: open a folder, start coding",
+    "externalBin": ["binaries/reid"],
+    "resources": { "../../assets/": "assets/", "../../reidcc.ico": "reidcc.ico" },
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "../../reidcc.ico",
+        "installerHooks": "installer/hooks.nsh",
+        "startMenuFolder": "Reidcc"
+      }
+    }
+  }
+}

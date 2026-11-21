@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="vision/branding/Engraved%20Compass%20and%20Marble%20Hand%20Emblem.png" alt="Reidcc" width="320" />
+  <img src="docs/emblem.png" alt="Reidcc" width="320" />
 </p>
 
 <h1 align="center">Reidcc</h1>
@@ -11,10 +11,12 @@
 
 ---
 
-Reidcc is a launcher built on Claude Code and Codex for people who want things simple. Pick a folder and a profile and you are coding in seconds, with your persona, long-term memory and settings already set up. Every session shows where it is, which profile is running, and how much context and limit you have used. Its memory system (`aca`) and request proxy (`proxy`) live here too.
+Reidcc is a launcher for Claude Code and Codex, for people who want things simple. Pick a folder and
+a profile and you're coding in seconds, with your persona, long-term memory and settings already set
+up. Every session shows where it is, which profile is running, and how much context and limit you've used.
 
-**Status:** Windows 10 and 11 · beta · no installer yet, so build from source (below). The
-installer and updater are specced in [`vision/Spec/SPEC-github-repo.md`](vision/Spec/SPEC-github-repo.md).
+**Status:** Windows 10 and 11 · **beta** (everything is) ·
+[download the latest release](https://github.com/AIden6464-AI/reidcc/releases/latest)
 
 <p align="center">
   <img src="docs/launcher.png" alt="Reidcc launcher" width="900" />
@@ -22,200 +24,83 @@ installer and updater are specced in [`vision/Spec/SPEC-github-repo.md`](vision/
 
 ---
 
-## Get started
+## Install
 
-You need [Rust](https://rustup.rs) (stable), [Node.js](https://nodejs.org) 22, and
-[Claude Code](https://docs.anthropic.com/en/docs/claude-code) installed and signed in once (`claude` on your PATH).
-Codex is optional. The window uses WebView2, which ships with Windows 11 and current Windows 10.
+1. Install [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and sign in once (`claude` on
+   your PATH). Codex is optional.
+2. Download `Reidcc_<version>_x64-setup.exe` from the
+   [latest release](https://github.com/AIden6464-AI/reidcc/releases/latest) and run it. No admin needed.
+   It isn't code-signed yet, so SmartScreen may say *Windows protected your PC*: *More info* → *Run anyway*.
+3. Open **Reidcc** from the Start Menu or desktop, or type `reid` in a new terminal.
+
+| | Where |
+|---|---|
+| The program (replaced on every update) | `%LOCALAPPDATA%\Reidcc` |
+| Your profiles, memory, personas, keys (made on first launch) | `%USERPROFILE%\Reidcc` |
+
+- **Updates:** when a newer release is out, the footer shows `update <version> · install`. Click it
+  once your sessions have finished. In a terminal: `reid --update`. Nothing installs unless you ask.
+- **Uninstall:** Settings → Apps → Reidcc. Your folder is kept.
+- **Also set up for you:** `reid` on your PATH, and the `/reid` command inside Claude Code (back to
+  Reidcc with your conversation kept).
+
+---
+
+## Using it
+
+<p align="center">
+  <img src="docs/flow.png" alt="folder → profile → open gate" width="760" />
+</p>
+
+Pick a folder, pick a profile, **open gate**. The profile list and every field of the selected profile
+stay on one screen, and changes save as you make them.
+
+- **Window:** `Enter` on the list opens the gate · `Ctrl+Enter` from anywhere · `Ctrl+O` picks a folder ·
+  `Ctrl+R` resumes · `Alt+1` / `Alt+2` / `Alt+3` switch between full, medium and the mini pod.
+- **Terminal (TUI):** `↵ open gate · r resume · e edit · n new · x delete · d default · w pick folder · m memory · q quit`
+- **Inside a session:** `/reid` comes back to Reidcc with the conversation kept (`r` resumes it with any
+  profile) · `/exit` leaves as usual.
+
+```text
+reid                    the TUI in a terminal, the window when started as an app
+reid <profile> [args]   start that profile in the current folder
+reid --resume           resume the last Claude session
+reid --dry <profile>    show the exact command without running it
+reid -l                 list profiles
+reid --edit / --mem     open reid.json / your memory file
+reid --update           install the latest release
+reid -h                 full help
+```
+
+### Profiles
+
+A profile picks its engine (`claude` or `codex`), model, sign-in, persona and switches. They live in
+`%USERPROFILE%\Reidcc\reid.json`; the window edits them, or open it with `reid --edit`.
+
+- **Sign-in:** your Claude subscription, or a settings file in `json\` for an API key (the key stays in
+  that file). Codex uses your `codex login`, or a provider `.toml` in `codex\` (LM Studio, OpenRouter...).
+- **Persona:** any Markdown file in `personas\`, added to the engine's prompt or replacing it.
+- **Memory:** `reidcc_memory.md`, given to sessions that have memory on.
+- **Statusline:** `~/folder · PROFILE · PERSONA   context 42% · limit 61%` in every Claude session.
+
+---
+
+## Build from source
+
+You need [Rust](https://rustup.rs) (stable) and [Node.js](https://nodejs.org) 22.
 
 ```powershell
 git clone https://github.com/AIden6464-AI/reidcc
 cd reidcc\rs\ui; npm ci; npm run build        # the window's UI
 cd ..; cargo build --release                  # reid.exe (terminal) + Reidcc.exe (window)
-
-# where your profiles, memory and personas live (any folder works)
-mkdir "$env:USERPROFILE\Reidcc"; setx REIDCC_HOME "$env:USERPROFILE\Reidcc"
 ```
 
-Open a new terminal (so it sees `REIDCC_HOME`), then run `rs\target\release\Reidcc.exe` for the
-window or `rs\target\release\reid.exe` for the terminal launcher. The first run writes `reid.json`
-there with one profile, `main` (Opus, memory on). Pick a folder, then **open gate**.
+Run `rs\target\release\Reidcc.exe` or `reid.exe`. They use the same `%USERPROFILE%\Reidcc` folder
+as an installed copy (set `REIDCC_HOME` to use another). Tests: `cargo test --workspace` in `rs\`.
 
-- **Without `REIDCC_HOME`**, Reidcc uses the first folder above the exe that holds a `reid.json`.
-  Put one in the clone's root to keep everything in the clone, which is how the author runs it. With neither,
-  it falls back to `rs\target`, which `cargo clean` deletes.
-- **Tests:** `cargo test --workspace` in `rs\` (CI runs the same on every push).
-
----
-
-## Layout
-
-Items marked *local* are created on your machine and never committed (see `.gitignore`).
-
-```text
-reidcc\
-├─ app\               local: the Python app's build (Reidcc.exe = window, reidcc.com / reid.com = terminal)
-├─ python\            the Python app's source (what app\ is built from)
-│  ├─ reid.py         TUI, CLI and engine
-│  ├─ reid_gui.py     the app window
-│  └─ build\          build.ps1 + spec + make_assets.py (rebuild app\ after editing the source)
-├─ rs\                the Rust rewrite: reid.exe (CLI + TUI) and Reidcc.exe (window), 1:1 with the Python app,
-│                     plus session window beta; not installed into app\ yet
-├─ vision\            how Reidcc looks and talks: palette, design & motion, voice, branding\ art
-│  ├─ SPEC-vision-v1.md  vision version 1: sizes, session windows, snap, headless, rigs (session window and snap betas built)
-│  └─ Spec\           proxy, gate (built), tui (proposed), codex-opencode (Codex built, OpenCode proposed),
-│                     codex-signin-persona (built), codex-proxy (proposed), rust-rewrite (stage 0 built),
-│                     rust-tui-gui (1:1 TUI + GUI in Rust, built, awaiting sign-off), app,
-│                     github-repo (installer + updater, proposed), github-pages (website, proposed;
-│                     a working mock with its motion is in Spec\github-pages\mock\)
-├─ assets\            banner.png, gate frames (gate_*.png) and TUI half-block gate frames (tui\gate_*.json.gz)
-├─ docs\              README images
-├─ reidcc.ico         app icon: the engraved RC logo (vision\branding\), cut by make_assets.py
-├─ reid.json          local: profiles (engine, model, auth, persona, memory, proxy, tools, mcp, switches)
-├─ reid_state.json    local: last session + recent folders (written by reid)
-├─ reidcc_memory.md   local: long-term memory injected into sessions with memory on
-├─ personas\          persona prompts used by profiles (only plain.md is committed)
-├─ json\              local: Claude Code settings files (API mode); THESE HOLD API KEYS
-├─ codex\             local: Codex sign-in files (*.toml, may hold keys) + prompts\ (persona + memory per launch)
-├─ mds\               local: other persona / prompt drafts
-├─ aca\               ACA memory server (port 8420), its hooks and MCP server
-│  └─ docs\           ACA + Firing System specs
-├─ proxy\             mitmproxy add-ons + lean launchers (slim, ultra-slim, mini, stripped)
-├─ legacy\            local: old GUI split attempt, config backups
-├─ LICENSE.md         PolyForm Noncommercial 1.0.0 (see License below)
-└─ .github\workflows\ ci.yml: UI build + Rust tests on Windows
-```
-
----
-
-## reid: app or tool, auto-detected
-
-<p align="center">
-  <img src="vision/branding/Classical%20Blueprint%20Flow%20with%20Emerald%20Signal-1.png" alt="folder → profile → open gate" width="760" />
-</p>
-
-- **Typed in a terminal** (`reid` or `reidcc`) → **TUI** in that terminal (runs `reidcc.com`).
-- **Started as an app** (Start Menu `Reidcc`, double-clicking `app\Reidcc.exe`) → **GUI** window.
-- **Any arguments** → CLI. `reid --gui` / `reid --tui` force one (from a terminal, `--gui` detaches the window).
-- **Rebuilding:** editing `python\reid.py` or `python\reid_gui.py` does nothing until you run `python\build\build.ps1` (about 15 s, atomic swap into `app\`).
-
-### One screen and the gate
-
-The flow is `folder → profile → open gate` in both the GUI and the TUI. The profile list and every field of the selected profile stay visible on one screen, and changes save as you make them.
-
-- **Keys (GUI):** `Enter` on the profile list opens the gate · `Ctrl+Enter` opens the gate from anywhere · `Ctrl+O` picks a folder · `Ctrl+R` resumes · `Esc` clears a message.
-- **Keys (TUI):** `↵ open gate · r resume · e edit · n new · x delete · d default · w pick folder · m memory · 1–9 jump · q quit`
-- **The gate:** hovering or focusing `open gate` / `resume` shows a faint blueprint ghost of the gate over the launcher. Pressing it starts the session while the gate opens. The Rust beta opens a Reidcc session window by default. The installed Python launcher opens Windows Terminal. Any key or click skips the animation.
-
-<p align="center">
-  <img src="vision/branding/Emerald%20Portal_%20Engraved%20Blueprint%20Monument.png" alt="The Gate" width="760" />
-</p>
-
-### CLI commands
-
-```text
-reid                    Open the TUI in a terminal, or the GUI when launched as an app
-reid <profile> [args]   Launch a profile in the current folder
-reid --resume           Resume the last Claude session
-reid --dry <profile>    Show the exact command and proxy plan without launching
-reid -l                 List all profiles and their summaries
-reid --tui / --gui      Force the TUI or GUI
-reid --edit             Open reid.json
-reid --mem              Open reidcc_memory.md
-reid -h                 Full CLI help
-```
-
----
-
-## Engines
-
-A profile selects its engine (`claude` or `codex`) on the `name` row. Profiles without an `engine` field default to `claude`. Unsupported fields stay visible and greyed out so nothing is hidden.
-
-### Claude Code
-
-- **Sign-in:** default Claude subscription, or a `json\*.json` settings file (keys stay in the file).
-- **Persona and memory:** attach any Markdown persona (`add to Claude Code's prompt` or `replace Claude Code's prompt`) and toggle `reidcc_memory.md`.
-- **Statusline:** every session gets `~/folder · PROFILE · MAIN · PERSONA · X   context 42% · limit 61%` (`reid --statusline`; `limit` appears on a subscription after the first reply). Turn it off per profile with `"statusline": false`.
-- **Return and resume:** `/reid` inside Claude returns to the TUI with the conversation kept (`r` resumes it with any profile); `/exit` leaves.
-- **Lean profiles:** `slim`, `ultra`, `mini`, `mini-slim`, `mini-mcp`, `plain`, `capture`. Proxy profiles start a private `mitmproxy` per session (see `vision\Spec\SPEC-proxy.md`).
-  Measured (one-word prompt): `baseline 26,980` input tokens · `slim 22,509` · `ultra 11,659` · `mini 5,217` · `mini-slim 3,920` · `plain 772`.
-
-### Codex
-
-- **Native launch:** resolves the vendored `codex.exe` directly instead of `.cmd` shims, so paths with spaces, `&`, `%` or `^` work cleanly.
-- **Sign-in:** uses your terminal `codex login` (status checked in the background: `ChatGPT`, `API key`, or `not signed in`) or a `codex\*.toml` provider file (for LM Studio, OpenRouter, or other APIs).
-- **Persona and memory:** uses the same persona files and `reidcc_memory.md` (`add to Codex's prompt` or `replace Codex's prompt`). Generated files live in `codex\prompts\<profile>.md`; nothing is written to `~/.codex`.
-- **Session flow:** Codex statusline (`model · folder · context · 5h · weekly`), `REIDCC · codex · <profile>` tab title, and `/quit` returns to the Reidcc TUI. `resume` is Claude-only for now.
-- **Proxy *(proposed)*:** per-session `capture`, `slim` and `ultra` add-ons for Codex traffic are specced in `vision\Spec\SPEC-codex-proxy.md`.
-
-### OpenCode *(proposed)*
-
-Researched for `--standalone` per-launch config via `OPENCODE_CONFIG` / `OPENCODE_CONFIG_CONTENT` and `opencode\prompts\`. Not built yet (see `vision\Spec\SPEC-codex-opencode.md`).
-
----
-
-## Wired up outside this folder
-
-The installed Python launcher (the author's setup) adds:
-
-- **User PATH** includes this folder's `app\` (`reid`, `reidcc`; extensionless shims there are for Git Bash).
-- **`~\.claude\commands\reid.md`** (the `/reid` slash command).
-- **Start Menu** `Reidcc.lnk` → `app\Reidcc.exe`.
-
----
-
-## aca
-
-Long-term cognitive memory server (separate from `reidcc_memory.md`; Reidcc does not read ACA directly yet).
-
-- **Start:** `aca\start.bat` (prints the server window; closing it stops the server).
-- **Health:** `http://127.0.0.1:8420/health` · **Inspector:** `http://127.0.0.1:8420/inspector`
-
-Wired up outside this folder (paths point at this folder's `aca\`):
-- `~\.claude\settings.json`: `UserPromptSubmit`, `PostToolUse(Bash)`, `PostToolUseFailure(Bash)` hooks run `aca\integrations\claude_code\aca_hook.py`.
-- `~\.claude.json`: user MCP server `aca` runs `aca\integrations\claude_code\aca_mcp.py`.
-- `~\.aca\claude_code.key`: the write key the hook and MCP server use.
-
-If this folder moves, update those three places.
-
----
-
-## proxy
-
-Used by `reid` profiles via the `proxy` field (`slim`, `ultra`, `optimize`, `capture`, or combinations). Each session starts a hidden `mitmdump` on an OS-assigned free port inside a kill-on-close Job Object and logs to `proxy\logs\<profile>.log`.
-
-- The `claude-*.cmd` launchers still work standalone but are superseded by profiles. See `proxy\README.md`.
-- **Venv:** `proxy\.venv` (mitmproxy).
-- **Tests:** `proxy\.venv\Scripts\python.exe -m pytest proxy\tests -q`
-- **Caveat:** `slim` and `ultra` rewrite requests and can break on a Claude Code update. `mini`, `mini-mcp`, `plain`, `claude-mini-native.cmd` and `prompt-remover\` use official flags only.
-
----
-
-## Rust rewrite & Vision v1
-
-Reidcc is being rebuilt in Rust (`rs\`: Tauri 2 + TypeScript + `portable-pty` + `xterm.js`) using the exact same data files and `mitmproxy` add-ons. Build with `cargo build --release` in `rs\`.
-
-| Stage | Status | Details |
-|---|---|---|
-| **Stage 0 · core + CLI** | Built | `rs\core`, `rs\cli` (`reid.exe`, 153/154 byte-identical parity with Python) |
-| **Stage 1 · 1:1 TUI + GUI** | Built, awaiting sign-off | 48/48 TUI parity, 175/175 GUI `reid.json` parity (`rs\target\release\Reidcc.exe`) |
-| **Stage 2 · session windows** | Beta built in Rust | Embedded ConPTY + xterm.js window with Telemetry Bar and drag shimmer |
-| **Stage 3 · snap and fuse** | Beta built in Rust | Drag session windows together for a shared frame of up to four live panes. Drag the frame header to move them together or a pane header to pull it out. |
-| **Vision v1 · sizes** | Built in Rust | The launcher folds to `full` (`Alt+1`), `medium` (`Alt+2`) and the `mini pod` (`Alt+3`, or drag it small): a capsule with one slot per running session |
-| **Vision v1 · headless, rigs** | Proposed | Headless run strips, orchestrator rigs, TUI redesign |
-
-<p align="center">
-  <img src="docs/session-window.png" alt="Reidcc session window beta" width="900" />
-</p>
-
----
-
-## Design language
-
-- **Ground:** `#040404` canvas, `#0E0D0C` surface 1, `#171513` surface 2, `#292723` stone dark, `1px` `#2A2724` hairlines.
-- **Type:** bone hierarchy (`#D6D0C8` / `#9F978E` / `#746F69`), neo-grotesque sans for UI, monospace with `tabular-nums` on all meters, diffs and timers.
-- **Signals:** one emerald (`#00C463`) for ready and active; bronze (`#C99A45`) for loading and 75–89% context; oxide (`#C0584B`) for 90%+ context, limits and errors.
-- **Motion:** `cubic-bezier(0.16, 1, 0.3, 1)`, zero bounce, `240ms` per-step ceiling.
+This branch has what you need to use and build Reidcc. Specs, design docs, the Python original and
+the dev tools are on the [`dev`](https://github.com/AIden6464-AI/reidcc/tree/dev) branch, which is
+also where pull requests go.
 
 ---
 
@@ -228,15 +113,7 @@ Reidcc is source-available under the [PolyForm Noncommercial License 1.0.0](LICE
 - **Credit:** every copy and fork keeps the `Required Notice:` line from [LICENSE.md](LICENSE.md).
 - **Companies and paid work** (including client work) need a commercial license. Open an issue
   titled `commercial license` to talk terms.
-- **Name and art:** the Reidcc name, the RC logo and the art in `vision/branding/` and `assets/` are
-  not under the license. Copies of Reidcc may include them unchanged; a fork under another name
-  uses its own.
+- **Name and art:** the Reidcc name, the RC logo and the art in `docs/` and `assets/` are not under
+  the license. Copies of Reidcc may include them unchanged; a fork under another name uses its own.
 - **Contributing:** by sending a pull request, you agree that your contribution is licensed under
   these terms, and that Reid may also include it in Reidcc's commercial licenses.
-
----
-
-<p align="center">
-  <img src="vision/branding/Reidcc%20Logo%20-%20Engraved%20RC.png" alt="Reidcc Logo" width="64" /><br />
-  <code>Reidcc · built on Claude Code and Codex · only the essentials</code>
-</p>

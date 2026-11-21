@@ -57,6 +57,7 @@ class App {
   // widgets
   statusText!: HTMLDivElement;
   statusDot!: HTMLDivElement;
+  updateText!: HTMLDivElement;
   msgLabel!: HTMLDivElement;
   msgActions!: HTMLDivElement;
   eFolder!: HTMLInputElement;
@@ -100,7 +101,20 @@ class App {
     this.statusDot.style.marginRight = "6px";
     const hint = label("folder → profile → open gate", "text3", "mono");
     hint.classList.add("hint");
-    row.append(hint, spacer, this.statusDot, this.statusText);
+    // the updater's line takes the status's place while it has something to say (SPEC-github-repo.md 4a)
+    this.updateText = label("", "text2", "mono");
+    this.updateText.addEventListener("click", () => { if (this.updateText.dataset.click) invoke("update_install"); });
+    this.updateText.addEventListener("mouseenter", () => { if (this.updateText.dataset.click) this.updateText.style.color = C.text; });
+    this.updateText.addEventListener("mouseleave", () => { this.updateText.style.color = ""; });
+    row.append(hint, spacer, this.statusDot, this.statusText, this.updateText);
+    const foot = (f: { text: string; click: boolean }) => {
+      this.updateText.textContent = f.text;
+      this.updateText.style.cursor = f.click ? "pointer" : "";
+      if (f.click) this.updateText.dataset.click = "1"; else delete this.updateText.dataset.click;
+      for (const e of [this.statusDot, this.statusText]) e.style.display = f.text ? "none" : "";
+    };
+    listen<{ text: string; click: boolean }>("update", (e) => foot(e.payload));
+    invoke<{ text: string; click: boolean }>("update_foot").then(foot);
     f.append(row);
     this.root.append(f);
   }

@@ -30,29 +30,99 @@ pub fn need_current_dir_for_exe(name: &str) -> bool {
     unsafe { NeedCurrentDirectoryForExePathW(wide(name).as_ptr()) != 0 }
 }
 
+/// A string value (REG_SZ or REG_EXPAND_SZ), unexpanded.
+fn reg_str(root: windows_sys::Win32::System::Registry::HKEY, key: &str, value: &str) -> Option<String> {
+    use windows_sys::Win32::System::Registry::*;
+    let (k, v) = (wide(key), wide(value));
+    let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND;
+    let mut size = 0u32;
+    unsafe {
+        if RegGetValueW(root, k.as_ptr(), v.as_ptr(), flags, std::ptr::null_mut(), std::ptr::null_mut(), &mut size) != 0 {
+            return None;
+        }
+        let mut buf = vec![0u16; size as usize / 2 + 1];
+        let mut size2 = (buf.len() * 2) as u32;
+        if RegGetValueW(root, k.as_ptr(), v.as_ptr(), flags, std::ptr::null_mut(), buf.as_mut_ptr().cast(), &mut size2) != 0 {
+            return None;
+        }
+        let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+        Some(String::from_utf16_lossy(&buf[..end]))
+    }
+}
+
+/// A string value under HKEY_CURRENT_USER.
+pub fn hkcu_str(key: &str, value: &str) -> Option<String> {
+    reg_str(windows_sys::Win32::System::Registry::HKEY_CURRENT_USER, key, value)
+}
+
 /// The raw (unexpanded) Path value of the machine and user environments, machine first.
 pub fn registry_paths() -> Vec<String> {
+    use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    [(HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"), (HKEY_CURRENT_USER, "Environment")]
+        .into_iter().filter_map(|(root, key)| reg_str(root, key, "Path")).collect()
+}
+
+/// The user environment's raw Path value ("" when it has none).
+pub fn user_path() -> String {
+    hkcu_str("Environment", "Path").unwrap_or_default()
+}
+
+/// Write the user environment's Path, keeping the value's type (REG_EXPAND_SZ when there's none yet),
+/// and tell running apps, so terminals opened from now on see it.
+pub fn set_user_path(value: &str) -> bool {
     use windows_sys::Win32::System::Registry::*;
-    let mut out = vec![];
-    for (root, key) in [(HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"),
-                        (HKEY_CURRENT_USER, "Environment")] {
-        let (k, v) = (wide(key), wide("Path"));
-        let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ | RRF_NOEXPAND;
-        let mut size = 0u32;
-        unsafe {
-            if RegGetValueW(root, k.as_ptr(), v.as_ptr(), flags, std::ptr::null_mut(), std::ptr::null_mut(), &mut size) != 0 {
-                continue;
-            }
-            let mut buf = vec![0u16; size as usize / 2 + 1];
-            let mut size2 = (buf.len() * 2) as u32;
-            if RegGetValueW(root, k.as_ptr(), v.as_ptr(), flags, std::ptr::null_mut(), buf.as_mut_ptr().cast(), &mut size2) != 0 {
-                continue;
-            }
-            let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-            out.push(String::from_utf16_lossy(&buf[..end]));
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SendMessageTimeoutW, HWND_BROADCAST, SMTO_ABORTIFHUNG, WM_SETTINGCHANGE};
+    let (k, v, data) = (wide("Environment"), wide("Path"), wide(value));
+    unsafe {
+        let mut key: HKEY = std::ptr::null_mut();
+        if RegOpenKeyExW(HKEY_CURRENT_USER, k.as_ptr(), 0, KEY_SET_VALUE | KEY_QUERY_VALUE, &mut key) != 0 {
+            return false;
         }
+        let mut ty = 0u32;
+        let found = RegQueryValueExW(key, v.as_ptr(), std::ptr::null(), &mut ty, std::ptr::null_mut(), std::ptr::null_mut()) == 0;
+        let ty = if found && ty == REG_SZ { REG_SZ } else { REG_EXPAND_SZ };
+        let ok = RegSetValueExW(key, v.as_ptr(), 0, ty, data.as_ptr().cast(), (data.len() * 2) as u32) == 0;
+        RegCloseKey(key);
+        let env = wide("Environment");
+        SendMessageTimeoutW(HWND_BROADCAST, WM_SETTINGCHANGE, 0, env.as_ptr() as isize, SMTO_ABORTIFHUNG, 2000, std::ptr::null_mut());
+        ok
     }
-    out
+}
+
+/// How many other processes run one of `names` (e.g. "reid.exe") from the folder `dir`.
+pub fn running_in(dir: &str, names: &[&str]) -> usize {
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
+    use windows_sys::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION};
+    let (me, want) = (std::process::id(), crate::py::normcase(dir));
+    let mut n = 0;
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snap as isize == -1 {
+            return 0;
+        }
+        let mut e: PROCESSENTRY32W = std::mem::zeroed();
+        e.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut more = Process32FirstW(snap, &mut e) != 0;
+        while more {
+            let len = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+            let exe = String::from_utf16_lossy(&e.szExeFile[..len]);
+            if e.th32ProcessID != me && names.iter().any(|w| w.eq_ignore_ascii_case(&exe)) {
+                let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, e.th32ProcessID);
+                if !h.is_null() {
+                    let mut buf = [0u16; 1024];
+                    let mut size = buf.len() as u32;
+                    if QueryFullProcessImageNameW(h, 0, buf.as_mut_ptr(), &mut size) != 0
+                        && crate::py::normcase(&crate::py::dirname(&String::from_utf16_lossy(&buf[..size as usize]))) == want {
+                        n += 1;
+                    }
+                    CloseHandle(h);
+                }
+            }
+            more = Process32NextW(snap, &mut e) != 0;
+        }
+        CloseHandle(snap);
+    }
+    n
 }
 
 pub fn local_time() -> (u16, u16, u16, u16, u16, u16) {

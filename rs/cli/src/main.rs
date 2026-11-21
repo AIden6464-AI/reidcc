@@ -2,6 +2,7 @@
 //! SPEC-rust-tui-gui.md). Same flags, output and screens as reid.py; the window is Reidcc.exe.
 
 mod console;
+mod install;
 mod tui;
 
 use reidcc::engines::{self, codex, is_codex};
@@ -14,6 +15,7 @@ const HELP: &str = r#"reid -- Reidcc, in the terminal.
     reid -c / reid "do X"     anything that isn't a profile goes to claude (default profile)
     reid -l                   list profiles
     reid --version            show the Reidcc version
+    reid --update             install the latest Reidcc (installed copies only)
     reid --dry [profile]      print what would run, don't run it
     reid --edit / --mem       open reid.json / the memory file
 
@@ -86,6 +88,9 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
     let a0 = args.first().cloned().unwrap_or_default();
     match a0.as_str() {
         "--statusline" => return Ok(session::cmd_statusline(ctx)),
+        "--install" => return Ok(install::install(ctx)),
+        "--uninstall" => return Ok(install::uninstall(ctx)),
+        "--update" => return Ok(install::update()),
         "--tui" => return Ok(tui::Tui::new(ctx, &py::getcwd(), "").run()),
         "--gui" => return Ok(open_gui(reidcc::win::launched_from_terminal())),
         "--version" if args.len() == 1 => {

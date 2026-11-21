@@ -139,51 +139,7 @@ fn text_or(p: &Obj, key: &str, default: &str) -> String {
 
 /// Extra args as one line people can edit (subprocess.list2cmdline(list(args or []))).
 pub fn args_text(p: &Obj) -> String {
-    py::list2cmdline(&reidcc::list(p, "args"))
-}
-
-/// reid.py's args_parse: spaces separate, double quotes group, \" is a quote, backslashes stay.
-pub fn args_parse(text: &str) -> Vec<String> {
-    let t: Vec<char> = text.chars().collect();
-    let (mut out, mut cur, mut quoted, mut started, mut i) = (vec![], String::new(), false, false, 0);
-    while i < t.len() {
-        let c = t[i];
-        if c == '\\' {
-            let n = t[i..].iter().take_while(|&&c| c == '\\').count();
-            if i + n < t.len() && t[i + n] == '"' {
-                cur.push_str(&"\\".repeat(n / 2));
-                if n % 2 == 1 {
-                    cur.push('"');
-                    i += n + 1;
-                } else {
-                    i += n;
-                }
-                started = true;
-                continue;
-            }
-            cur.push_str(&"\\".repeat(n));
-            i += n;
-            started = true;
-            continue;
-        }
-        if c == '"' {
-            quoted = !quoted;
-            started = true;
-        } else if py::isspace(c) && !quoted {
-            if started {
-                out.push(std::mem::take(&mut cur));
-                started = false;
-            }
-        } else {
-            cur.push(c);
-            started = true;
-        }
-        i += 1;
-    }
-    if started {
-        out.push(cur);
-    }
-    out
+    py::list2cmdline(&reidcc::args(p))
 }
 
 fn tools_label(p: &Obj) -> String {
@@ -509,7 +465,7 @@ impl Model {
         put(&mut p, "mcp", opt((v.mcp != MCP_DEFAULT).then(|| v.mcp.clone())));
         if v.args != args_text(&p) {
             // untouched args stay exactly as saved
-            put(&mut p, "args", json!(args_parse(&v.args)));
+            put(&mut p, "args", json!(reidcc::args_parse(&v.args)));
         }
         put(&mut p, "memory", Value::Bool(v.memory));
         put(&mut p, "safe", Value::Bool(v.safe));

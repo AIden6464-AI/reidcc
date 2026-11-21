@@ -2,7 +2,7 @@
 //! file) and its persona + memory prompt file (vision\SPEC-codex-signin-persona.md).
 
 use super::{apply_env, claude_only_on, io, is_claude_model, need, Launch};
-use crate::{err, environ, list, memory, on, on_by_default, py, pyjson, show_path, text, Ctx, Env, Obj, R};
+use crate::{err, environ, memory, on, on_by_default, py, pyjson, show_path, text, Ctx, Env, Obj, R};
 use serde_json::{Number, Value};
 use std::io::Read;
 use std::process::{Command, Stdio};
@@ -373,7 +373,7 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
     };
     let prompt_on = !ppath.is_empty() || on(prof, "memory").is_some();
 
-    let mut args = list(prof, "args");
+    let mut args = crate::args(prof);
     args.extend(extra.iter().cloned());
     for a in &args {
         if a == "-C" || a == "--cd" || a.starts_with("--cd=") || (a.starts_with("-C") && a.chars().count() > 2) {
