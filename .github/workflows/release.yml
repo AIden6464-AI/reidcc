@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  actions: write   # to start the site rebuild (last step)
 
 jobs:
   release:
@@ -85,3 +86,10 @@ jobs:
           "@
           gh release create "${{ github.ref_name }}" "$dir/$exe" "$dir/$exe.sig" latest.json `
             --title "Reidcc $env:VERSION beta" --notes $notes
+
+      # A release made with GITHUB_TOKEN starts no other workflows (pages.yml's release trigger stays
+      # quiet), but a dispatch does: rebuild the site so its download button finds the installer.
+      - name: Rebuild the website
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --ref main -R ${{ github.repository }}

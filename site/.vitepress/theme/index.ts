@@ -19,7 +19,7 @@ export default {
     return h(DefaultTheme.Layout, null, {
       "not-found": () => h(NotFound),
       // right of the top bar: the version, read from rs\Cargo.toml at build time
-      "nav-bar-content-after": () => h("span", { class: "rc-ver" }, `v${theme.value.reidcc.version} · windows`),
+      "nav-bar-content-after": () => h("span", { class: "rc-ver" }, `v${theme.value.reidcc.version} beta · windows`),
     });
   },
   enhanceApp({ app }) {
