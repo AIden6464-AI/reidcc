@@ -11,6 +11,18 @@ const PAD = 40;
 /** vision v1 §1: smaller than this (CSS px), the launcher folds into the mini pod */
 const POD_BELOW: [number, number] = [340, 240];
 const MODES: [string, string][] = [["append", "add to Claude Code's prompt"], ["replace", "replace Claude Code's prompt"]];
+/** The form (vision\Spec\SPEC-form.md): narrower or shorter than full, at least the old launcher's minsize. */
+const FORM_MIN: [number, number] = [480, 720];
+/** The form's checkbox rows: each switch with a sentence saying what it does (what claude.rs does with it). */
+const SENTENCES: [string, string, string][] = [
+  ["memory", "memory", "add your memory file to the session"],
+  ["chrome", "chrome", "let Claude Code use Chrome"],
+  ["connectors", "connectors", "use your claude.ai connectors"],
+  ["safe", "safe mode", "no CLAUDE.md files, only the MCP servers set here"],
+];
+type Size = "full" | "form" | "medium";
+const RANK: Record<Size, number> = { full: 0, form: 1, medium: 2 };
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)");
 
 type Op =
   | { op: "say"; text: string; kind: string; actions: [string, string][]; seconds: number | null; focus: number | null }
@@ -45,10 +57,27 @@ class App {
   recheck = 0;
   previewText = "";
   gate: Gate | null = null;
+  emblem: Gate | null = null; // the form's opening (SPEC-hand.md): the emblem grows and the view zooms into the emerald
+  opening: Gate | null = null; // the one playing now
   settings!: Settings;
   /** vision v1 §1: the window's size is its mode */
-  size: "full" | "medium" = "full";
+  size: Size = "full";
   fullMin: [number, number] = [960, 820];
+  /** Alt+1/2's size while its eased resize runs: the sizes it passes through don't get a layout */
+  target: Size = "full";
+  targetUntil = 0;
+  pushGhost: HTMLElement | null = null;
+  /** the form's own widgets; the shared ones move in (`put`) and back (`unplace`) */
+  undo: (() => void)[] = [];
+  cells: Record<string, HTMLDivElement> = {};
+  folderBox!: HTMLDivElement;
+  profCombo!: Combo;
+  defCheck!: Check;
+  promptCombo!: Combo;
+  modeTexts = MODES.map((m) => m[1]);
+  modeDisabled = false;
+  fPick!: HTMLButtonElement;
+  fBar!: HTMLDivElement;
   folderRow!: HTMLDivElement;
   folderHair!: HTMLDivElement;
   mSessions!: HTMLDivElement;
@@ -85,6 +114,7 @@ class App {
     this.buildMsgbar();
     this.buildMain();
     this.buildMedium();
+    this.buildForm();
     this.settings = new Settings(() => this.closeSettings());
     this.root.append(this.settings.root);
     this.keys();
@@ -335,26 +365,175 @@ class App {
     this.root.append(m);
   }
 
-  /** The layout for the window's size: full when the full layout fits, medium below that. */
+  /** The form (vision\Spec\SPEC-form.md): 0.2.0's main screen laid out like the old launcher. One row per
+   *  setting, a sentence beside each checkbox, word buttons on the right. Its own widgets are the head, the
+   *  profile / default / prompt rows and the buttons; the rest are full's widgets, moved in by placeForm(). */
+  buildForm() {
+    const f = el("div");
+    f.id = "form";
+    const head = el("div", "fhead");
+    const hl = el("div");
+    const sub = label("Open a folder. Start coding.", "text2", "body");
+    sub.classList.add("fsub");
+    hl.append(el("div", "wordmark", "Reidcc"), sub);
+    head.append(hl, button("settings", () => this.openSettings()));
+
+    const grid = el("div", "fgrid");
+    const cell = (key: string) => (this.cells[key] = el("div", "fcell"));
+    const row = (text: string, field: HTMLElement, btns: HTMLElement[] = []) => {
+      grid.append(label(text, "text2", "body"), field);
+      if (!btns.length) { field.classList.add("fwide"); return; }
+      const b = el("div", "fbtns");
+      b.append(...btns);
+      grid.append(b);
+    };
+    this.folderBox = el("div", "combo short");
+    const arrow = el("div", "arrow");
+    arrow.append(el("i"));
+    arrow.addEventListener("mousedown", (e) => { if (e.button === 0) { e.preventDefault(); this.openRecent(this.folderBox); } });
+    this.folderBox.append(arrow);
+    this.eFolder.addEventListener("focus", () => this.folderBox.classList.add("focus"));
+    this.eFolder.addEventListener("blur", () => this.folderBox.classList.remove("focus"));
+    this.fPick = button("browse", () => this.pickFolder());
+    row("folder", this.folderBox, [this.fPick]);
+
+    this.profCombo = new Combo(true, true);
+    this.profCombo.onChange = () => {
+      const i = this.names.indexOf(this.profCombo.value);
+      if (i >= 0 && i !== this.lb.sel) { this.lb.select(i); this.lb.see(i); this.lb.onSelect(i); }
+    };
+    row("profile", this.profCombo.root, [button("new", () => this.action("new")), button("delete", () => this.action("delete"))]);
+    row("name", cell("name"), [button("duplicate", () => this.action("dup"))]);
+    this.defCheck = new Check("the profile reid uses when you don't name one");
+    this.defCheck.onClick = () => { if (!this.defCheck.on) this.action("default"); }; // default moves, it can't be unset
+    row("default", this.defCheck.root);
+    row("engine", cell("engine"));
+    row("model", cell("model"));
+    row("sign-in", cell("auth"));
+    row("persona", cell("persona"), [button("browse", () => this.browsePersona()), button("edit", () => this.openPersona())]);
+    this.promptCombo = new Combo(true, true);
+    this.promptCombo.onChange = () => {
+      const i = this.modeTexts.indexOf(this.promptCombo.value);
+      if (i >= 0 && MODES[i][0] !== this.mode) { this.mode = MODES[i][0]; this.paintModes(); this.apply(); }
+    };
+    row("prompt", this.promptCombo.root);
+    row("proxy", cell("proxy"));
+    row("tools", cell("tools"));
+    row("mcp", cell("mcp"));
+    for (const [k, text] of SENTENCES) row(text, cell(k));
+    row("extra args", cell("args"));
+
+    // no command preview here (Reid, 2026-11-22: "can we remove this"); the wide layout keeps its own
+    const body = el("div", "sbody fbody");
+    body.append(grid);
+    this.fBar = el("div", "fbar");
+    this.fBar.append(button("open memory", () => this.action("open_memory")), button("open reid.json", () => this.action("open_config")));
+    f.append(head, body, this.fBar);
+    this.root.append(f);
+  }
+
+  /** Move one of full's widgets into the form; unplace() puts it back as it was. */
+  put(w: HTMLElement, parent: HTMLElement, cls = "") {
+    const a = document.createComment(""), css = w.style.cssText, add = !!cls && !w.classList.contains(cls);
+    w.before(a);
+    for (const p of ["grid-row", "grid-column", "margin", "margin-left", "margin-right", "order", "flex", "height", "justify-self"]) w.style.removeProperty(p);
+    if (!(w instanceof HTMLButtonElement)) w.style.removeProperty("width");
+    if (add) w.classList.add(cls);
+    parent.append(w);
+    this.undo.push(() => { a.replaceWith(w); w.style.cssText = css; if (add) w.classList.remove(cls); });
+  }
+
+  unplace() { while (this.undo.length) this.undo.pop()!(); }
+
+  placeForm() {
+    const c = this.cells;
+    this.put(this.eFolder, this.folderBox);
+    this.put(this.eName, c.name);
+    for (const k of ["engine", "model", "auth", "persona", "proxy", "tools", "mcp"]) this.put(this.cb[k].root, c[k], "short");
+    for (const [k, , sentence] of SENTENCES) {
+      const ch = this.checks[k], old = ch.txt.textContent || "";
+      this.put(ch.root, c[k]);
+      ch.text = sentence;
+      this.undo.push(() => { ch.text = old; });
+    }
+    this.put(this.eArgs, c.args);
+    this.put(this.bResume, this.fBar);
+    this.put(this.bGo, this.fBar);
+  }
+
+  sizeFor(): Size {
+    if (innerWidth >= this.fullMin[0] && innerHeight >= this.fullMin[1]) return "full";
+    return innerWidth >= FORM_MIN[0] && innerHeight >= FORM_MIN[1] ? "form" : "medium";
+  }
+
+  /** The layout for the window's size: full when the full layout fits, the form when it's narrower or
+   *  shorter (down to the old launcher's minsize), medium below that. Alt+1/2 push; dragging cuts. */
   fit() {
     // Dragged smaller than the pod threshold: fold into the mini pod once the drag ends.
     clearTimeout(this.foldTimer);
     if (innerWidth < POD_BELOW[0] || innerHeight < POD_BELOW[1]) this.foldTimer = window.setTimeout(() => this.foldWhenLetGo(), 350);
-    const size = innerWidth >= this.fullMin[0] && innerHeight >= this.fullMin[1] ? "full" : "medium";
-    if (size === this.size) return;
+    const size = this.sizeFor(), keyed = performance.now() < this.targetUntil;
+    if (size === this.size || (keyed && size !== this.target)) return;
+    if (keyed && !this.settings?.isOpen) this.push(this.view(), RANK[size] > RANK[this.size] ? 1 : -1, () => this.layout(size));
+    else this.layout(size);
+  }
+
+  layout(size: Size) {
     this.size = size;
     closePopups();
+    if (!this.opening?.active) this.calm(); // no ghost of the other size's opening left over
     document.body.dataset.size = size;
-    const medium = document.getElementById("medium")!;
+    this.unplace();
+    this.folderHair.before(this.folderRow);
+    clearInterval(this.sessTimer);
     if (size === "medium") {
-      medium.prepend(this.folderRow);
+      document.getElementById("medium")!.prepend(this.folderRow);
       this.drawCombos();
       this.drawSessions();
       this.sessTimer = window.setInterval(() => this.drawSessions(), 1000);
-    } else {
-      this.folderHair.before(this.folderRow);
-      clearInterval(this.sessTimer);
-    }
+    } else if (size === "form") this.placeForm();
+    this.wrapTexts();
+  }
+
+  /** The view on screen: settings, or the launcher's layout for the size. */
+  view(): HTMLElement {
+    return this.settings?.isOpen ? this.settings.root : document.getElementById(this.size === "full" ? "main" : this.size)!;
+  }
+
+  /** "slide in to the other veiw not just switch" (Reid, 2026-11-22): a push. A still copy of the old view
+   *  slides out while the new one slides in from the other side (`dir` 1: in from the right). 240 ms on the
+   *  design curve, no fade; a cut with reduced motion. */
+  push(out: HTMLElement, dir: 1 | -1, change: () => void) {
+    this.pushGhost?.remove();
+    if (REDUCED.matches) { change(); return; }
+    const r = out.getBoundingClientRect();
+    const ghost = out.cloneNode(true) as HTMLElement;
+    const live = out.querySelectorAll("input"), copy = ghost.querySelectorAll("input");
+    live.forEach((x, i) => { copy[i].value = x.value; }); // a clone keeps attributes, not typed values
+    change();
+    ghost.style.cssText += `;display:flex;position:fixed;left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;pointer-events:none;z-index:5`;
+    document.body.append(ghost);
+    this.pushGhost = ghost;
+    const o = { duration: 240, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
+    ghost.animate([{ transform: "none" }, { transform: `translateX(${-100 * dir}%)` }], o).onfinish = () => {
+      ghost.remove();
+      if (this.pushGhost === ghost) this.pushGhost = null;
+    };
+    this.view().animate([{ transform: `translateX(${100 * dir}%)` }, { transform: "none" }], o);
+  }
+
+  /** Where focus goes for "the profile list": the list, or the form's profile combo. */
+  listFocus(): HTMLElement { return this.size === "form" ? this.profCombo.input : this.lb.root; }
+
+  /** The form's own widgets follow the state full's widgets show. */
+  paintForm() {
+    if (!this.profCombo) return;
+    this.profCombo.values = this.names;
+    this.profCombo.value = this.names[this.lb.sel] ?? "";
+    this.defCheck.set(!!this.lb.items[this.lb.sel]?.endsWith("●")); // model.rs marks the default "  ●"
+    this.promptCombo.values = this.modeTexts;
+    this.promptCombo.value = this.modeTexts[MODES.findIndex((m) => m[0] === this.mode)] ?? "";
+    this.promptCombo.setDisabled(this.modeDisabled);
   }
 
   async foldWhenLetGo() {
@@ -374,7 +553,7 @@ class App {
 
   /** A combo: that profile, then open gate on the current folder. */
   async combo(i: number) {
-    if (i >= Math.min(9, this.names.length) || this.gate?.active) return;
+    if (i >= Math.min(9, this.names.length) || this.opening?.active) return;
     this.lb.select(i);
     await this.select(this.names[i]);
     this.drawCombos();
@@ -406,20 +585,21 @@ class App {
     }));
   }
 
-  paintModes() { this.radios.forEach((rb, i) => rb.set(MODES[i][0] === this.mode)); }
+  paintModes() { this.radios.forEach((rb, i) => rb.set(MODES[i][0] === this.mode)); this.paintForm(); }
 
   wrapTexts() {
     const w = document.documentElement.clientWidth;
     this.preview.textContent = wrap(this.previewText, Math.max(300, w - 2 * PAD - 300), "tag");
-    this.msgLabel.textContent = wrap(this.msgText, Math.max(300, w - 2 * PAD - 260), "body");
+    const msgW = this.size === "form" ? w - 40 - 20 : Math.max(300, w - 2 * PAD - 260);
+    this.msgLabel.textContent = wrap(this.msgText, msgW, "body");
   }
 
   keys() {
     window.addEventListener("keydown", (e) => {
-      if (this.gate?.active) { // while the gate plays, every key skips it instead
+      if (this.opening?.active) { // while the gate plays, every key skips it instead
         e.preventDefault();
         e.stopPropagation();
-        this.gate.skip();
+        this.opening.skip();
         return;
       }
       if (this.settings.isOpen) { // the launcher's keys stay with the launcher
@@ -434,7 +614,9 @@ class App {
       else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === "r") { e.preventDefault(); this.go(true); }
       else if (e.altKey && !e.ctrlKey && (e.code === "Digit1" || e.code === "Digit2")) {
         e.preventDefault();
-        invoke("set_size", { size: e.code === "Digit1" ? "full" : "medium" });
+        this.target = e.code === "Digit1" ? "full" : "medium";
+        this.targetUntil = performance.now() + 500; // the eased resize takes 160 ms
+        invoke("set_size", { size: this.target });
       }
       else if (e.altKey && !e.ctrlKey && e.code === "Digit3") { e.preventDefault(); closePopups(); invoke("pod_fold", { drag: false }); }
       else if (this.size === "medium" && /^Digit[1-9]$/.test(e.code) && !e.altKey && !e.ctrlKey && !e.metaKey
@@ -503,9 +685,12 @@ class App {
           clearTimeout(this.recheck);
           this.recheck = window.setTimeout(() => { this.recheck = 0; this.action("retry"); }, 3000);
           break;
-        case "focus": (o.target === "pick" ? this.bPick : o.target === "name" ? this.eName : this.lb.root).focus(); break;
+        case "focus":
+          (o.target === "pick" ? (this.size === "form" ? this.fPick : this.bPick) : o.target === "name" ? this.eName : this.listFocus()).focus();
+          break;
       }
     }
+    this.paintForm();
   }
 
   setFields(f: Fields) {
@@ -537,6 +722,8 @@ class App {
     this.pTitle.textContent = r.title;
     this.tags.textContent = r.tags;
     this.radios.forEach((rb, i) => { rb.text = r.mode_texts[i]; rb.setDisabled(r.mode_disabled); });
+    this.modeTexts = r.mode_texts;
+    this.modeDisabled = r.mode_disabled;
     // Claude-only fields stay on screen for a Codex profile, disabled while they're off
     for (const k of ["proxy", "tools", "mcp"]) {
       this.cb[k].setDisabled(r.disabled[k]);
@@ -547,8 +734,7 @@ class App {
     this.statusDot.style.color = r.ready ? C.emerald : C.oxide;
     this.statusText.textContent = r.status;
     this.previewText = r.preview;
-    this.preview.style.color = r.ready ? C.text3 : C.oxide;
-    this.wrapTexts();
+    this.preview.style.color = r.ready ? C.text3 : C.oxide;    this.wrapTexts();
   }
 
   vars() {
@@ -569,16 +755,16 @@ class App {
   openPersona() { return this.call("open_persona", { persona: this.cb.persona.value }); }
 
   async pickFolder() {
-    this.gate?.calm();
+    this.calm();
     await this.call("pick_folder");
   }
 
   async browsePersona() {
-    this.gate?.calm();
+    this.calm();
     await this.call("browse_persona", { choices: this.cb.persona.values });
   }
 
-  async openRecent() {
+  async openRecent(anchor: HTMLElement = this.bRecent) {
     const r = await invoke<{ dirs: [string, string][]; ops: Op[] }>("recent");
     this.ops(r.ops);
     if (!r.dirs.length) return;
@@ -592,7 +778,7 @@ class App {
       it.addEventListener("mouseup", () => { close(); this.call("set_folder", { path: d }); });
       menu.append(it);
     }
-    const b = this.bRecent.getBoundingClientRect();
+    const b = anchor.getBoundingClientRect();
     menu.style.left = b.left + "px";
     menu.style.top = b.bottom + "px";
     document.body.append(menu);
@@ -605,49 +791,60 @@ class App {
   openSettings() {
     closePopups();
     this.clearMsg();
-    this.settings.open();
+    if (!this.settings.isOpen) this.push(this.view(), 1, () => this.settings.open());
   }
 
   closeSettings() {
-    this.settings.close();
-    this.lb.root.focus();
+    if (this.settings.isOpen) this.push(this.settings.root, -1, () => this.settings.close());
+    this.listFocus().focus();
   }
 
   async go(resume: boolean) {
-    if (this.gate?.active || this.settings.isOpen) return; // one session per press
+    if (this.opening?.active || this.settings.isOpen) return; // one session per press
     type Go = { kind: "ops"; ops: Op[] } | { kind: "gate"; note: string; uses_wt: boolean; found: boolean; title: string; sub: string; ops: Op[] };
-    // The gate plays in the full layout; a smaller size opens the session window straight away.
-    const r = await invoke<Go>("go", { resume, gateOk: !!this.gate && this.size === "full" });
+    // The gate plays in the full layout, the emblem in the form; medium opens the session window straight away.
+    const g = this.opener();
+    const r = await invoke<Go>("go", { resume, gateOk: !!g });
     this.ops(r.ops);
-    if (r.kind !== "gate") return;
-    this.gate!.open(r.note, r.uses_wt, r.title, r.sub);
-    if (r.found) this.gate!.windowFound(false); // a Reidcc session window: it exists already, hidden
+    if (r.kind !== "gate" || !g) return;
+    this.opening = g;
+    g.open(r.note, r.uses_wt, r.title, r.sub);
+    if (r.found) g.windowFound(false); // a Reidcc session window: it exists already, hidden
   }
 
+  /** This size's opening: the gate (full), the emblem (form), none (medium). */
+  opener(): Gate | null { return this.size === "full" ? this.gate : this.size === "form" ? this.emblem : null; }
+
+  calm() { this.gate?.calm(); this.emblem?.calm(); }
+
   // ------------------------------------------------------------------ gate ---
-  buildGate(meta: Meta | null) {
-    if (!meta) return;
-    this.gate = new Gate(meta, { say: (t, k, s) => this.say(t, k, [], s), focusList: () => this.lb.root.focus() });
+  buildGate(meta: Meta | null, emblem: Meta | null) {
+    const host = { say: (t: string, k: string, s?: number) => this.say(t, k, [], s), focusList: () => this.listFocus().focus() };
+    if (meta) this.gate = new Gate(meta, host);
+    if (emblem) this.emblem = new Gate(emblem, host, "emblem");
+    // the ghost is this size's opening; medium has none, so there the buttons just open the session
     for (const [key, b] of [["go", this.bGo], ["resume", this.bResume]] as const) {
-      b.addEventListener("mouseenter", () => this.gate!.hover(key + ":ptr", true));
-      b.addEventListener("mouseleave", () => this.gate!.hover(key + ":ptr", false));
-      b.addEventListener("focus", () => this.gate!.hover(key + ":focus", true));
-      b.addEventListener("blur", () => this.gate!.hover(key + ":focus", false));
+      const on = (k: string) => this.opener()?.hover(k, true);
+      const off = (k: string) => { this.gate?.hover(k, false); this.emblem?.hover(k, false); };
+      b.addEventListener("mouseenter", () => on(key + ":ptr"));
+      b.addEventListener("mouseleave", () => off(key + ":ptr"));
+      b.addEventListener("focus", () => on(key + ":focus"));
+      b.addEventListener("blur", () => off(key + ":focus"));
     }
-    listen<boolean>("gate-found", (e) => this.gate!.windowFound(e.payload));
-    listen("gate-timeout", () => this.gate!.timeout());
+    listen<boolean>("gate-found", (e) => this.opening?.windowFound(e.payload));
+    listen("gate-timeout", () => this.opening?.timeout());
   }
 }
 
 async function start() {
   setMetrics(await invoke("metrics"));
   const app = new App();
-  const init = await invoke<{ ops: Op[]; folder: string; gate: Meta | null; test: boolean; full_min: [number, number] }>("init").catch(() => null);
+  const init = await invoke<{ ops: Op[]; folder: string; gate: Meta | null; emblem: Meta | null; test: boolean; full_min: [number, number] }>("init").catch(() => null);
   if (!init) return;
   app.fullMin = init.full_min;
   app.fit();
   app.eFolder.value = init.folder;
-  app.buildGate(init.gate);
+  app.buildGate(init.gate, init.emblem);
   listen("login-done", () => app.action("login_done"));
   listen<string>("session-note", (e) => app.say(e.payload, "quiet", [], 4)); // back from a session window
   app.ops(init.ops);
@@ -687,10 +884,13 @@ function testHooks(app: App) {
       return !!b;
     },
     login: (status: string | null) => app.call("test_login", { status }),
-    ghost: () => app.gate!.showGhost(),
-    gateAt: (ms: number) => app.gate!.showAt(ms),
-    dark: (title: string, sub: string) => app.gate!.showDark(title, sub),
-    gateOff: () => { app.gate!.setAlpha(0); app.gate!.setMode("ghost"); },
+    // this size's opening: the gate in full, the emblem in the form
+    ghost: () => (app.opener() ?? app.gate)!.showGhost(),
+    gateAt: (ms: number) => (app.opener() ?? app.gate)!.showAt(ms),
+    dark: (title: string, sub: string) => (app.opener() ?? app.gate)!.showDark(title, sub),
+    gateOff: () => { for (const g of [app.gate, app.emblem]) { g?.setAlpha(0); g?.setMode("ghost"); } },
+    opening: () => app.opening && { name: app.opening.name, active: app.opening.active },
+    ghostOf: () => [app.gate, app.emblem].find((g) => g && g.alpha > 0)?.name ?? null,
     hover: (on: boolean) => app.bGo.dispatchEvent(new MouseEvent(on ? "mouseenter" : "mouseleave")),
     focusList: () => app.lb.root.focus(),
     size: () => app.size,

@@ -110,12 +110,45 @@ Built 2026-11-19 (see `vision\Spec\SPEC-codex-signin-persona.md`, "As built"):
 > "well i want the rust part one spec and the ideas in one spec and apart of the vision" (Reid, 2026-11-19)
 
 Where Reidcc is going (full rules in `vision\SPEC-vision-v1.md`):
-- **Three sizes:** the launcher's size is its mode. **Full** shows everything as today. **Medium**
+- **Three sizes, and the pod is a toggle:**
+  > "this is main      first image        sec is medium           small is        and pod is   (witch should be a toggle not a size thange)" (Reid, 2026-11-22, with four screenshots: the wide layout, the form, the folder / sessions / combos layout, and the pod)
+
+  The names are now **main** (the wide layout: the profile list beside the fields), **medium** (the form,
+  the old launcher's tall, narrow layout) and **small** (folder, sessions and combos). The **pod** is not a
+  size: it's a toggle that folds the launcher into the capsule and back, from any size, and the launcher
+  comes back at the size it was. Dragging the window small never turns it into the pod. Not built yet
+  (palette §5): the app still calls them full / form / medium, and `Alt+3` or dragging under 340 × 240
+  folds into the pod. The older text below uses the old names: its "full" is main (wide) plus medium (the
+  form), its "medium" is small, and its "mini pod" is the pod.
+
+  The launcher's size is its mode. **Full** shows everything as today. **Medium**
   shows the folder, sessions and combos (one key opens a profile). The **mini pod** shows running
   sessions and usage. Smaller sizes are folds of the same window, never hidden dialogs. Full and medium are
   built, with `Alt+1` and `Alt+2` ("fix 1 and 2 also lets start on the windows sizeing", Reid, 2026-11-20).
   Medium is semi-mini, 380 × 320 with tight edges ("The medium is to medium can we make it simi-mini", Reid, 2026-11-21).
   So is the mini pod, with `Alt+3` or by dragging the launcher small ("do the mini pod next", Reid, 2026-11-20).
+
+  > "old vs new in the same form    can we meger the uis for the 2.0  because i like the form facter also can we have the ui like slide in to the other veiw not just switch" (Reid, 2026-11-22, with a screenshot of the old Python launcher beside Reidcc 0.2.0 at the same tall, narrow window size, where 0.2.0 showed medium)
+
+  What this means (built 2026-11-22 in the Rust app, per `vision\Spec\SPEC-form.md` after Reid rejected a first
+  attempt: "ok spec doc a ui because what you made was bad bad....."):
+  - **Full keeps its fields in a tall, narrow window.** Today a window narrower than the full layout drops to
+    medium, so the form is gone. Instead, full has two arrangements of the same things. Wide: the profile list
+    beside the profile's fields, as now. Tall and narrow: one column, the old launcher's form factor, top to
+    bottom: folder row, the profile picker (a dropdown with `new profile` / `duplicate` / `delete` /
+    `make default`), every field of the profile stacked (label left, field right), the command preview, then
+    the action row with `open gate`. Same look, same fields, nothing hidden or moved to settings. Medium is
+    only for windows too short for the form; the mini pod stays as is. No new size name: it's still `full`.
+    The spec's layout copies the old form: a big wordmark, body-size labels, one roomy row per setting, a
+    sentence beside each checkbox, word buttons in a right column, `open gate` last. It shows from 480 × 720
+    (the old `minsize`) and scrolls below 860 tall.
+    > "so it just whats on the front for Reidcc 2.0 but in that form" (Reid, 2026-11-22)
+
+    So the column holds exactly what full shows today, nothing from the old form's extras.
+  - **Views slide in, they don't cut.** Changing view (launcher ↔ settings, and the folds full ↔ medium)
+    slides the new view in while the old one slides a short way out the same direction and fades. One step,
+    `200ms`, the design curve, no bounce. Settings comes in from the right and `back` sends it out to the
+    right. Reduced motion: a plain cut.
 - **Session windows:** by default the gate opens into a Reidcc window running the real engine, with the §5
   Telemetry Bar ("No the Reid session window is default", Reid, 2026-11-20). The Windows Terminal hand-off
   stays a real choice, not only a fallback ("Wait don't do fallback only make it default").
@@ -130,8 +163,8 @@ Where Reidcc is going (full rules in `vision\SPEC-vision-v1.md`):
 - **Orchestrator:** rigs first (saved layouts opened by one combo). Agent-driven panes come later.
 
 How it gets built is `vision\Spec\SPEC-rust-rewrite.md` (Tauri 2 + Rust, same data files). Betas are in the
-Rust app only (`rs\target\release\Reidcc.exe`): session windows, snap, and all three sizes (full, medium,
-mini pod). The Python app has none of it. Headless and orchestrator aren't built.
+Rust app only (`rs\target\release\Reidcc.exe`): session windows, snap, the sizes (built as full with its
+form, and medium; to be renamed main / medium / small) and the pod. The Python app has none of it. Headless and orchestrator aren't built.
 
 ---
 
@@ -220,6 +253,8 @@ Animations in Reidcc feel like a well-machined hardware switch. Nothing floats, 
 - **Sequences:** the gate opening, and (proposed, vision version 1) the snap **fuse**, are staged sequences,
   not single transitions. Each step stays within `240ms`, and the steps run back to back at the gate's pace
   setting.
+- **View changes slide (built 2026-11-22, `SPEC-form.md` Part 4):** launcher ↔ settings and `Alt+1` / `Alt+2`
+  push: the old view slides out as the new one slides in, `240ms`, no fade; dragging an edge cuts; reduced motion cuts; see "Vision version 1" ("can we have the ui like slide in to the other veiw not just switch").
 - **Primary Easing Curve:** `cubic-bezier(0.16, 1, 0.3, 1)` — Instant initial velocity, smooth deceleration, **zero overshoot/bounce**.
 
 ### Specific Choreography

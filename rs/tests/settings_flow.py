@@ -38,7 +38,13 @@ def main():
     t = guihome.Tauri(root)
     try:
         time.sleep(1)
+        t.js("window.__slides = []; const a = Element.prototype.animate;"
+             "Element.prototype.animate = function (k, o) { __slides.push(this.id + ' ' + JSON.stringify(k[0].transform)); return a.call(this, k, o); }")
         check(t.js("__reid.button('settings')"), "settings button exists and opens the page")
+        slides = t.js("__slides")
+        reduced = t.js("matchMedia('(prefers-reduced-motion: reduce)').matches")
+        check(slides == [] if reduced else slides == ['main "none"', 'settings "translateX(100%)"'],
+              "opening settings pushes: the launcher out, settings in from the right %s" % slides)
         check(t.js("__reid.settings().open"), "page is open")
         text = lambda: t.js("__reid.settings().text")
         for s in ["sessions open in", "default engine", "updates", "plugins", "locations", home]:

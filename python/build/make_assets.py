@@ -2,6 +2,7 @@
 
     python python\\build\\make_assets.py          the app's assets (banner, icon, gate frames)
     python python\\build\\make_assets.py --site   only the website's WebP cuts (SPEC-github-pages.md Part 4)
+    python python\\build\\make_assets.py --emblem only medium's opening (SPEC-hand.md)
 """
 import sys
 from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter
@@ -217,6 +218,209 @@ def push(u, zf):
     return math.exp(math.log(zf) * (0.18 * u + 0.82 * u ** 2.4))
 
 
+# --- the emblem (SPEC-hand.md): medium's opening, made from the emblem itself, no generated layers.
+# Reid, 2026-11-22: "it's coming around and it's growing out. And we should have the leaves come out. And then
+# it zooms into the green, into the emerald. Like it's the image, not making it touch the tip."
+#   rest    the blueprint lines, then the stone base fills in under them (no hand, compass or leaves yet)
+#   grow    the hand and its drapery grow out from the top right, bringing the compass
+#   leaves  the laurels grow out from their stems
+#   ignite  the emerald flares and settles
+#   open    the view zooms into the emerald, then goes dark (where the session window appears)
+def emblem():
+    import cv2
+    from scipy import ndimage
+    src = Image.open(BRAND + r"\Engraved Compass and Marble Hand Emblem.png").convert("RGB")
+    S, PAD = src.width, 700                      # 1254 px; padded so the camera never leaves the canvas
+    WS = S + 2 * PAD
+    SRC = np.asarray(src)
+    yy, xx = np.mgrid[0:S, 0:S]
+
+    def region(*shapes):
+        """emblem px (measured 2026-11-22): polygons and (x, y, r) circles -> a hard S x S mask"""
+        m = Image.new("L", (S, S), 0)
+        d = ImageDraw.Draw(m)
+        for s in shapes:
+            if len(s) == 3:
+                d.ellipse((s[0] - s[2], s[1] - s[2], s[0] + s[2], s[1] + s[2]), fill=255)
+            else:
+                d.polygon(s, fill=255)
+        return np.asarray(m) > 0
+
+    ell = lambda k: cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    solid = cv2.GaussianBlur(np.asarray(src.convert("L"), np.float32), (0, 0), 4) > 30   # the drawn parts, not the thin lines
+
+    def silhouette(reg, k):
+        """the drawn part inside reg, its dark folds filled: what hides the plate"""
+        m = cv2.morphologyEx((solid & reg).astype(np.uint8), cv2.MORPH_CLOSE, ell(k))
+        return cv2.dilate(ndimage.binary_fill_holes(m).astype(np.uint8), ell(7)) > 0
+
+    CLOTH = region([(250, 700), (300, 640), (380, 610), (480, 600), (565, 620), (570, 725), (470, 768), (325, 790), (255, 770)])   # on the left column
+    # the hand and its drapery: the whole area (only background and construction lines live there besides)
+    BODY = cv2.dilate((region([(355, 330), (470, 225), (610, 190), (730, 140), (790, 60), (1080, 45), (1125, 210),
+                               (1110, 420), (1070, 600), (1010, 700), (960, 750), (860, 762), (780, 720), (700, 640),
+                               (560, 605), (360, 545)]) | CLOTH).astype(np.uint8), ell(9)) > 0
+    # the compass stands from the start, with the house; the hand grows around it
+    COMPASS = region((626, 527, 54), [(615, 408), (639, 408), (639, 482), (615, 482)],
+                     [(583, 543), (634, 561), (394, 1022), (360, 1022)], [(618, 561), (670, 543), (894, 1024), (858, 1024)])
+    LEAF_L = silhouette(region([(150, 600), (320, 600), (320, 925), (150, 925)]), 9)
+    LEAF_R = silhouette(region([(930, 600), (1105, 600), (1105, 925), (930, 925)]), 9)
+
+    # the plate: the emblem without the hand and the leaves, so nothing shows as a black hole before they grow.
+    # Under the hand: the background with the construction lines redrawn (fitted 2026-11-22); under the cloth's
+    # foot: the right column's capital, mirrored. Where a leaf covers its column: that column's other side,
+    # mirrored about its own axis (x 342 / 901); elsewhere a leaf is on background: filled from around it.
+    plate = SRC.copy()
+    plate[BODY] = GATE_BG
+    low = BODY & CLOTH & (yy >= 745)
+    plate[low] = SRC[yy[low], 1243 - xx[low]]                # the columns mirror about x 621.5
+    for leaf, axis, x0, x1 in ((LEAF_L, 342, 262, 424), (LEAF_R, 901, 818, 990)):
+        on = leaf & (xx >= x0) & (xx <= x1) & (yy >= 760)
+        plate[on] = SRC[yy[on], 2 * axis - xx[on]]
+    leaves = ((LEAF_L | LEAF_R) & ~(((xx >= 262) & (xx <= 424) | (xx >= 818) & (xx <= 990)) & (yy >= 760)))
+    plate = cv2.inpaint(plate, leaves.astype(np.uint8) * 255, 9, cv2.INPAINT_TELEA)
+    plate[COMPASS] = SRC[COMPASS]
+    # the stone that stands from the start (emblem px, 2026-11-22): columns, steps, house, plinth, the compass.
+    # Everything else is background, cleaned whole so no patch edge or leftover smoke shows ("i can see the
+    # patching job of it")
+    mirror = lambda p: [(1243 - x, y) for x, y in p]                 # the right side mirrors the left
+    COL = [(276, 765), (430, 765), (430, 1045), (276, 1045)]         # capital and shaft: their shape, from the art
+    STEPS = [(272, 1043), (433, 1043), (433, 1072), (451, 1072), (451, 1114), (250, 1114), (250, 1072), (272, 1072)]
+    sol = cv2.GaussianBlur(np.asarray(to_img(plate).convert("L"), np.float32), (0, 0), 4) > 30
+    STONE = cv2.dilate(ndimage.binary_fill_holes(cv2.morphologyEx((sol & region(COL, mirror(COL))).astype(np.uint8),
+                                                                   cv2.MORPH_CLOSE, ell(15))).astype(np.uint8), ell(5)) > 0
+    STONE |= COMPASS | region(STEPS, mirror(STEPS), [(466, 850), (628, 786), (788, 850), (788, 1114), (466, 1114)],
+                              [(202, 1112), (1051, 1112), (1051, 1134), (202, 1134)])   # house, steps, plinth: whole
+    BG = cv2.GaussianBlur((~STONE).astype(np.float32), (0, 0), 1.5)
+    plate = plate * (1 - BG[..., None]) + np.array(GATE_BG, np.float32) * BG[..., None]
+    SS = 4                                      # drawn 4x and scaled down: smooth 1.5 px lines
+    ln = Image.new("L", (S * SS, S * SS), 0)
+    d = ImageDraw.Draw(ln)
+    for cx, cy, r in ((621.1, 501.7, 401.6), (626.9, 691.9, 334.8)):
+        d.ellipse([v * SS for v in (cx - r, cy - r, cx + r, cy + r)], outline=255, width=6)
+    for y, x0, x1 in ((464.5, 146, 1108), (704.5, 167, 1086)):
+        d.line([(x0 * SS, y * SS), (x1 * SS, y * SS)], fill=255, width=6)
+    d.line([(625.5 * SS, 13 * SS), (625.5 * SS, 1211 * SS)], fill=255, width=6)
+    d.line([(145 * SS, 1136.3 * SS), (1108 * SS, 1136.3 * SS)], fill=255, width=6)   # the ground line
+    ln = np.asarray(ln.resize((S, S), Image.LANCZOS), np.float32) / 255
+    ln *= BG                                    # on the background, not over the stone
+    LINE = np.median(SRC[464:466, 150:340].reshape(-1, 3)[SRC[464:466, 150:340].reshape(-1, 3).max(1) > 90], axis=0)
+    plate = plate * (1 - ln[..., None]) + LINE * ln[..., None]
+
+    def canvas(a):
+        w = Image.new("RGB", (WS, WS), GATE_BG)
+        im = to_img(a)
+        w.paste(over_bg(im, feather(im.size, 40, 40)), (PAD, PAD))
+        return np.asarray(w, np.float32)
+
+    W, PLATE = canvas(SRC), canvas(plate)
+    pad = lambda m: np.pad(cv2.GaussianBlur(m.astype(np.float32), (0, 0), 2), PAD)   # soft edges, canvas size
+    # the hand's own shape, not its whole area: the smoke around it would show a cut edge on the clean background
+    HAND, LEAF_L, LEAF_R = pad(silhouette(BODY & ~COMPASS, 15)), pad(LEAF_L), pad(LEAF_R)
+    P = lambda x, y: (x + PAD, y + PAD)          # emblem px -> canvas px
+    layer = lambda m: W * m[..., None]           # a part on black, to composite
+    gy, gx = np.mgrid[0:WS, 0:WS].astype(np.float32)
+    dist = lambda o: np.hypot(gx - P(*o)[0], gy - P(*o)[1])
+    O_HAND, O_L, O_R = (1100, 50), (300, 885), (955, 885)   # where each part grows from
+    D_HAND, D_L, D_R = dist(O_HAND), dist(O_L), dist(O_R)
+
+    def grown(a, s, o):
+        """a (h x w or h x w x 3) scaled by s about emblem point o: the part grows out of o."""
+        ox, oy = P(*o)
+        im = to_img(a) if a.ndim == 3 else Image.fromarray(np.clip(a * 255, 0, 255).astype(np.uint8))
+        im = im.transform(im.size, Image.AFFINE, (1 / s, 0, ox - ox / s, 0, 1 / s, oy - oy / s), Image.BICUBIC)
+        r = np.asarray(im, np.float32)
+        return r if a.ndim == 3 else r / 255
+
+    def part(m, d, o, t, reach, s0):
+        """part with mask m revealed to t (0..1): a soft front running reach px out of o, growing from s0 to 1."""
+        front = t * (reach + 90)
+        rev = m * np.clip((front - d) / 90, 0, 1)
+        s = s0 + (1 - s0) * t
+        return grown(layer(rev), s, o), grown(rev, s, o)
+
+    def compose(t_hand, t_leaf):
+        out = PLATE
+        for m, d, o, t, reach, s0 in ((HAND, D_HAND, O_HAND, t_hand, 1250, 0.82),
+                                      (LEAF_L, D_L, O_L, t_leaf, 330, 0.55), (LEAF_R, D_R, O_R, t_leaf, 330, 0.55)):
+            if t <= 0:
+                continue
+            rgb, a = part(m, d, o, t, reach, s0)
+            out = out * (1 - a[..., None]) + rgb
+        return to_img(out)
+
+    if "--plate" in sys.argv:                    # look at the plate alone
+        to_img(plate).save(os.path.join(os.environ.get("TEMP", "."), "emblem_plate.png"))
+
+    FW, FH = 640, 900                            # medium's window is 480-959 wide: the edges fade into it
+    EM = P(626, 527)                             # the emerald
+    W0, ZF = S * FW / 520, 14.0                  # the emblem 520 px wide; at ZF the hinge ring fills the view
+    cam = camera(P(627, 610), W0, EM, ZF, (FW, FH))
+    VIG = feather((FW, FH), 40, 40) ** 0.8
+    finish = lambda im: over_bg(im, VIG)
+
+    for sub in ("rest", "grow", "leaves", "ignite", "open"):
+        shutil.rmtree(os.path.join(OUT, "emblem_" + sub), ignore_errors=True)
+        os.makedirs(os.path.join(OUT, "emblem_" + sub))
+    frame = lambda step, i: OUT + r"\emblem_%s\%02d.png" % (step, i)
+
+    full = compose(1, 1)
+    em_pt = (FW / 2 + (EM[0] - P(627, 610)[0]) * FW / W0, FH / 2 + (EM[1] - P(627, 610)[1]) * FW / W0)
+
+    def lines(im):
+        a = np.asarray(cam(im, 1.0).convert("L").filter(ImageFilter.GaussianBlur(1.1)), np.float32)
+        ly, lx = np.gradient(a)
+        return (np.clip(np.hypot(lx, ly) / 14.0, 0, 1) ** 1.2 * VIG)[..., None] * BONE
+
+    # ghost: the whole emblem's lines and its emerald point on the see-through key colour
+    KEY = (1, 1, 1)
+    ghost = np.clip(lines(full) + np.asarray(glow((FW, FH), em_pt, 16, 0.9), np.float32), 0, 255)
+    ghost[ghost.max(axis=2) < 40] = KEY
+    to_img(ghost).save(OUT + r"\emblem_ghost.png", optimize=True)
+
+    # rest: the base's lines give way to its stone
+    base_im = compose(0, 0)
+    closed = finish(cam(base_im, 1.0))
+    save_frame(closed, OUT + r"\emblem.png")
+    L, c_arr, N_REST = lines(base_im), np.asarray(closed, np.float32), 8
+    for i in range(N_REST):
+        a = ease((i + 1) / N_REST)
+        save_frame(to_img(255 - (255 - c_arr * a) * (1 - L * (1 - a) ** 0.7 / 255)), frame("rest", i))
+
+    N_GROW, N_LEAVES = 20, 13
+    for i in range(N_GROW):
+        save_frame(finish(cam(compose(ease((i + 1) / N_GROW), 0), 1.0)), frame("grow", i))
+    for i in range(N_LEAVES):
+        save_frame(finish(cam(compose(1, ease((i + 1) / N_LEAVES)), 1.0)), frame("leaves", i))
+
+    flare = [(8, .4), (11, .55), (14, .7), (18, .83), (22, .95), (25, 1.0), (26, .96), (26, .91), (25, .86), (24, .82)]
+    for i, (r, s) in enumerate(flare):
+        save_frame(finish(cam(ImageChops.add(full, glow(full.size, EM, r, s)), 1.0)), frame("ignite", i))
+    lit = ImageChops.add(full, glow(full.size, EM, flare[-1][0], flare[-1][1]))
+
+    N_OPEN = 20
+    for i in range(N_OPEN):
+        u = i / (N_OPEN - 1)
+        f = cam(lit, push(u, ZF))
+        d = smooth((u - 0.75) / 0.25)
+        if d > 0:
+            f = Image.blend(f, Image.new("RGB", f.size, GATE_BG), d)
+        save_frame(finish(f), frame("open", i))
+
+    meta = {"size": [FW, FH], "bg": "#%02x%02x%02x" % GATE_BG, "key": "#%02x%02x%02x" % KEY, "tag": [FW - 28, FH - 22],
+            "steps": [["rest", N_REST, 0, 250], ["grow", N_GROW, 250, 500], ["leaves", N_LEAVES, 750, 330],
+                      ["ignite", len(flare), 1080, 250], ["open", N_OPEN, 1330, 490]]}  # 1820 ms: 2.5 s at PACE 1.375
+    with open(OUT + r"\emblem.json", "w") as f:
+        json.dump(meta, f, indent=1)
+    total = sum(os.path.getsize(os.path.join(dp, n)) for dp, _, ns in os.walk(OUT) for n in ns if "emblem" in dp + n)
+    assert sum(s[1] for s in meta["steps"]) == 71, meta
+    print("emblem", meta, "%.1f MB" % (total / 1e6))
+
+
+if "--emblem" in sys.argv:
+    emblem()
+    sys.exit()
+
+
 # image 2 at full size. Its baked-in "REIDCC · READY" tag (1480-1625, 900-911) is painted out; the app
 # draws a live tag instead. Positions below are in gate.png's old 1000 px units (measured 2026-11-17) x K.
 portal = Image.open(BRAND + r"\Emerald Portal_ Engraved Blueprint Monument.png").convert("RGB")
@@ -310,6 +514,7 @@ meta = {"size": [FW, FH], "bg": "#%02x%02x%02x" % GATE_BG, "key": "#%02x%02x%02x
 with open(OUT + r"\gate.json", "w") as f:
     json.dump(meta, f, indent=1)
 print("gate", meta)
+emblem()
 
 # --- the TUI's art: the same images as terminal text. One cell = two pixels stacked ("▀": top pixel
 # in the text colour, bottom in the background colour, 24-bit). Pre-rendered at a few widths so the

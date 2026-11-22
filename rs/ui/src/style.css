@@ -117,10 +117,10 @@ button, input { font: inherit; color: inherit; margin: 0; }
 .check:focus .txt { border-color: var(--line2); }
 
 /* gate (SPEC-gate.md): the ghost and the opening, a layer over the whole page */
-#gate { position: fixed; inset: 0; z-index: 100; opacity: 0; pointer-events: none; display: none; }
-#gate.solid { background: #030202; pointer-events: auto; }
-#gate canvas { position: absolute; left: 0; top: 0; }
-#gate .gtxt { position: absolute; white-space: pre; }
+#gate, #emblem { position: fixed; inset: 0; z-index: 100; opacity: 0; pointer-events: none; display: none; }
+#gate.solid, #emblem.solid { background: #030202; pointer-events: auto; }
+#gate canvas, #emblem canvas { position: absolute; left: 0; top: 0; }
+#gate .gtxt, #emblem .gtxt { position: absolute; white-space: pre; }
 
 /* medium (vision v1 §1): a fold of the same window, below the size the full layout fits in */
 /* "semi-mini" (Reid, 2026-11-21): tight edges, no folder label, no footer hint */
@@ -146,9 +146,35 @@ body[data-size="medium"] #msgbar > .lbl { margin-left: 16px !important; }
 .mrow .st { flex: none; color: var(--text2); font-variant-numeric: tabular-nums; }
 .mlist > .lbl { padding-left: 8px; }
 
+/* the form (vision\Spec\SPEC-form.md): 0.2.0's main screen laid out like the old launcher, for a window
+   narrower or shorter than full. 20 px edges, an 88 px label column, 26 px rows on a 34 px pitch,
+   word buttons on the right with flush right edges, open gate last */
+#form { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 20px; }
+body[data-size="form"] #main { display: none; }
+body[data-size="form"] #form { display: flex; }
+body[data-size="form"] #footer > div:last-child { padding: 7px 20px !important; }
+body[data-size="form"] #msgbar > .lbl { margin-left: 20px !important; }
+body[data-size="form"] #settings { padding: 0 20px; }
+.fhead { display: flex; align-items: flex-start; margin: 20px 0 24px; flex: none; }
+.fhead > div:first-child { flex: 1; min-width: 0; margin-right: 12px; }
+.wordmark { font: 600 28px/34px var(--ui); color: var(--text); }
+.fsub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#form .btn { height: 26px; }
+/* the scrollbar sits in the right edge's gutter, so the right edges line up whether it shows or not */
+.fbody { padding-bottom: 0; margin-right: -9px; scrollbar-gutter: stable; }
+.fgrid { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; row-gap: 8px; align-items: center; }
+.fgrid > .lbl { grid-column: 1; }
+.fgrid > .fwide { grid-column: 2 / 4; }
+.fbtns { display: flex; gap: 6px; margin-left: 12px; }
+.fcell { display: flex; min-width: 0; }
+.fcell > .combo, .fcell > .entry { flex: 1; min-width: 0; }
+#form .check { font: 14px/19px var(--ui); height: 26px; }
+#form .combo .entry { height: auto; }
+.fbar { display: flex; justify-content: flex-end; gap: 6px; margin: 12px 0; flex: none; }
+
 /* settings page (vision "Direction from Reid", 2026-11-21): takes the launcher's place; app-wide choices only */
 #settings { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 var(--pad); }
-body[data-view="settings"] #main, body[data-view="settings"] #medium { display: none; }
+body[data-view="settings"] #main, body[data-view="settings"] #medium, body[data-view="settings"] #form { display: none; }
 body[data-view="settings"] #settings { display: flex; }
 body[data-size="medium"] #settings { padding: 0 16px; }
 .shead { display: flex; align-items: center; margin: 18px 0 12px; flex: none; }

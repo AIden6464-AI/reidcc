@@ -1,6 +1,6 @@
 # Vision version 1: sizes, session windows, snap, headless, orchestrator
 
-Status: **session window, snap, and all three sizes (full, medium, mini pod) built as betas in Rust.** These are the ideas. How they get built (the Rust
+Status: **session window, snap, the sizes and the pod built as betas in Rust** (under the old names full / medium / mini pod; renaming to main / medium / small with the pod as a toggle is to do, see §1). These are the ideas. How they get built (the Rust
 rewrite) is a separate spec: `vision\Spec\SPEC-rust-rewrite.md`. The rules here are part of the vision;
 the design doc's "Vision version 1" section points here.
 
@@ -54,7 +54,22 @@ The ideas, one per line, so nothing gets lost:
 - The engines' own programs (Claude Code, Codex, OpenCode) still run as themselves, with every
   slash command, login and approval prompt working.
 
-## 1. Three sizes
+## 1. Three sizes, and the pod
+
+> "this is main      first image        sec is medium           small is        and pod is   (witch should be a toggle not a size thange)" (Reid, 2026-11-22, with four screenshots: the wide layout, the form, the folder / sessions / combos layout, and the pod)
+
+The sizes are **main**, **medium** and **small**. The **pod** is a toggle, not a size:
+
+| Name | Was | Shows |
+|---|---|---|
+| **main** | full, wide (1000 × 880) | the profile list beside the profile's fields |
+| **medium** | full's form (from 480 × 720, `Spec\SPEC-form.md`) | the same things in the old launcher's tall, narrow form |
+| **small** | medium (380 × 320) | folder, `sessions`, `combos` |
+| **pod** (toggle) | mini pod, the third size | the capsule. Toggling folds the launcher from any size; toggling again brings it back at the size it was. Dragging the window small doesn't fold into it |
+
+**Not built yet** (palette §5): the app still names them full / form / medium, `Alt+1` is full, `Alt+2` is
+today's medium (small), no key goes to the form, and `Alt+3` or dragging under 340 × 240 folds into the
+pod. The rest of this section describes what's built, with the old names.
 
 The window size is the mode. Dragging an edge or corner moves between sizes at two thresholds, and
 `Alt+1/2/3` jumps straight to one.
@@ -72,6 +87,10 @@ The motion between sizes follows the design doc: no bounce, 120–180 ms, ease
 - The page picks its layout from its own size. It's full while the full layout fits (960 × 820, or less on
   a short screen), and medium below that. Dragging an edge across that line switches it. The second
   threshold is under 340 × 240: let go there and it folds into the mini pod.
+  - Built 2026-11-22 (`vision\Spec\SPEC-form.md`): a tall, narrow window (from 480 × 720) keeps full as the
+    old launcher's form instead of dropping to medium; medium is only for windows smaller than that. Views push
+    (`240ms`) instead of cutting. See "Vision version 1" in the design doc.
+    > "old vs new in the same form    can we meger the uis for the 2.0  because i like the form facter also can we have the ui like slide in to the other veiw not just switch" (Reid, 2026-11-22, with a screenshot of the old Python launcher beside Reidcc 0.2.0 at the same tall, narrow window size, where 0.2.0 showed medium)
 - `Alt+1` and `Alt+2` ease the window to full (1000 × 880) or medium (380 × 320) in 160 ms with the
   design ease. The top-left corner stays put unless the new size would go off screen.
 - Medium is semi-mini, changed 2026-11-21:
@@ -223,7 +242,7 @@ Reid left this open ("or something like that"). The first useful step, after 1�
 
 ## Words (proposed; the voice guide lists them as not built)
 
-`full` · `medium` · `mini pod` · `combo` · `session window` · `snap` / `unsnap` · `headless` ·
+`main` · `medium` · `small` · `pod` (a toggle, not a size; were `full` · `medium` · `mini pod` until Reid, 2026-11-22) · `combo` · `session window` · `snap` / `unsnap` · `headless` ·
 `run strip` · `running` / `waiting for you` / `finished` / `failed` · `rig`
 
 Design names, not on-screen labels: `shimmer` (the drag light), `fuse` (the snap sequence), `capsule` and

@@ -165,6 +165,115 @@ def mini_pod(t, bin_, seen):
     check("closing the pod closes Reidcc (nothing hidden left running)", quit_)
 
 
+def resize_inner(t, w, h):
+    """Resize so the page gets w x h CSS px (the frame stays what it is)."""
+    sc = u32.GetDpiForWindow(W.HWND(t.hwnd)) / 96
+    r = W.RECT()
+    u32.GetWindowRect(W.HWND(t.hwnd), ctypes.byref(r))
+    iw, ih = t.js("[innerWidth, innerHeight]")
+    resize_outer(t.hwnd, r.right - r.left + round((w - iw) * sc), r.bottom - r.top + round((h - ih) * sc))
+    time.sleep(0.4)
+
+
+def wheel(t, sel):
+    t.js("document.querySelector(%s).dispatchEvent(new WheelEvent('wheel', {deltaY: 100, bubbles: true, cancelable: true}))" % json.dumps(sel))
+    time.sleep(0.4)
+
+
+def form_checks(t, cfgp, w0, h0):
+    """The form (vision\\Spec\\SPEC-form.md Part 5): the old launcher's layout for a narrower window."""
+    t.js("window.__slides = []; const a = Element.prototype.animate;"
+         "Element.prototype.animate = function (k, o) { __slides.push(this.id); return a.call(this, k, o); }")
+    resize_inner(t, 500, 860)
+    s = size_now(t)
+    check("500 x 860: the form, with the folder in it", s[0] == "form" and folder_in(t, "form"), s)
+    check("dragging there cuts (no push)", t.js("__slides") == [], t.js("__slides"))
+    vis = t.js("['#form', '#main', '.lb'].map(q => document.querySelector(q).offsetParent !== null)")
+    check("the form shows; the wide layout and its list don't", vis == [True, False, False], vis)
+    rows = t.js("""[...document.querySelectorAll('.fgrid > :not(.lbl):not(.fbtns)')].map(e => {
+        const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height)]; })""")
+    pitch = {b[0] - a[0] for a, b in zip(rows, rows[1:])}
+    check("every row is 26 px tall on a 34 px pitch (%d rows)" % len(rows),
+          len(rows) == 17 and {h for _, h in rows} == {26} and pitch == {34}, rows)
+    rights = t.js("""[...document.querySelectorAll('.fgrid > .fwide, .fgrid > .fbtns')].map(e =>
+        Math.round(e.getBoundingClientRect().right)).concat([Math.round(document.querySelector('.fbar').getBoundingClientRect().right)])""")
+    check("every right edge lines up (fields, button columns, the bottom bar)", max(rights) - min(rights) <= 1, rights)
+    bar = t.js("[...document.querySelector('.fbar').children].map(b => b.textContent)")
+    check("one bottom bar, open gate last", bar == ["open memory", "open reid.json", "resume", "open gate"], bar)
+    fonts = t.js("[getComputedStyle(document.querySelector('.fgrid > .lbl')).fontSize, getComputedStyle(document.querySelector('.wordmark')).fontSize]")
+    check("labels 14 px, the wordmark 28 px", fonts == ["14px", "28px"], fonts)
+    texts = t.js("[...document.querySelectorAll('#form .fcell .check')].map(c => c.textContent)")
+    check("each switch is its own row with its sentence", len(texts) == 4 and texts[0] == "add your memory file to the session", texts)
+    check("nothing sticks out sideways", t.js("document.getElementById('form').scrollWidth <= innerWidth"))
+    os.makedirs(SHOTS, exist_ok=True)
+    guihome.client_shot(t.hwnd).save(os.path.join(SHOTS, "form.png"))
+
+    st0 = t.js("__reid.state()")
+    check("at 500 x 860 everything fits, no scrolling", t.js(
+        "(b => b.scrollHeight <= b.clientHeight)(document.querySelector('.fbody'))"),
+        t.js("(b => [b.scrollHeight, b.clientHeight])(document.querySelector('.fbody'))"))
+    wheel(t, "#form .fgrid > .combo:nth-child(5)")  # the profile combo: the wheel steps to the next profile
+    st = t.js("[__reid.state().sel, __reid.state().title, __reid.state().name]")
+    want = st0["sel"] + 1
+    check("picking in the profile combo selects that profile", st == [want, st0["names"][want], st0["names"][want]], st)
+    mem0 = t.js("__reid.state().vars.memory")
+    t.js("document.querySelector('#form .fcell .check').click()")
+    time.sleep(0.3)
+    check("a checkbox row is the same switch", t.js("__reid.state().vars.memory") == (not mem0))
+    t.js("document.querySelector('#form .fcell .check').click()")
+    time.sleep(0.3)
+    check("the prompt combo follows the persona mode, greyed with it",
+          t.js("document.querySelectorAll('#form .fgrid > .combo')[2].classList.contains('disabled') === __reid.state().disabled.mode"))
+    t.js("document.querySelector('#form .fgrid > .check').click()")  # default
+    time.sleep(0.4)
+    d = json.load(open(cfgp, encoding="utf-8")).get("default")
+    check("the default row makes this profile the default", d == st0["names"][want] and t.js(
+        "document.querySelector('#form .fgrid > .check .ind') !== null"), d)
+
+    # the form's opening (vision\Spec\SPEC-hand.md): the emblem, not the gate
+    t.js("__reid.hover(true)")
+    time.sleep(0.4)
+    check("hovering open gate in the form shows the emblem's ghost", t.js("__reid.ghostOf()") == "emblem", t.js("__reid.ghostOf()"))
+    t.js("__reid.hover(false)")
+    time.sleep(0.3)
+    t.js("__reid.selectRow(%d)" % t.js("__reid.state().names").index("size_live"))
+    time.sleep(0.3)
+    t.js("__reid.button('open gate')")
+    end, op = time.time() + 3, None
+    while time.time() < end and not op:
+        op = t.js("__reid.opening()")
+        time.sleep(0.03)
+    check("open gate in the form plays the emblem", op == {"name": "emblem", "active": True}, op)
+    title, end, h = "claude · size_live", time.time() + 8, None
+    while time.time() < end and not (h and u32.IsWindowVisible(W.HWND(h)) and not t.js("__reid.opening().active")):
+        h = find(t.proc.pid, title)
+        time.sleep(0.05)
+    check("then the session window appears and the emblem is done",
+          bool(h) and bool(u32.IsWindowVisible(W.HWND(h))) and not t.js("__reid.opening().active"))
+    if h:
+        u32.PostMessageW(W.HWND(h), 0x10, 0, 0)  # WM_CLOSE: the pod test later opens size_live again
+        end = time.time() + 6
+        while time.time() < end and find(t.proc.pid, title):
+            time.sleep(0.1)
+        time.sleep(1.2)  # the session's processes end after its window
+
+    resize_inner(t, 500, 720)
+    scroll = t.js("""(() => { const b = document.querySelector('.fbody'), g = [...document.querySelectorAll('button')]
+        .find(x => x.textContent === 'open gate').getBoundingClientRect();
+        return [b.scrollHeight > b.clientHeight, g.bottom <= innerHeight, __reid.size()]; })()""")
+    check("500 x 720: still the form, it scrolls, open gate stays on screen", scroll == [True, True, "form"], scroll)
+    resize_inner(t, 470, 720)
+    check("narrower than the old minsize: medium", size_now(t)[0] == "medium", size_now(t))
+    resize_inner(t, 500, 860)
+    t.js("__slides = []")
+    key(t, "Digit2", alt=True)
+    time.sleep(0.6)
+    reduced = t.js("matchMedia('(prefers-reduced-motion: reduce)').matches")
+    slides = t.js("__slides")
+    check("Alt+2 from the form pushes medium in (a cut with reduced motion)",
+          size_now(t)[0] == "medium" and (slides == [] if reduced else slides == ["form", "medium"]), (reduced, slides))
+
+
 def main():
     real = {f: os.path.getmtime(os.path.join(guihome.REIDCC, f)) for f in ("reid.json", "reid_state.json")}
     root, home = guihome.make_home()
@@ -237,9 +346,7 @@ def main():
         r = W.RECT()
         u32.GetWindowRect(W.HWND(t.hwnd), ctypes.byref(r))
         w0, h0 = r.right - r.left, r.bottom - r.top
-        resize_outer(t.hwnd, int(w0 * 0.75), h0)
-        time.sleep(0.4)
-        check("dragged narrower than the full layout: medium", size_now(t)[0] == "medium", size_now(t))
+        form_checks(t, cfgp, w0, h0)
         resize_outer(t.hwnd, w0, h0)
         time.sleep(0.4)
         check("dragged back: full", size_now(t)[0] == "full" and folder_in(t, "main"), size_now(t))

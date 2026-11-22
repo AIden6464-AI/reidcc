@@ -144,8 +144,8 @@ Proposed words for vision version 1 (`vision\SPEC-vision-v1.md`; not current UI 
 
 | Situation | Proposed |
 |---|---|
-| Window sizes | `full` · `medium` · `mini pod` (all three built in the Rust app, 2026-11-20). Each pod slot reads `CL  main  ●  01:42 · ctx 42% · lim 61%` (mark `CL` / `CX` / `OC`, profile, dot, elapsed, then Claude's own usage; a failed one adds `code <n>`); an empty pod says `No sessions running.` (Reid: "For the mini pod I can have more on it", 2026-11-21) |
-| One key opens a profile | `combo`. Built in the Rust app: the medium size's list labels are `sessions` and `combos`, and an empty list says `No sessions running.` |
+| Window sizes | `main` · `medium` · `small`, and the `pod`, which is a toggle, not a size (Reid: "this is main [...] sec is medium [...] small is [...] and pod is   (witch should be a toggle not a size thange)", 2026-11-22). `main` is the wide layout, `medium` the form, `small` folder / sessions / combos. Not renamed in the app yet: it still says `full` · `medium` · `mini pod` (built 2026-11-20). Each pod slot reads `CL  main  ●  01:42 · ctx 42% · lim 61%` (mark `CL` / `CX` / `OC`, profile, dot, elapsed, then Claude's own usage; a failed one adds `code <n>`); an empty pod says `No sessions running.` (Reid: "For the mini pod I can have more on it", 2026-11-21) |
+| One key opens a profile | `combo`. Built in the Rust app: the small size's list labels are `sessions` and `combos` (built as `medium`), and an empty list says `No sessions running.` |
 | The window the gate opens into | a `session window` by default; Windows Terminal is the other choice (`Session open in Windows Terminal.`) |
 | Joining windows | `snap` / `unsnap` |
 | Shrunk session | `headless`; its line is the `run strip` |
@@ -164,7 +164,7 @@ Proposed words for vision version 1 (`vision\SPEC-vision-v1.md`; not current UI 
 | Status tag | `● ready · persona + memory` (shows only what the selected profile has: `● ready · persona`, `● ready · memory`, `● ready`) |
 | Primary button | `pick folder` |
 | Secondary button | `open recent ▾` |
-| Flow hint | `folder → profile → open gate` (full size only; semi-mini medium drops it and the `folder` label, Reid: "The medium is to medium can we make it simi-mini", 2026-11-21) |
+| Flow hint | `folder → profile → open gate` (main only; small, built as the semi-mini medium, drops it and the `folder` label, Reid: "The medium is to medium can we make it simi-mini", 2026-11-21) |
 | Profile picker | `profile` label + `kure ▾` |
 | Profile tags | `PERSONA · KURE · MEMORY · ON` |
 | Start button | `open gate` |
