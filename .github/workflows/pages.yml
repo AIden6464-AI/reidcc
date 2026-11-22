@@ -1,6 +1,7 @@
 # The website (vision/Spec/SPEC-github-pages.md), built from main's site/ and deployed to GitHub Pages.
 # main is pushed by "publish main" with GITHUB_TOKEN, and such pushes don't start other workflows, so
-# this runs when that workflow finishes. A release re-runs it so the download button finds the installer.
+# this runs when that workflow finishes. release.yml dispatches it after a release (its own release event
+# starts nothing), so the download button finds the installer; the release trigger covers releases made by hand.
 name: pages
 
 on:

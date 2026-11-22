@@ -282,7 +282,7 @@ onBeforeUnmount(() => stop());
 
     <section class="band" id="download" data-reveal><div class="wrap split">
       <div v-if="release">
-        <span class="tag" style="--i:0">download · v{{ release.version }}</span>
+        <span class="tag" style="--i:0">download · v{{ release.version }} beta</span>
         <h2 style="--i:1">Install in a minute. Updates itself.</h2>
         <p class="sub" style="--i:2">One installer for your account, no admin rights. Your profiles and memory live in your own folder and survive every update and uninstall.</p>
         <div class="ctas" style="--i:3">
@@ -313,7 +313,7 @@ onBeforeUnmount(() => stop());
 
     <footer data-reveal><div class="wrap">
       <img style="--i:0" :src="emblemSrc" alt="" width="72" height="72" loading="lazy">
-      <div style="--i:1"><div>Only the essentials, all in sight.</div><div class="tag" style="margin-top:4px">reidcc v{{ version }} · built on claude code and codex</div></div>
+      <div style="--i:1"><div>Only the essentials, all in sight.</div><div class="tag" style="margin-top:4px">reidcc v{{ version }} beta · built on claude code and codex</div></div>
       <div class="links" style="--i:2"><a :href="docs">docs</a><a :href="`${repo}/releases`">changelog</a><a :href="repo">github</a><a :href="`${repo}/blob/main/LICENSE.md`">license</a></div>
     </div></footer>
   </div>
