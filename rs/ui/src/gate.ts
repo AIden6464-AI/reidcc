@@ -48,8 +48,9 @@ export class Gate {
   private hoverJob = 0;
   private gen = 0;
 
-  constructor(public meta: Meta, private host: Host) {
-    this.root.id = "gate";
+  /** name: the asset prefix and element id ("gate", or "emblem" for the form's opening, SPEC-hand.md) */
+  constructor(public meta: Meta, private host: Host, public name = "gate") {
+    this.root.id = name;
     this.head.style.color = C.text2;
     this.subhead.style.color = C.text3;
     this.root.append(this.canvas, this.tag, this.head, this.subhead);
@@ -93,7 +94,8 @@ export class Gate {
     if (this.images.has(name)) return Promise.resolve(this.images.get(name)!);
     const busy = this.loading.get(name);
     if (busy) return busy;
-    const rel = name === "ghost" ? "gate_ghost.png" : name === "gate" ? "gate.png" : `gate_${name.slice(0, -2)}/${name.slice(-2)}.png`;
+    const p0 = this.name;
+    const rel = name === "ghost" ? `${p0}_ghost.png` : name === "gate" ? `${p0}.png` : `${p0}_${name.slice(0, -2)}/${name.slice(-2)}.png`;
     const gen = this.gen;
     const p = fetch(ASSETS + rel).then((r) => (r.ok ? r.blob() : null)).then(async (b) => {
       if (!b) return null;
@@ -101,7 +103,7 @@ export class Gate {
       if (name === "ghost") bmp = await this.keyed(bmp); // the key colour is see-through
       return bmp;
     }).catch(() => null).then((bmp) => {
-      if (gen === this.gen || !name.startsWith("open")) this.images.set(name, bmp);
+      if (gen === this.gen || !name.startsWith(this.meta.steps[this.meta.steps.length - 1][0])) this.images.set(name, bmp);
       this.loading.delete(name);
       if (this.current === name) this.draw(name);
       return bmp;
@@ -150,9 +152,9 @@ export class Gate {
     this.x0 = Math.floor((w - iw) / 2);
     this.y0 = Math.floor((h - ih) / 2);
     // canvas text anchor "e": right edge at x, centred on y (one 15 px line)
-    this.tag.style.right = w - (this.x0 + this.meta.tag[0]) + "px";
+    this.tag.style.right = Math.max(28, w - (this.x0 + this.meta.tag[0])) + "px"; // kept in the window when the art is wider
     // Tk: anchor e centres the 15 px line with whole pixels (y - 7); GDI sets Cascadia Mono a pixel lower than WebView2
-    this.tag.style.top = this.y0 + this.meta.tag[1] - 7 + 1 + "px";
+    this.tag.style.top = Math.min(h - 22, this.y0 + this.meta.tag[1]) - 7 + 1 + "px";
     this.head.style.left = "24px"; this.head.style.top = "21px"; // where the terminal's first line will be
     this.subhead.style.left = "24px"; this.subhead.style.top = "45px"; // 20 / 44 in Tk, +1 as above
     if (this.current) this.draw(this.current);
@@ -327,7 +329,8 @@ export class Gate {
   }
 
   showDark(title: string, sub: string) {
-    this.showAt((this.meta.steps[2][2] + this.meta.steps[2][3]) * PACE, true).then(() => {
+    const last = this.meta.steps[this.meta.steps.length - 1];
+    this.showAt((last[2] + last[3]) * PACE, true).then(() => {
       this.setTag("REIDCC · OPENING", C.bronze);
       this.head.textContent = title + " · opening…";
       this.subhead.textContent = sub;

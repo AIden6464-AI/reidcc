@@ -96,6 +96,8 @@ struct Init {
     ops: Vec<Op>,
     folder: String,
     gate: Option<Value>,
+    /// the form's opening (SPEC-hand.md): the emblem grows, then the view zooms into the emerald
+    emblem: Option<Value>,
     test: bool,
     /// the smallest size the full layout fits in (logical px); below it the page folds to medium
     full_min: (f64, f64),
@@ -108,11 +110,11 @@ fn init(app: AppHandle, st: S) -> Init {
     let d = cfg.as_ref().and_then(|c| c.get("default")).and_then(Value::as_str).map(String::from);
     m.reload(d.as_deref());
     m.ops.push(Op::Focus { target: (if st.focus_list { "list" } else { "pick" }).into() });
-    let gate = asset("assets\\gate.json").and_then(|p| py::read_text(&p, false).ok())
-        .and_then(|t| serde_json::from_str(&t).ok());
+    let meta = |f: &str| asset(f).and_then(|p| py::read_text(&p, false).ok()).and_then(|t| serde_json::from_str(&t).ok());
+    let (gate, emblem) = (meta("assets\\gate.json"), meta("assets\\emblem.json"));
     let folder = m.folder.clone();
     let full_min = *sizes::FULL_MIN.get().unwrap_or(&(960.0, 820.0));
-    Init { ops: done(&app, &mut m), folder, gate, test: st.test, full_min }
+    Init { ops: done(&app, &mut m), folder, gate, emblem, test: st.test, full_min }
 }
 
 #[tauri::command]
