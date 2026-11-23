@@ -461,7 +461,7 @@ impl Tui {
         let p = prof(cfg, name);
         let (error, preview, have) = profile::check(ctx, cfg, name, &self.cwd);
 
-        let mut top = vec![format!(" {TEXT}Open a folder. Start coding.{R}"),
+        let mut top = vec![format!(" {TEXT}Folder. Profile. Gate.{R}"),
                            format!(" {DIM}{}{R}", fit("Pick a project and a profile. Your persona, memory and settings are already there.", w - 2)),
                            String::new()];
         let hint = "w pick folder";

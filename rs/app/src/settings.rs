@@ -15,6 +15,8 @@ pub struct View {
     open_in: String,
     /// "claude" or "codex": what `new profile` makes
     engine: String,
+    /// "main", "medium" or "small": the size the launcher opens at
+    start_size: String,
     version: String,
     installed: bool,
     home: String,
@@ -30,6 +32,7 @@ fn view(st: &App) -> View {
     View {
         open_in: if key("open_in") == "terminal" { "terminal" } else { "reidcc" }.into(),
         engine: if key("default_engine") == "codex" { "codex" } else { "claude" }.into(),
+        start_size: crate::sizes::start_size(&key("start_size")).into(),
         version: env!("CARGO_PKG_VERSION").into(),
         installed: reidcc::installed_copy(),
         home: m.ctx.home.clone(),
@@ -49,6 +52,7 @@ pub fn settings_set(st: S, key: String, value: String) -> View {
     let known = match key.as_str() {
         "open_in" => Some(("open_in", "reidcc")),
         "engine" => Some(("default_engine", "claude")),
+        "start_size" => Some(("start_size", "main")),
         _ => None,
     };
     if let Some((k, default)) = known {

@@ -3,7 +3,7 @@
     "active": true,
     "targets": ["nsis"],
     "publisher": "Reidcc",
-    "shortDescription": "Reidcc: open a folder, start coding",
+    "shortDescription": "Reidcc: Folder. Profile. Gate.",
     "externalBin": ["binaries/reid"],
     "resources": { "../../assets/": "assets/", "../../reidcc.ico": "reidcc.ico" },
     "createUpdaterArtifacts": true,

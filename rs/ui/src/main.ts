@@ -175,7 +175,7 @@ class App {
     const col = el("div");
     col.style.cssText = `flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding:0 ${PAD}px`;
     m.append(col);
-    const title = label("Open a folder. Start coding.", "text", "title");
+    const title = label("Folder. Profile. Gate.", "text", "title");
     title.style.cssText = "margin:12px 0 2px;align-self:flex-start";
     const sub = label("Pick a project and a profile. Your persona, memory and settings are already there.", "text2", "body");
     sub.style.alignSelf = "flex-start";
@@ -373,7 +373,7 @@ class App {
     f.id = "form";
     const head = el("div", "fhead");
     const hl = el("div");
-    const sub = label("Open a folder. Start coding.", "text2", "body");
+    const sub = label("Folder. Profile. Gate.", "text2", "body");
     sub.classList.add("fsub");
     hl.append(el("div", "wordmark", "Reidcc"), sub);
     head.append(hl, button("settings", () => this.openSettings()));

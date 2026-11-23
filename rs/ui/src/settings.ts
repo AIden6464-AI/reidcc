@@ -3,7 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { C, Check, button, el, label } from "./widgets";
 
-type View = { open_in: string; engine: string; version: string; installed: boolean; home: string; temp: string; ai_temp: string };
+type View = { open_in: string; engine: string; start_size: string; version: string; installed: boolean; home: string; temp: string; ai_temp: string };
 type Plugin = { id: string; version: string; enabled: boolean };
 
 export class Settings {
@@ -26,6 +26,8 @@ export class Settings {
       this.section("sessions open in", this.choice("open_in", [["reidcc", "Reidcc session window"], ["terminal", "Windows Terminal"]])),
       this.section("default engine", this.choice("engine", [["claude", "claude"], ["codex", "codex"]]),
         this.note("new profile starts on this engine")),
+      this.section("default size", this.choice("start_size", [["main", "main"], ["medium", "medium"], ["small", "small"]]),
+        this.note("Reidcc opens at this size. Alt+1 and Alt+2 still switch while it's open.")),
       this.section("updates", this.updates()),
       this.section("plugins", this.plugins, this.note("Claude Code's installed plugins. Turn them on or off with /plugin in a session.")),
       this.section("locations", this.path("local data", "home"), this.path("temp files", "temp"), this.path("ai temp work", "ai_temp"),
@@ -87,7 +89,7 @@ export class Settings {
   }
 
   paint(v: View) {
-    for (const [key, cur] of [["open_in", v.open_in], ["engine", v.engine]]) for (const [val, r] of this.radios[key]) r.set(val === cur);
+    for (const [key, cur] of [["open_in", v.open_in], ["engine", v.engine], ["start_size", v.start_size]]) for (const [val, r] of this.radios[key]) r.set(val === cur);
     this.version.textContent = `Reidcc ${v.version}${v.installed ? "" : " · not the installed copy"}`;
     this.paths.home.textContent = v.home;
     this.paths.temp.textContent = v.temp;
