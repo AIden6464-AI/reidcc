@@ -1622,7 +1622,7 @@ class TUI:
         p = cfg["profiles"][name]
         error, preview, have = profile_check(cfg, name, self.cwd)
 
-        top = [" " + TEXT + "Open a folder. Start coding." + R,
+        top = [" " + TEXT + "Folder. Profile. Gate." + R,
                " " + DIM + fit("Pick a project and a profile. Your persona, memory and settings are already there.", w - 2) + R,
                ""]
         hint = "w pick folder"

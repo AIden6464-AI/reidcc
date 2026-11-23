@@ -59,7 +59,7 @@ separators, zero radius, `emerald` only for the running signal.
 ```
  ┌────────────────────────────────────────────────┐
  │  Reidcc                              [settings]│
- │  Open a folder. Start coding.                  │
+ │  Folder. Profile. Gate.                        │
  │                                                │
  │  folder      [~/projects/kiln         ▾]  [browse]
  │  profile     [main                    ▾]  [new] [delete]

@@ -29,7 +29,7 @@ export default async () => {
   const release = await latest();
   return defineConfig({
     title: "Reidcc",
-    description: "Open a folder. Start coding. A launcher for Claude Code and Codex.",
+    description: "Folder. Profile. Gate. A launcher for Claude Code and Codex.",
     base: "/reidcc/",
     lang: "en",
     appearance: "force-dark",
@@ -39,7 +39,7 @@ export default async () => {
     head: [
       ["link", { rel: "icon", type: "image/png", href: "/reidcc/favicon.png" }],
       ["meta", { property: "og:title", content: "Reidcc" }],
-      ["meta", { property: "og:description", content: "Open a folder. Start coding." }],
+      ["meta", { property: "og:description", content: "Folder. Profile. Gate." }],
       ["meta", { property: "og:image", content: "https://aiden6464-ai.github.io/reidcc/og.png" }],
       ["meta", { name: "theme-color", content: "#040404" }],
     ],

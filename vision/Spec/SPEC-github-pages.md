@@ -160,7 +160,7 @@ Order is the app's order. Every band is one claim plus its proof:
 
 1. **Top bar:** RC logo, `Reidcc`, `docs · download · changelog · github`; right: `V0.1.1 · WINDOWS`
    (read from `rs\app\tauri.conf.json` at build time, so it can't go stale).
-2. **Hero:** tag `REIDCC · READY`, *Open a folder. Start coding.*, the one-sentence pitch from the voice
+2. **Hero:** tag `REIDCC · READY`, *Folder. Profile. Gate.*, the one-sentence pitch from the voice
    guide, `download for windows` + `read the docs`, hint `folder → profile → open gate`. Right: the gate
    (Emerald Portal), framed. Ghost on hover.
 3. **The flow:** Classical Blueprint Flow art, then three hairline columns `01 · FOLDER`, `02 · PROFILE`,

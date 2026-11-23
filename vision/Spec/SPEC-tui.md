@@ -101,7 +101,7 @@ motion with no lag.
    fields sit on `surface-1` bands. The selected profile is a full-width `surface-2` band with a thin
    emerald bar at its left edge, instead of `→`. The focused field gets the same band. Panels are
    framed with sharp hairlines (`┌─┐│└┘`) in `line` #2A2724.
-2. **Type hierarchy.** Bold for `Open a folder. Start coding.` and the profile name. Tags letter-spaced
+2. **Type hierarchy.** Bold for `Folder. Profile. Gate.` and the profile name. Tags letter-spaced
    in caps (`P E R S O N A · N Y X I E`). Labels `text-3`, values `text`, help `text-3`. One emerald
    point on screen: the ready `●` (the selection bar is the second only while it's there; see open
    question 6).

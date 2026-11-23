@@ -64,6 +64,8 @@ def main():
         check(radio("codex"), "click codex")
         check(wait(lambda: cfg().get("default_engine") == "codex", 5), "default_engine = codex in reid.json")
         check(not radio("dev releases") or "updates" not in cfg(), "dev releases is disabled (writes nothing)")
+        check(radio("medium"), "click start size medium")
+        check(wait(lambda: cfg().get("start_size") == "medium", 5), "start_size = medium in reid.json")
 
         t.js("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
         t.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
@@ -80,6 +82,12 @@ def main():
         t.js("__reid.button('back')")
         check(not t.js("__reid.settings().open"), "back returns to the launcher")
         guihome.client_shot(t.hwnd).save(os.path.join(OUT, "settings_button.png"))
+        t.close()
+        t = guihome.Tauri(root)  # start size: the next launch opens at medium (the form)
+        check(wait(lambda: t.js("__reid.size()") == "form", 10), "relaunch opens at medium: %s" % t.js("[__reid.size(), innerWidth, innerHeight]"))
+        t.js("__reid.button('settings')")
+        check(radio("main"), "click start size main")
+        check(wait(lambda: "start_size" not in cfg(), 5), "default removes start_size")
     finally:
         t.close()
         guihome.remove_home(root)

@@ -7,8 +7,14 @@ Use this when writing any text a user will see. Colors come from `reidcc-palette
 
 ## 1. What Reidcc is (say it this way)
 
-**One line:**
-> Open a folder. Start coding.
+**One line (the tagline):**
+> Folder. Profile. Gate.
+
+> "New tagline/ Folder. Profile. Gate." (Reid, 2026-11-22)
+
+The three steps, in the order you take them: pick a folder, pick a profile, open the gate. It replaces
+"Open a folder. Start coding." everywhere: the launcher title (GUI and TUI), the installer description, the
+READMEs and the website.
 
 **One sentence:**
 > Reidcc is a simple launcher for Claude Code: pick a folder and a profile, and your
@@ -29,9 +35,9 @@ once Reidcc itself shows them.
 
 Simple means nothing to hunt for, not fewer things on screen. See "Direction from Reid" in
 `reidcc_design_motion_system.md`. The settings page *is* wanted ("In the Reidcc app we do need a
-settings page", Reid, 2026-11-21; built in the Rust GUI the same day): it holds only app-wide choices, in five sections:
-`plugins`, `default engine`, `updates` (stable / dev), `sessions open in` (Reidcc / Windows Terminal),
-`locations` (`local data`, `temp files`, `ai temp work`).
+settings page", Reid, 2026-11-21; built in the Rust GUI the same day): it holds only app-wide choices, in six sections:
+`sessions open in` (Reidcc / Windows Terminal), `default engine`, `default size` (main / medium / small),
+`updates` (stable / dev), `plugins`, `locations` (`local data`, `temp files`, `ai temp work`).
 A profile's fields never go there.
 
 ---
@@ -159,7 +165,7 @@ Proposed words for vision version 1 (`vision\SPEC-vision-v1.md`; not current UI 
 ### Launcher
 | Spot | Text |
 |---|---|
-| Title | `Open a folder. Start coding.` |
+| Title | `Folder. Profile. Gate.` |
 | Subtitle | `Pick a project and a profile. Your persona, memory and settings are already there.` |
 | Status tag | `● ready · persona + memory` (shows only what the selected profile has: `● ready · persona`, `● ready · memory`, `● ready`) |
 | Primary button | `pick folder` |
@@ -238,7 +244,7 @@ Proposed words for vision version 1 (`vision\SPEC-vision-v1.md`; not current UI 
 ### Terminal (reid TUI)
 | Spot | Text |
 |---|---|
-| Title | `Open a folder. Start coding.` / `Pick a project and a profile. Your persona, memory and settings are already there.` (same as the GUI) |
+| Title | `Folder. Profile. Gate.` / `Pick a project and a profile. Your persona, memory and settings are already there.` (same as the GUI) |
 | Folder row | `folder  ~/folder` … `w pick folder` |
 | Profile panel | `profiles` list; the selected profile's name + `PERSONA · NYXIE · MEMORY · ON`, then the GUI's field rows, `command` |
 | Keys | `↵ open gate · r resume · e edit · n new · x delete · d default · m memory · q quit` / `in a session: /reid comes back here` |

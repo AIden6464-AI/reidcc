@@ -29,9 +29,19 @@ What this means for every screen:
    The 2026-11-17 rule was about the old launcher, where *everything* sat in settings. The settings
    page is wanted; it just never takes what's on the main screen. It holds, each as its own section:
    - **Plugins:** installed plugins and the `reidcc` marketplace.
+
+     > "Also for the settings for the plugins I was think that in there you could install plugins like in the settings and auto detect if it's codex or Claude  also on or off where Claude and codex doesn't even know that's it's off or there" (Reid, 2026-11-22)
+
+     The plugins section is where plugins are **installed**, not only listed. Reidcc tells by itself
+     whether a plugin is for Claude Code or Codex and puts it in the right place; nobody picks the engine.
+     Each plugin has an **on / off** switch, and off means gone as far as the engine can tell: an off
+     plugin isn't loaded, listed or mentioned to Claude Code or Codex at all, not just marked disabled
+     in their settings. Turning it on again brings it back as it was. Not built yet (palette §5).
    - **Default engine:** which engine (Claude, Codex) a new profile starts with.
    - **Updates:** stable releases or dev releases.
    - **Where sessions open:** Reidcc's own session window (the default) or Windows Terminal.
+   - **Default size:** main, medium or small, the size Reidcc opens at ("Can we add to the settings
+     default size", Reid, 2026-11-22). Built the same day.
 
    > "Default local stuff, temp files.   And the temp work the ai uses location, etc" (Reid, 2026-11-21)
 
@@ -232,7 +242,7 @@ only appear when they carry meaning.
 Two fonts. Strict roles.
 
 1. **UI & Prose (`Inter`, `Geist`, or system sans):**
-   - **Launcher Title:** `20px`, weight `500`, tracking `-0.02em`, line-height `1.3`. (`Open a folder. Start coding.`)
+   - **Launcher Title:** `20px`, weight `500`, tracking `-0.02em`, line-height `1.3`. (`Folder. Profile. Gate.`)
    - **Body / Session Text:** `14px`, weight `400`, line-height `1.6`. Comfortable reading width (`65ch–72ch` max).
    - **Buttons & Controls:** `13px`, weight `500`, lowercase (`pick folder`, `open gate`, `view diff`).
 
@@ -301,8 +311,8 @@ Animations in Reidcc feel like a well-machined hardware switch. Nothing floats, 
      plays even with Windows animations turned off: it's the one moment Reid asked to see.
 
    - **The TUI (`reid` in a terminal) is the same screen in text.** Top to bottom: the banner
-     (`folder → profile → ●` in linework boxes, dropped when the window is short), `Open a folder.
-     Start coding.`, the folder row, the profile list with the selected profile's fields beside it
+     (`folder → profile → ●` in linework boxes, dropped when the window is short), `Folder. Profile.
+     Gate.`, the folder row, the profile list with the selected profile's fields beside it
      (same rows as the GUI form), the command, the keys, then `folder → profile → open gate` and
      `● ready · persona + memory`. ↵ / r play the gate in text: the screen goes to the gate's dark
      ground, the arch fades in with its doors shut, the keystone lights, the doors swing open on bone

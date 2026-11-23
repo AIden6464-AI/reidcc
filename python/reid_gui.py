@@ -618,7 +618,7 @@ class App:
             tk.Label(m, image=self.banner, bg=C["canvas"], bd=0).pack(pady=(14, 0))
         col = tk.Frame(m, bg=C["canvas"])
         col.pack(fill="both", expand=True, padx=PAD)
-        self.label(col, "Open a folder. Start coding.", "text", "title").pack(anchor="w", pady=(12, 2))
+        self.label(col, "Folder. Profile. Gate.", "text", "title").pack(anchor="w", pady=(12, 2))
         self.label(col, "Pick a project and a profile. Your persona, memory and settings are already there.",
                    "text2", "body").pack(anchor="w")
 

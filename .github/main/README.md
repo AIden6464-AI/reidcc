@@ -5,7 +5,7 @@
 <h1 align="center">Reidcc</h1>
 
 <p align="center">
-  <strong>Open a folder. Start coding.</strong><br />
+  <strong>Folder. Profile. Gate.</strong><br />
   Only the essentials, all in sight.
 </p>
 
@@ -41,6 +41,9 @@ up. Every session shows where it is, which profile is running, and how much cont
 
 - **Updates:** when a newer release is out, the footer shows `update <version> · install`. Click it
   once your sessions have finished. In a terminal: `reid --update`. Nothing installs unless you ask.
+- **Offline:** Reidcc itself needs no internet. It goes online only to download the installer and for
+  updates (a check at start and every 6 hours; offline, it just skips it). Your profiles, memory and
+  personas stay on your PC. The sessions it opens (Claude Code, Codex) still need their own connection.
 - **Uninstall:** Settings → Apps → Reidcc. Your folder is kept.
 - **Also set up for you:** `reid` on your PATH, and the `/reid` command inside Claude Code (back to
   Reidcc with your conversation kept).

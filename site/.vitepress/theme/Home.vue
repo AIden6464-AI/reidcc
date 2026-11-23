@@ -228,7 +228,7 @@ onBeforeUnmount(() => stop());
       <div class="stage"><div class="wrap">
         <div class="copy" data-reveal>
           <span class="tag" style="--i:0">reidcc · ready</span>
-          <h1 style="--i:1">Open a folder.<br>Start coding.</h1>
+          <h1 style="--i:1">Folder.<br>Profile.<br>Gate.</h1>
           <p class="lead" style="--i:2">A launcher for Claude Code and Codex. Pick a folder and a profile, and your persona, memory and settings are already there.</p>
           <div class="ctas" style="--i:3">
             <a class="btn primary" id="open" href="#download">{{ release ? "download for windows" : "build from source" }}</a>
@@ -267,7 +267,7 @@ onBeforeUnmount(() => stop());
         <p class="sub" style="--i:2">Each session shows its folder, its profile, and how much context and limit you've used. Numbers, not adjectives.</p>
         <div class="tele" style="--i:3"><span>~/kiln</span><span>PROFILE · <b>MAIN</b></span><span>context <b data-count="42">42</b><b>%</b></span><span class="lim">limit <b data-count="81">81</b><b>%</b></span></div>
       </div>
-      <div class="frame" style="--i:2" data-measure><img :src="shotSrc" alt="A Reidcc session window" width="1000" height="910" loading="lazy"></div>
+      <div class="frame" style="--i:2" data-measure><img :src="shotSrc" alt="A Reidcc session window" width="1000" height="514" loading="lazy"></div>
     </div></section>
 
     <section class="band" data-reveal><div class="wrap">

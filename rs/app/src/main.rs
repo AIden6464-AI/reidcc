@@ -515,12 +515,19 @@ fn main() {
             let h = 880.min(sh - 140); // leave room for the title bar and the taskbar
             let _ = sizes::FULL.set((1000.0, h as f64));
             let _ = sizes::FULL_MIN.set((960.0, 820.min(h) as f64));
+            // Settings → start size (reid.json "start_size"); the page lays itself out for whatever size it gets
+            let start = app.state::<App>().m.lock().unwrap().cfg().and_then(|c| c.get("start_size").map(reidcc::pyjson::py_str));
+            let (ww, wh) = match sizes::start_size(&start.unwrap_or_default()) {
+                "medium" => (sizes::FORM.0 as i32, (sizes::FORM.1 as i32).min(sh - 140)),
+                "small" => (sizes::MEDIUM.0 as i32, sizes::MEDIUM.1 as i32),
+                _ => (1000, h),
+            };
             let mut b = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
                 .title(concat!("Reidcc ", env!("CARGO_PKG_VERSION")))
-                .inner_size(1000.0, h as f64)
+                .inner_size(ww as f64, wh as f64)
                 .min_inner_size(sizes::MIN.0, sizes::MIN.1) // medium below the full layout's size (vision v1 §1)
                 // Place it ourselves: Windows' cascade can push the bottom bar under the taskbar.
-                .position(0.max((sw - 1000) / 2) as f64, 0.max((sh - 48 - h - 40) / 2) as f64)
+                .position(0.max((sw - ww) / 2) as f64, 0.max((sh - 48 - wh - 40) / 2) as f64)
                 .background_color(tauri::window::Color(4, 4, 4, 255))
                 .theme(Some(tauri::Theme::Dark))
                 .visible(false);

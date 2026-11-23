@@ -19,6 +19,12 @@ pub static FULL: OnceLock<(f64, f64)> = OnceLock::new();
 pub static FULL_MIN: OnceLock<(f64, f64)> = OnceLock::new();
 /// Medium: the spec said "~520×420"; Reid: "The medium is to medium can we make it simi-mini" (2026-11-21).
 pub const MEDIUM: (f64, f64) = (380.0, 320.0);
+/// The form (medium in Reid's names): the old launcher's `geometry("500x800")` (SPEC-form.md).
+pub const FORM: (f64, f64) = (500.0, 800.0);
+/// The settings page's start size, a reid.json value made safe: "main", "medium" or "small".
+pub fn start_size(v: &str) -> &'static str {
+    match v { "medium" => "medium", "small" => "small", _ => "main" }
+}
 /// The smallest the launcher goes; the page folds it into the pod below 340 x 240.
 pub const MIN: (f64, f64) = (280.0, 180.0);
 /// The pod: a capsule this tall, at least this wide (it grows with its slots).
