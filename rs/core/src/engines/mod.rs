@@ -11,7 +11,7 @@ use serde_json::Value;
 pub const ENGINES: [&str; 2] = ["claude", "codex"];
 
 /// Fields only Claude Code understands, with the words the screens use.
-pub const CLAUDE_ONLY: [(&str, &str); 7] = [("proxy", "the proxy"), ("tools", "a tools limit"), ("mcp", "an MCP choice"),
+pub const CLAUDE_ONLY: [(&str, &str); 6] = [("tools", "a tools limit"), ("mcp", "an MCP choice"),
     ("safe", "safe mode"), ("no_chrome", "chrome off"), ("no_connectors", "connectors off"),
     ("settings_json", "settings_json")];
 

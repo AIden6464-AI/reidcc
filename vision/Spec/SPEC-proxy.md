@@ -1,6 +1,7 @@
 # Spec: proxy + lean setups as reid profiles
 
-Status: built 2026-11-17. Replaces the `proxy\claude-*.cmd` launchers with profiles.
+Status: built 2026-11-17. Replaces the `proxy\claude-*.cmd` launchers with profiles. Codex profiles have
+their own add-ons since 2026-11-23: `SPEC-codex-proxy.md`.
 
 ## Goal
 Every lean setup in `proxy\` (slim, ultra-slim, mini, mini-native, mini-slim, stripped,

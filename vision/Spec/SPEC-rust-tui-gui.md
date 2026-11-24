@@ -1,7 +1,8 @@
 # Spec: the TUI and GUI in Rust, 1:1
 
-Status: **BUILT 2026-11-20, waiting on Reid's sign-off** (see "As built" at the end). This is stage 1
-of `SPEC-rust-rewrite.md`. The Python app in `app\` is still what Reidcc and `reid` run.
+Status: **BUILT 2026-11-20** (see "As built" at the end). This is stage 1 of `SPEC-rust-rewrite.md`.
+No sign-off was recorded, but the Rust app has been what Reidcc and `reid` run since 0.2.0 (2026-11-21).
+Since then Rust may differ from Python on purpose; each case is listed in the parity tests' `KNOWN`.
 
 ## Reid's words
 

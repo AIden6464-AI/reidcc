@@ -1,10 +1,10 @@
 """The launcher's sizes (vision\\SPEC-vision-v1.md §1) in the Rust GUI: the window's size is its mode.
-Alt+2 eases it to medium (the folder, the sessions that run, combos), Alt+1 back to full; dragging it
-smaller than the full layout fits folds it to medium too. A combo key opens that profile's session
-window straight away (no gate at medium), at full size, and the session list shows it.
+Alt+2 eases it to small (the folder, the sessions that run, combos), Alt+1 back to main; dragging it
+smaller than main fits folds it to medium (the form), then small. A combo key opens that profile's session
+window straight away (no gate at small), at main's size, and the session list shows it.
 
 Same temp Reidcc folder and rules as session_flow.py: the real reid.json / reid_state.json are never
-touched, and only processes started from the temp bin\\ are killed. Screenshot: session_shots\\medium.png.
+touched, and only processes started from the temp bin\\ are killed. Screenshot: session_shots\\small.png.
 
     python rs\\tests\\sizes_flow.py
 """
@@ -134,7 +134,7 @@ def mini_pod(t, bin_, seen):
         time.sleep(0.05)
     time.sleep(0.5)
     s = size_now(t)
-    check("Alt+1 on the pod: the launcher comes back full, from the pod's corner", visible(t.hwnd) and not visible(p) and s[0] == "full"
+    check("Alt+1 on the pod: the launcher comes back main, from the pod's corner", visible(t.hwnd) and not visible(p) and s[0] == "main"
           and frame(t.hwnd)[:2] == pr[:2], "%s at %s" % (s, frame(t.hwnd)))
 
     resize_outer(t.hwnd, 300, 200)
@@ -145,7 +145,7 @@ def mini_pod(t, bin_, seen):
     pod.js("window.dispatchEvent(new KeyboardEvent('keydown', {code: 'Digit2', key: '2', altKey: true}))")
     time.sleep(0.8)
     s = size_now(t)
-    check("Alt+2 on the pod: medium", visible(t.hwnd) and s[0] == "medium" and s[1:] == [380, 320], s)
+    check("Alt+2 on the pod: small", visible(t.hwnd) and s[0] == "small" and s[1:] == [380, 400], s)
 
     if page:
         procs = ours(bin_)
@@ -186,9 +186,9 @@ def form_checks(t, cfgp, w0, h0):
          "Element.prototype.animate = function (k, o) { __slides.push(this.id); return a.call(this, k, o); }")
     resize_inner(t, 500, 860)
     s = size_now(t)
-    check("500 x 860: the form, with the folder in it", s[0] == "form" and folder_in(t, "form"), s)
+    check("500 x 860: the form, with the folder in it", s[0] == "medium" and folder_in(t, "medium"), s)
     check("dragging there cuts (no push)", t.js("__slides") == [], t.js("__slides"))
-    vis = t.js("['#form', '#main', '.lb'].map(q => document.querySelector(q).offsetParent !== null)")
+    vis = t.js("['#medium', '#main', '.lb'].map(q => document.querySelector(q).offsetParent !== null)")
     check("the form shows; the wide layout and its list don't", vis == [True, False, False], vis)
     rows = t.js("""[...document.querySelectorAll('.fgrid > :not(.lbl):not(.fbtns)')].map(e => {
         const r = e.getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height)]; })""")
@@ -202,9 +202,9 @@ def form_checks(t, cfgp, w0, h0):
     check("one bottom bar, open gate last", bar == ["open memory", "open reid.json", "resume", "open gate"], bar)
     fonts = t.js("[getComputedStyle(document.querySelector('.fgrid > .lbl')).fontSize, getComputedStyle(document.querySelector('.wordmark')).fontSize]")
     check("labels 14 px, the wordmark 28 px", fonts == ["14px", "28px"], fonts)
-    texts = t.js("[...document.querySelectorAll('#form .fcell .check')].map(c => c.textContent)")
+    texts = t.js("[...document.querySelectorAll('#medium .fcell .check')].map(c => c.textContent)")
     check("each switch is its own row with its sentence", len(texts) == 4 and texts[0] == "add your memory file to the session", texts)
-    check("nothing sticks out sideways", t.js("document.getElementById('form').scrollWidth <= innerWidth"))
+    check("nothing sticks out sideways", t.js("document.getElementById('medium').scrollWidth <= innerWidth"))
     os.makedirs(SHOTS, exist_ok=True)
     guihome.client_shot(t.hwnd).save(os.path.join(SHOTS, "form.png"))
 
@@ -212,23 +212,23 @@ def form_checks(t, cfgp, w0, h0):
     check("at 500 x 860 everything fits, no scrolling", t.js(
         "(b => b.scrollHeight <= b.clientHeight)(document.querySelector('.fbody'))"),
         t.js("(b => [b.scrollHeight, b.clientHeight])(document.querySelector('.fbody'))"))
-    wheel(t, "#form .fgrid > .combo:nth-child(5)")  # the profile combo: the wheel steps to the next profile
+    wheel(t, "#medium .fgrid > .combo:nth-child(5)")  # the profile combo: the wheel steps to the next profile
     st = t.js("[__reid.state().sel, __reid.state().title, __reid.state().name]")
     want = st0["sel"] + 1
     check("picking in the profile combo selects that profile", st == [want, st0["names"][want], st0["names"][want]], st)
     mem0 = t.js("__reid.state().vars.memory")
-    t.js("document.querySelector('#form .fcell .check').click()")
+    t.js("document.querySelector('#medium .fcell .check').click()")
     time.sleep(0.3)
     check("a checkbox row is the same switch", t.js("__reid.state().vars.memory") == (not mem0))
-    t.js("document.querySelector('#form .fcell .check').click()")
+    t.js("document.querySelector('#medium .fcell .check').click()")
     time.sleep(0.3)
     check("the prompt combo follows the persona mode, greyed with it",
-          t.js("document.querySelectorAll('#form .fgrid > .combo')[2].classList.contains('disabled') === __reid.state().disabled.mode"))
-    t.js("document.querySelector('#form .fgrid > .check').click()")  # default
+          t.js("document.querySelectorAll('#medium .fgrid > .combo')[2].classList.contains('disabled') === __reid.state().disabled.mode"))
+    t.js("document.querySelector('#medium .fgrid > .check').click()")  # default
     time.sleep(0.4)
     d = json.load(open(cfgp, encoding="utf-8")).get("default")
     check("the default row makes this profile the default", d == st0["names"][want] and t.js(
-        "document.querySelector('#form .fgrid > .check .ind') !== null"), d)
+        "document.querySelector('#medium .fgrid > .check .ind') !== null"), d)
 
     # the form's opening (vision\Spec\SPEC-hand.md): the emblem, not the gate
     t.js("__reid.hover(true)")
@@ -261,17 +261,17 @@ def form_checks(t, cfgp, w0, h0):
     scroll = t.js("""(() => { const b = document.querySelector('.fbody'), g = [...document.querySelectorAll('button')]
         .find(x => x.textContent === 'open gate').getBoundingClientRect();
         return [b.scrollHeight > b.clientHeight, g.bottom <= innerHeight, __reid.size()]; })()""")
-    check("500 x 720: still the form, it scrolls, open gate stays on screen", scroll == [True, True, "form"], scroll)
+    check("500 x 720: still the form, it scrolls, open gate stays on screen", scroll == [True, True, "medium"], scroll)
     resize_inner(t, 470, 720)
-    check("narrower than the old minsize: medium", size_now(t)[0] == "medium", size_now(t))
+    check("narrower than the old minsize: small", size_now(t)[0] == "small", size_now(t))
     resize_inner(t, 500, 860)
     t.js("__slides = []")
     key(t, "Digit2", alt=True)
     time.sleep(0.6)
     reduced = t.js("matchMedia('(prefers-reduced-motion: reduce)').matches")
     slides = t.js("__slides")
-    check("Alt+2 from the form pushes medium in (a cut with reduced motion)",
-          size_now(t)[0] == "medium" and (slides == [] if reduced else slides == ["form", "medium"]), (reduced, slides))
+    check("Alt+2 from medium (the form) pushes small in (a cut with reduced motion)",
+          size_now(t)[0] == "small" and (slides == [] if reduced else slides == ["medium", "small"]), (reduced, slides))
 
 
 def main():
@@ -292,19 +292,19 @@ def main():
         t = guihome.Tauri(root, port=PORT, exe=os.path.join(bin_, "Reidcc.exe"))
         time.sleep(1.0)
         start = size_now(t)
-        check("starts full", start[0] == "full", start)
+        check("starts main", start[0] == "main", start)
 
         key(t, "Digit2", alt=True)
         time.sleep(0.6)
         s = size_now(t)
-        check("Alt+2: medium (semi-mini), about 380x320", s[0] == "medium" and abs(s[1] - 380) <= 2 and abs(s[2] - 320) <= 2, s)
-        check("medium has the folder", folder_in(t, "medium"))
+        check("Alt+2: small (semi-mini), about 380x400", s[0] == "small" and abs(s[1] - 380) <= 2 and abs(s[2] - 400) <= 2, s)
+        check("small has the folder", folder_in(t, "small"))
         names = t.js("__reid.state().names")
         combos = t.js("__reid.combos()")
         check("combos: 1-9 in profile order", combos == ["%d%s" % (i + 1, n) for i, n in enumerate(names[:9])], combos)
         check("no sessions yet", t.js("__reid.sessions()") == "No sessions running.", t.js("__reid.sessions()"))
         os.makedirs(SHOTS, exist_ok=True)
-        guihome.client_shot(t.hwnd).save(os.path.join(SHOTS, "medium.png"))
+        guihome.client_shot(t.hwnd).save(os.path.join(SHOTS, "small.png"))
 
         i = names.index("size_live")
         if i < 9:
@@ -320,7 +320,7 @@ def main():
             if h:
                 sc = u32.GetDpiForWindow(W.HWND(h)) / 96
                 f = frame(h)
-                check("the session window opens at full size", f[2] - f[0] >= 1000 * sc - 4 and f[3] - f[1] >= 800 * sc, f)
+                check("the session window opens at main's size", f[2] - f[0] >= 1000 * sc - 4 and f[3] - f[1] >= 800 * sc, f)
                 page = Page(session_target(seen))
                 end, text = time.time() + 5, ""
                 while time.time() < end and "size_live" not in text:
@@ -340,8 +340,8 @@ def main():
         key(t, "Digit1", alt=True)
         time.sleep(0.6)
         s = size_now(t)
-        check("Alt+1: back to full, its size", s[0] == "full" and s[1:] == start[1:], "%s, started %s" % (s, start))
-        check("the folder is back in the full layout", folder_in(t, "main"))
+        check("Alt+1: back to main, its size", s[0] == "main" and s[1:] == start[1:], "%s, started %s" % (s, start))
+        check("the folder is back in main", folder_in(t, "main"))
 
         r = W.RECT()
         u32.GetWindowRect(W.HWND(t.hwnd), ctypes.byref(r))
@@ -349,7 +349,7 @@ def main():
         form_checks(t, cfgp, w0, h0)
         resize_outer(t.hwnd, w0, h0)
         time.sleep(0.4)
-        check("dragged back: full", size_now(t)[0] == "full" and folder_in(t, "main"), size_now(t))
+        check("dragged back: main", size_now(t)[0] == "main" and folder_in(t, "main"), size_now(t))
 
         mini_pod(t, bin_, seen)
     finally:

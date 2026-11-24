@@ -1,5 +1,11 @@
 # SPEC: Reidcc plugins and the `reidcc` marketplace (ACA is the first plugin)
 
+Status (checked 2026-11-23): **step 1 built** 2026-11-21 (ACA as a plugin repo; the settings page lists
+Claude Code's plugins, read-only). Not built: install, the on / off switch, per-profile plugins. Newer
+direction from Reid (2026-11-22, palette §5 To do): install from settings, auto-detect Claude Code vs
+Codex plugins, and off means the engine can't see the plugin at all. That changes this spec's "Codex: not
+yet" row below. Fix first: the list fails since a Claude Code update.
+
 Reid, 2026-11-21: *"Let's make ACA its own repo, make it a plugin, make a spec for plugins and a
 marketplace of some standard."*
 

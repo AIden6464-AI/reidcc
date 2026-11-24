@@ -11,8 +11,8 @@ const PAD = 40;
 /** vision v1 §1: smaller than this (CSS px), the launcher folds into the mini pod */
 const POD_BELOW: [number, number] = [340, 240];
 const MODES: [string, string][] = [["append", "add to Claude Code's prompt"], ["replace", "replace Claude Code's prompt"]];
-/** The form (vision\Spec\SPEC-form.md): narrower or shorter than full, at least the old launcher's minsize. */
-const FORM_MIN: [number, number] = [480, 720];
+/** Medium, the form (vision\Spec\SPEC-form.md): narrower or shorter than main, at least the old launcher's minsize. */
+const MEDIUM_MIN: [number, number] = [480, 720];
 /** The form's checkbox rows: each switch with a sentence saying what it does (what claude.rs does with it). */
 const SENTENCES: [string, string, string][] = [
   ["memory", "memory", "add your memory file to the session"],
@@ -20,8 +20,9 @@ const SENTENCES: [string, string, string][] = [
   ["connectors", "connectors", "use your claude.ai connectors"],
   ["safe", "safe mode", "no CLAUDE.md files, only the MCP servers set here"],
 ];
-type Size = "full" | "form" | "medium";
-const RANK: Record<Size, number> = { full: 0, form: 1, medium: 2 };
+/** Reid's names (vision v1 §1, 2026-11-22): main the wide layout, medium the form, small folder / sessions / combos */
+type Size = "main" | "medium" | "small";
+const RANK: Record<Size, number> = { main: 0, medium: 1, small: 2 };
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)");
 
 type Op =
@@ -61,10 +62,10 @@ class App {
   opening: Gate | null = null; // the one playing now
   settings!: Settings;
   /** vision v1 §1: the window's size is its mode */
-  size: Size = "full";
-  fullMin: [number, number] = [960, 820];
+  size: Size = "main";
+  mainMin: [number, number] = [960, 820];
   /** Alt+1/2's size while its eased resize runs: the sizes it passes through don't get a layout */
-  target: Size = "full";
+  target: Size = "main";
   targetUntil = 0;
   pushGhost: HTMLElement | null = null;
   /** the form's own widgets; the shared ones move in (`put`) and back (`unplace`) */
@@ -82,6 +83,7 @@ class App {
   folderHair!: HTMLDivElement;
   mSessions!: HTMLDivElement;
   mCombos!: HTMLDivElement;
+  mRigs!: HTMLDivElement;
   sessTimer = 0;
   foldTimer = 0;
 
@@ -113,7 +115,7 @@ class App {
     this.buildFooter();
     this.buildMsgbar();
     this.buildMain();
-    this.buildMedium();
+    this.buildSmall();
     this.buildForm();
     this.settings = new Settings(() => this.closeSettings());
     this.root.append(this.settings.root);
@@ -350,10 +352,10 @@ class App {
   }
 
   // ---------------------------------------------------------------- sizes ---
-  /** Medium (vision v1 §1): the folder, the sessions that run, and combos (1–9 opens a profile's gate). */
-  buildMedium() {
+  /** Small (vision v1 §1): the folder, the sessions that run, combos (1–9 opens a profile's gate) and rigs. */
+  buildSmall() {
     const m = el("div");
-    m.id = "medium";
+    m.id = "small";
     const head = (text: string) => {
       const l = label(text, "text3", "label");
       l.style.cssText += ";margin:10px 0 4px;align-self:flex-start";
@@ -361,16 +363,17 @@ class App {
     };
     this.mSessions = el("div", "mlist");
     this.mCombos = el("div", "mlist mcombos");
-    m.append(head("sessions"), this.mSessions, el("div", "hair"), head("combos"), this.mCombos);
+    this.mRigs = el("div", "mlist");
+    m.append(head("sessions"), this.mSessions, el("div", "hair"), head("combos"), this.mCombos, el("div", "hair"), head("rigs"), this.mRigs);
     this.root.append(m);
   }
 
   /** The form (vision\Spec\SPEC-form.md): 0.2.0's main screen laid out like the old launcher. One row per
    *  setting, a sentence beside each checkbox, word buttons on the right. Its own widgets are the head, the
-   *  profile / default / prompt rows and the buttons; the rest are full's widgets, moved in by placeForm(). */
+   *  profile / default / prompt rows and the buttons; the rest are main's widgets, moved in by placeForm(). */
   buildForm() {
     const f = el("div");
-    f.id = "form";
+    f.id = "medium";
     const head = el("div", "fhead");
     const hl = el("div");
     const sub = label("Folder. Profile. Gate.", "text2", "body");
@@ -432,7 +435,7 @@ class App {
     this.root.append(f);
   }
 
-  /** Move one of full's widgets into the form; unplace() puts it back as it was. */
+  /** Move one of main's widgets into the form; unplace() puts it back as it was. */
   put(w: HTMLElement, parent: HTMLElement, cls = "") {
     const a = document.createComment(""), css = w.style.cssText, add = !!cls && !w.classList.contains(cls);
     w.before(a);
@@ -462,12 +465,12 @@ class App {
   }
 
   sizeFor(): Size {
-    if (innerWidth >= this.fullMin[0] && innerHeight >= this.fullMin[1]) return "full";
-    return innerWidth >= FORM_MIN[0] && innerHeight >= FORM_MIN[1] ? "form" : "medium";
+    if (innerWidth >= this.mainMin[0] && innerHeight >= this.mainMin[1]) return "main";
+    return innerWidth >= MEDIUM_MIN[0] && innerHeight >= MEDIUM_MIN[1] ? "medium" : "small";
   }
 
-  /** The layout for the window's size: full when the full layout fits, the form when it's narrower or
-   *  shorter (down to the old launcher's minsize), medium below that. Alt+1/2 push; dragging cuts. */
+  /** The layout for the window's size: main when the wide layout fits, medium (the form) when it's narrower or
+   *  shorter (down to the old launcher's minsize), small below that. Alt+1/2 push; dragging cuts. */
   fit() {
     // Dragged smaller than the pod threshold: fold into the mini pod once the drag ends.
     clearTimeout(this.foldTimer);
@@ -486,18 +489,18 @@ class App {
     this.unplace();
     this.folderHair.before(this.folderRow);
     clearInterval(this.sessTimer);
-    if (size === "medium") {
-      document.getElementById("medium")!.prepend(this.folderRow);
+    if (size === "small") {
+      document.getElementById("small")!.prepend(this.folderRow);
       this.drawCombos();
       this.drawSessions();
       this.sessTimer = window.setInterval(() => this.drawSessions(), 1000);
-    } else if (size === "form") this.placeForm();
+    } else if (size === "medium") this.placeForm();
     this.wrapTexts();
   }
 
   /** The view on screen: settings, or the launcher's layout for the size. */
   view(): HTMLElement {
-    return this.settings?.isOpen ? this.settings.root : document.getElementById(this.size === "full" ? "main" : this.size)!;
+    return this.settings?.isOpen ? this.settings.root : document.getElementById(this.size)!;
   }
 
   /** "slide in to the other veiw not just switch" (Reid, 2026-11-22): a push. A still copy of the old view
@@ -523,9 +526,9 @@ class App {
   }
 
   /** Where focus goes for "the profile list": the list, or the form's profile combo. */
-  listFocus(): HTMLElement { return this.size === "form" ? this.profCombo.input : this.lb.root; }
+  listFocus(): HTMLElement { return this.size === "medium" ? this.profCombo.input : this.lb.root; }
 
-  /** The form's own widgets follow the state full's widgets show. */
+  /** The form's own widgets follow the state main's widgets show. */
   paintForm() {
     if (!this.profCombo) return;
     this.profCombo.values = this.names;
@@ -549,6 +552,36 @@ class App {
       r.addEventListener("click", () => this.combo(i));
       return r;
     }));
+    void this.drawRigs();
+  }
+
+  /** Rigs (vision v1 §5): a saved frame of sessions; a click opens every pane, snapped as it was saved. */
+  async drawRigs() {
+    type Rig = { name: string; profiles: string[] };
+    const rigs = await invoke<Rig[]>("rig_list");
+    if (!rigs.length) {
+      this.mRigs.replaceChildren(label("No rigs yet. Snap sessions together, then press save rig.", "text3", "mono"));
+      return;
+    }
+    this.mRigs.replaceChildren(...rigs.map((rig) => {
+      const r = el("div", "mrow");
+      const forget = el("span", "st", "  ×");
+      forget.title = "forget this rig";
+      forget.addEventListener("click", (e) => { e.stopPropagation(); void invoke("rig_delete", { name: rig.name }); });
+      r.append(el("span", "name", rig.name), el("span", "st", rig.profiles.join(" · ")), forget);
+      r.addEventListener("click", () => this.openRig(rig.name));
+      return r;
+    }));
+  }
+
+  async openRig(name: string) {
+    if (this.opening?.active) return;
+    try {
+      const note = await invoke<string>("rig_open", { name });
+      if (note) this.say(note, "quiet", [], 4);
+    } catch (e) {
+      this.say(String(e), "error");
+    }
   }
 
   /** A combo: that profile, then open gate on the current folder. */
@@ -590,7 +623,7 @@ class App {
   wrapTexts() {
     const w = document.documentElement.clientWidth;
     this.preview.textContent = wrap(this.previewText, Math.max(300, w - 2 * PAD - 300), "tag");
-    const msgW = this.size === "form" ? w - 40 - 20 : Math.max(300, w - 2 * PAD - 260);
+    const msgW = this.size === "medium" ? w - 40 - 20 : Math.max(300, w - 2 * PAD - 260);
     this.msgLabel.textContent = wrap(this.msgText, msgW, "body");
   }
 
@@ -614,12 +647,12 @@ class App {
       else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === "r") { e.preventDefault(); this.go(true); }
       else if (e.altKey && !e.ctrlKey && (e.code === "Digit1" || e.code === "Digit2")) {
         e.preventDefault();
-        this.target = e.code === "Digit1" ? "full" : "medium";
+        this.target = e.code === "Digit1" ? "main" : "small";
         this.targetUntil = performance.now() + 500; // the eased resize takes 160 ms
         invoke("set_size", { size: this.target });
       }
       else if (e.altKey && !e.ctrlKey && e.code === "Digit3") { e.preventDefault(); closePopups(); invoke("pod_fold", { drag: false }); }
-      else if (this.size === "medium" && /^Digit[1-9]$/.test(e.code) && !e.altKey && !e.ctrlKey && !e.metaKey
+      else if (this.size === "small" && /^Digit[1-9]$/.test(e.code) && !e.altKey && !e.ctrlKey && !e.metaKey
                && !(document.activeElement instanceof HTMLInputElement)) {
         e.preventDefault();
         this.combo(Number(e.code.slice(5)) - 1);
@@ -675,7 +708,7 @@ class App {
         }
         case "clear": this.clearMsg(); break;
         case "clear_if": if (this.msgText === o.text) this.clearMsg(); break;
-        case "list": this.names = o.names; this.lb.set(o.items); if (this.size === "medium") this.drawCombos(); break;
+        case "list": this.names = o.names; this.lb.set(o.items); if (this.size === "small") this.drawCombos(); break;
         case "select": this.lb.select(o.index); this.lb.see(o.index); break;
         case "fields": this.setFields(o); break;
         case "refresh": this.refresh(o); break;
@@ -686,7 +719,7 @@ class App {
           this.recheck = window.setTimeout(() => { this.recheck = 0; this.action("retry"); }, 3000);
           break;
         case "focus":
-          (o.target === "pick" ? (this.size === "form" ? this.fPick : this.bPick) : o.target === "name" ? this.eName : this.listFocus()).focus();
+          (o.target === "pick" ? (this.size === "medium" ? this.fPick : this.bPick) : o.target === "name" ? this.eName : this.listFocus()).focus();
           break;
       }
     }
@@ -725,7 +758,7 @@ class App {
     this.modeTexts = r.mode_texts;
     this.modeDisabled = r.mode_disabled;
     // Claude-only fields stay on screen for a Codex profile, disabled while they're off
-    for (const k of ["proxy", "tools", "mcp"]) {
+    for (const k of ["tools", "mcp"]) {
       this.cb[k].setDisabled(r.disabled[k]);
       this.cb[k].setReadonly(k !== "tools");
     }
@@ -802,7 +835,7 @@ class App {
   async go(resume: boolean) {
     if (this.opening?.active || this.settings.isOpen) return; // one session per press
     type Go = { kind: "ops"; ops: Op[] } | { kind: "gate"; note: string; uses_wt: boolean; found: boolean; title: string; sub: string; ops: Op[] };
-    // The gate plays in the full layout, the emblem in the form; medium opens the session window straight away.
+    // The gate plays at main, the emblem at medium (the form); small opens the session window straight away.
     const g = this.opener();
     const r = await invoke<Go>("go", { resume, gateOk: !!g });
     this.ops(r.ops);
@@ -812,8 +845,8 @@ class App {
     if (r.found) g.windowFound(false); // a Reidcc session window: it exists already, hidden
   }
 
-  /** This size's opening: the gate (full), the emblem (form), none (medium). */
-  opener(): Gate | null { return this.size === "full" ? this.gate : this.size === "form" ? this.emblem : null; }
+  /** This size's opening: the gate (main), the emblem (medium), none (small). */
+  opener(): Gate | null { return this.size === "main" ? this.gate : this.size === "medium" ? this.emblem : null; }
 
   calm() { this.gate?.calm(); this.emblem?.calm(); }
 
@@ -822,7 +855,7 @@ class App {
     const host = { say: (t: string, k: string, s?: number) => this.say(t, k, [], s), focusList: () => this.listFocus().focus() };
     if (meta) this.gate = new Gate(meta, host);
     if (emblem) this.emblem = new Gate(emblem, host, "emblem");
-    // the ghost is this size's opening; medium has none, so there the buttons just open the session
+    // the ghost is this size's opening; small has none, so there the buttons just open the session
     for (const [key, b] of [["go", this.bGo], ["resume", this.bResume]] as const) {
       const on = (k: string) => this.opener()?.hover(k, true);
       const off = (k: string) => { this.gate?.hover(k, false); this.emblem?.hover(k, false); };
@@ -839,14 +872,15 @@ class App {
 async function start() {
   setMetrics(await invoke("metrics"));
   const app = new App();
-  const init = await invoke<{ ops: Op[]; folder: string; gate: Meta | null; emblem: Meta | null; test: boolean; full_min: [number, number] }>("init").catch(() => null);
+  const init = await invoke<{ ops: Op[]; folder: string; gate: Meta | null; emblem: Meta | null; test: boolean; main_min: [number, number] }>("init").catch(() => null);
   if (!init) return;
-  app.fullMin = init.full_min;
+  app.mainMin = init.main_min;
   app.fit();
   app.eFolder.value = init.folder;
   app.buildGate(init.gate, init.emblem);
   listen("login-done", () => app.action("login_done"));
   listen<string>("session-note", (e) => app.say(e.payload, "quiet", [], 4)); // back from a session window
+  listen("rigs-changed", () => { if (app.size === "small") void app.drawRigs(); });
   app.ops(init.ops);
   if (init.test) (window as unknown as { __reid: unknown }).__reid = testHooks(app);
   requestAnimationFrame(() => requestAnimationFrame(() => invoke("show")));
@@ -884,7 +918,7 @@ function testHooks(app: App) {
       return !!b;
     },
     login: (status: string | null) => app.call("test_login", { status }),
-    // this size's opening: the gate in full, the emblem in the form
+    // this size's opening: the gate at main, the emblem at medium
     ghost: () => (app.opener() ?? app.gate)!.showGhost(),
     gateAt: (ms: number) => (app.opener() ?? app.gate)!.showAt(ms),
     dark: (title: string, sub: string) => (app.opener() ?? app.gate)!.showDark(title, sub),
@@ -897,6 +931,7 @@ function testHooks(app: App) {
     folderIn: (id: string) => document.getElementById(id)!.contains(app.eFolder),
     sessions: () => app.mSessions.textContent,
     combos: () => [...app.mCombos.children].map((r) => r.textContent),
+    rigs: () => [...app.mRigs.children].map((r) => r.textContent),
     settings: () => ({ open: app.settings.isOpen, text: app.settings.root.innerText }),
   };
 }

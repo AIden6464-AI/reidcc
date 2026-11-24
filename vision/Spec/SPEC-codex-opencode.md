@@ -2,6 +2,11 @@
 
 Milestone 1 (Codex) **BUILT 2026-11-19** · milestone 2 (OpenCode) proposed · revised 2026-11-18
 
+Since then (2026-11-23): Codex got its proxy (`SPEC-codex-proxy.md`), so only tools, mcp and the switches
+stay Claude's. OpenCode is still not started; Reid's Discord poll spelled OPENCODE and the CLI research
+(`research/agent-clis-2026-11-23.md`) found people pick it for any model, LSP feedback and server mode,
+which makes it the next engine ahead of agy (`SPEC-agent-cli.md`).
+
 A profile chooses which coding tool Reidcc starts. The launcher flow stays **folder → profile → open gate**. The first milestone is a Codex session running in the folder the user picked. OpenCode follows through the same launch path.
 
 > "in vision(E:\reidcc\vision) let's make a spec on makeing this tool work for codex and opencode" (Reid, 2026-11-17)
@@ -154,6 +159,8 @@ and persona options. Its answers are folded in below, marked *(Codex)*.
   **Superseded 2026-11-19** by `SPEC-codex-signin-persona.md`: sign-in, persona and memory now work on
   Codex, the tag is `CODEX · GREYED FIELDS ARE CLAUDE'S`, and the message names the field
   (`Codex can't use the proxy. Turn it off for <profile>, or pick a Claude profile.`).
+  **Superseded 2026-11-23** by `SPEC-codex-proxy.md`: the proxy works on Codex; the message now names
+  the fields left (`Codex can't use a tools limit. ...`).
 - **Model.** Switching engine resets the model to the new engine's default (finding 2). Each engine's
   model list is its own: Claude's names, or models other Codex profiles use. A Claude name on a Codex
   profile is refused: `opus is a Claude model. Clear the model to use Codex's default, or type a Codex model.`

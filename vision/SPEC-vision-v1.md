@@ -1,6 +1,6 @@
 # Vision version 1: sizes, session windows, snap, headless, orchestrator
 
-Status: **session window, snap, the sizes and the pod built as betas in Rust** (under the old names full / medium / mini pod; renaming to main / medium / small with the pod as a toggle is to do, see §1). These are the ideas. How they get built (the Rust
+Status: **session window, snap, the sizes and the pod built as betas in Rust** (named main / medium / small and the pod since 2026-11-24; the pod as a toggle and a key for medium are to do, see §1). These are the ideas. How they get built (the Rust
 rewrite) is a separate spec: `vision\Spec\SPEC-rust-rewrite.md`. The rules here are part of the vision;
 the design doc's "Vision version 1" section points here.
 
@@ -64,59 +64,61 @@ The sizes are **main**, **medium** and **small**. The **pod** is a toggle, not a
 |---|---|---|
 | **main** | full, wide (1000 × 880) | the profile list beside the profile's fields |
 | **medium** | full's form (from 480 × 720, `Spec\SPEC-form.md`) | the same things in the old launcher's tall, narrow form |
-| **small** | medium (380 × 320) | folder, `sessions`, `combos` |
+| **small** | medium (380 × 400) | folder, `sessions`, `combos` |
 | **pod** (toggle) | mini pod, the third size | the capsule. Toggling folds the launcher from any size; toggling again brings it back at the size it was. Dragging the window small doesn't fold into it |
 
-**Not built yet** (palette §5): the app still names them full / form / medium, `Alt+1` is full, `Alt+2` is
-today's medium (small), no key goes to the form, and `Alt+3` or dragging under 340 × 240 folds into the
-pod. The rest of this section describes what's built, with the old names.
+> "Ok fix the nameing" (Reid, 2026-11-24)
+
+**Renamed in the app 2026-11-24:** the page, the Rust code and the tests use main / medium / small and
+say pod, not mini pod. **Not built yet** (palette §5): `Alt+1` is main, `Alt+2` is small, no key goes to
+medium, and `Alt+3` or dragging under 340 × 240 folds into the pod (not a toggle yet).
 
 The window size is the mode. Dragging an edge or corner moves between sizes at two thresholds, and
 `Alt+1/2/3` jumps straight to one.
 
 | Size | About | Shows |
 |---|---|---|
-| **Full** | today's 1000×860 | everything today's GUI shows |
-| **Medium** | semi-mini, 380×320 (was ~520×420; see below) | folder + recents, the session list, and **combos**: one keystroke per profile to open the gate on the current folder. `1`–`9` work in profile order, and a profile can also have its own letter (Reid: "Find a both", 2026-11-20) |
-| **Mini pod** | ~300×120 proposed, built 320×64 (see below); a normal window: not on top unless you pin it (Reid, 2026-11-20) | running sessions (`codex · main ●`) and **usage**: for Claude, the context % and limit % that Reidcc's statusline already collects; for Codex and OpenCode, elapsed time until they expose usage |
+| **Main** | today's 1000×860 | everything today's GUI shows |
+| **Small** | semi-mini, 380×400 (was ~520×420, then 380×320; see below) | folder + recents, the session list, and **combos**: one keystroke per profile to open the gate on the current folder. `1`–`9` work in profile order, and a profile can also have its own letter (Reid: "Find a both", 2026-11-20) |
+| **Pod** | ~300×120 proposed, built 320×64 (see below); a normal window: not on top unless you pin it (Reid, 2026-11-20) | running sessions (`codex · main ●`) and **usage**: for Claude, the context % and limit % that Reidcc's statusline already collects; for Codex and OpenCode, elapsed time until they expose usage |
 
 The motion between sizes follows the design doc: no bounce, 120–180 ms, ease
 `cubic-bezier(0.16, 1, 0.3, 1)`.
 
-**Full and medium built 2026-11-20** in the Rust app only. Reid: "fix 1 and 2 also lets start on the windows sizeing".
-- The page picks its layout from its own size. It's full while the full layout fits (960 × 820, or less on
-  a short screen), and medium below that. Dragging an edge across that line switches it. The second
-  threshold is under 340 × 240: let go there and it folds into the mini pod.
-  - Built 2026-11-22 (`vision\Spec\SPEC-form.md`): a tall, narrow window (from 480 × 720) keeps full as the
-    old launcher's form instead of dropping to medium; medium is only for windows smaller than that. Views push
+**Main and small built 2026-11-20** (as full and medium) in the Rust app only. Reid: "fix 1 and 2 also lets start on the windows sizeing".
+- The page picks its layout from its own size. It's main while the wide layout fits (960 × 820, or less on
+  a short screen), and smaller sizes below that. Dragging an edge across that line switches it. The second
+  threshold is under 340 × 240: let go there and it folds into the pod.
+  - Built 2026-11-22 (`vision\Spec\SPEC-form.md`): a tall, narrow window (from 480 × 720) is medium, the
+    old launcher's form, instead of dropping to small; small is only for windows smaller than that. Views push
     (`240ms`) instead of cutting. See "Vision version 1" in the design doc.
     > "old vs new in the same form    can we meger the uis for the 2.0  because i like the form facter also can we have the ui like slide in to the other veiw not just switch" (Reid, 2026-11-22, with a screenshot of the old Python launcher beside Reidcc 0.2.0 at the same tall, narrow window size, where 0.2.0 showed medium)
-- `Alt+1` and `Alt+2` ease the window to full (1000 × 880) or medium (380 × 320) in 160 ms with the
+- `Alt+1` and `Alt+2` ease the window to main (1000 × 880) or small (380 × 400) in 160 ms with the
   design ease. The top-left corner stays put unless the new size would go off screen.
-- Medium is semi-mini, changed 2026-11-21:
+- Small (then called medium) is semi-mini, changed 2026-11-21:
   > "The medium is to medium can we make it simi-mini" (Reid, 2026-11-21)
 
-  It was 520 × 420 with empty space below the combos. Now it's 380 × 320 with 16 px edges. It has no
+  It was 520 × 420 with empty space below the combos. Then 380 × 320 with 16 px edges; 380 × 400 since rigs (2026-11-24: "1", Reid's pick of making it taller so the rigs list shows). It has no
   `folder` label and no `folder → profile → open gate` hint, and the message bar takes no room until
   there's a message. All nine combos still fit, in two columns.
-- Medium has the folder row (the same field, pick folder and open recent), then `sessions`, then `combos`.
+- Small has the folder row (the same field, pick folder and open recent), then `sessions`, then `combos`.
   - `sessions` lists the session windows that are running, as `<engine> · <profile>  ● running · 01:42`.
     Failed sessions show oxide. With nothing running it says `No sessions running.` Clicking a row brings
     that window or its frame forward.
   - `combos` lists the first nine profiles in order. Pressing `1`–`9` (when the cursor isn't in the folder
     field) or clicking a combo selects that profile and opens it on the current folder.
-- At medium the gate doesn't play. The session window opens at once at full size, centred on the
+- At small the gate doesn't play. The session window opens at once at main's size, centred on the
   launcher and kept on screen.
 - not yet: a letter per profile for combos, and Windows Terminal sessions in the list (only session
   windows show).
 - checked by `rs\tests\sizes_flow.py`
 
-**Mini pod built 2026-11-20** in the Rust app only. Reid: "do the mini pod next".
+**Pod built 2026-11-20** (as the mini pod) in the Rust app only. Reid: "do the mini pod next".
 - `Alt+3`, or dragging the launcher under 340 × 240 and letting go, folds the launcher into the pod at
   its top-left corner. The capsule fades in over 150 ms.
 - It's **64 px tall** and 320 px wide or more, growing with its slots. That's thinner than the ~120 in the
   table above, so it reads as a dock and not a ball. Reid can still pick the height.
-- The capsule follows "The mini pod's shape" below. Clicking a slot brings that window forward.
+- The capsule follows "The pod's shape" below. Clicking a slot brings that window forward.
 - More on each slot, changed 2026-11-21:
   > "For the mini pod I can have more on it" (Reid, 2026-11-21)
 
@@ -131,16 +133,16 @@ The motion between sizes follows the design doc: no bounce, 120–180 ms, ease
   This replaces the single usage readout at the right end and the hover name. With no sessions the pod
   says `No sessions running.`. It stays 64 px tall and grows sideways, but never past the screen's edge
   (it moves left to stay on screen).
-- Drag the capsule to move it. A double-click or `Alt+1` unfolds it to full, and `Alt+2` to medium,
+- Drag the capsule to move it. A double-click or `Alt+1` unfolds it to main, and `Alt+2` to small,
   from where the pod is.
 - It's a normal window, in the taskbar, not on top. Closing it (`Alt+F4`) closes Reidcc.
 - Built as its own borderless, transparent window that stands in for the launcher, rather than the
   launcher's window turning see-through. That would put the themed title bar at risk and make
-  resizing at full size flicker. It looks and acts like one window.
+  resizing at main's size flicker. It looks and acts like one window.
 - not yet: pinning it on top, and an animated fold (today the launcher swaps to the pod with a fade).
 - checked by `rs\tests\sizes_flow.py` (screenshot `rs\tests\session_shots\pod.png`)
 
-### The mini pod's shape
+### The pod's shape
 
 > "for like the pod, I was thinking of something like the iPhone, like the iPhone dock, or like the pill type
 > thing when it's in like the mini version. I don't know. I don't want it to be just like a rounded mess."
@@ -234,9 +236,25 @@ codex · main  ● running · 01:42 · "Editing src/auth.rs"
 
 ## 5. Orchestrator mode (defined later)
 
+**Moved 2026-11-23** to `vision\Spec\SPEC-agent-cli.md`: the orchestrator became **Reid command
+center**, a separate app that sits on top of Reidcc and the agent CLIs ("Remember it sits on top";
+"There different apps but they can work linked", Reid, 2026-11-23). Its agent is the harness, also called
+the gate. Rigs (below) stay a Reidcc idea; "an agent driving other panes" is that spec now.
+
 Reid left this open ("or something like that"). The first useful step, after 1–4 work:
 - **Rigs:** a saved layout of profiles and panes on one folder (for example `claude · plan` large,
   `codex · tests` and `opencode · ui` headless). One combo opens the whole rig.
+
+  > "Ya build that as you can because we have added a lot from that time" (Reid, 2026-11-23, on stage 4, rigs)
+
+  **Beta built 2026-11-23** in the Rust app. `save rig` on a snapped frame's header names it and saves
+  every pane's profile and folder, the split tree with its proportions, and the frame's place in
+  reid.json's `"rigs"`. Medium lists the rigs under `rigs`, and one click opens every pane, already
+  snapped, in the saved place. Every pane is checked first, the same as open gate, so a rig opens
+  completely or not at all. The frame is built first and each session starts inside it: moving a
+  WebView that's receiving output can drop a Tauri channel message, and the terminal then stalls.
+  Not built: headless panes (no run strip yet), a key for each rig, the gate opening for a rig, and
+  rigs in the TUI. The live test is `.test\rig_open.py`.
 - An agent driving other panes (spawn, read status, review a diff) is a later spec, once rigs are
   used for real.
 

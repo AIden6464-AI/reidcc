@@ -258,7 +258,8 @@ Differences from the design above:
 - A Claude-only field that's still on stays live in the GUI and the TUI editor so it can be turned off.
   Reid's own `claude` profile still has `proxy: capture` from its Claude days, so it shows
   `Codex can't use the proxy. Turn it off for claude, or pick a Claude profile.` until the proxy is set
-  to off.
+  to off. **Superseded 2026-11-23:** the proxy works on Codex (`SPEC-codex-proxy.md`), so that profile
+  launches with `capture` as it is.
 
 ### Reidcc inside the Codex session (2026-11-19)
 

@@ -100,8 +100,8 @@ but disabled with a reason (the tag `CODEX · GREYED FIELDS ARE CLAUDE'S`). Full
 
 Built 2026-11-19 (see `vision\Spec\SPEC-codex-signin-persona.md`, "As built"):
 - On a Codex profile, `sign-in`, `persona`, `persona mode` and `memory` stop being greyed out. They
-  use the same files and the same picker as Claude, and work the same way. Only proxy, tools, mcp
-  and the switches stay Claude's.
+  use the same files and the same picker as Claude, and work the same way. Only tools, mcp and the
+  switches stay Claude's (the proxy works for Codex since 2026-11-23, `SPEC-codex-proxy.md`).
 - Everything Reidcc generates for Codex lives in the Reidcc folder (`codex\prompts\<profile>.md`),
   never in `~/.codex`.
 - Memory and accounts work like the Claude side:
@@ -126,8 +126,8 @@ Where Reidcc is going (full rules in `vision\SPEC-vision-v1.md`):
   The names are now **main** (the wide layout: the profile list beside the fields), **medium** (the form,
   the old launcher's tall, narrow layout) and **small** (folder, sessions and combos). The **pod** is not a
   size: it's a toggle that folds the launcher into the capsule and back, from any size, and the launcher
-  comes back at the size it was. Dragging the window small never turns it into the pod. Not built yet
-  (palette §5): the app still calls them full / form / medium, and `Alt+3` or dragging under 340 × 240
+  comes back at the size it was. Dragging the window small never turns it into the pod. Renamed in the app 2026-11-24 ("Ok fix the nameing", Reid). Not built yet
+  (palette §5): a key for medium, and the pod as a toggle; `Alt+3` or dragging under 340 × 240 still
   folds into the pod. The older text below uses the old names: its "full" is main (wide) plus medium (the
   form), its "medium" is small, and its "mini pod" is the pod.
 
@@ -135,7 +135,7 @@ Where Reidcc is going (full rules in `vision\SPEC-vision-v1.md`):
   shows the folder, sessions and combos (one key opens a profile). The **mini pod** shows running
   sessions and usage. Smaller sizes are folds of the same window, never hidden dialogs. Full and medium are
   built, with `Alt+1` and `Alt+2` ("fix 1 and 2 also lets start on the windows sizeing", Reid, 2026-11-20).
-  Medium is semi-mini, 380 × 320 with tight edges ("The medium is to medium can we make it simi-mini", Reid, 2026-11-21).
+  Medium is semi-mini, 380 × 400 (320 before rigs) with tight edges ("The medium is to medium can we make it simi-mini", Reid, 2026-11-21).
   So is the mini pod, with `Alt+3` or by dragging the launcher small ("do the mini pod next", Reid, 2026-11-20).
 
   > "old vs new in the same form    can we meger the uis for the 2.0  because i like the form facter also can we have the ui like slide in to the other veiw not just switch" (Reid, 2026-11-22, with a screenshot of the old Python launcher beside Reidcc 0.2.0 at the same tall, narrow window size, where 0.2.0 showed medium)
@@ -170,11 +170,11 @@ Where Reidcc is going (full rules in `vision\SPEC-vision-v1.md`):
   rounded chips. Reid: "I don't want it to be just like a rounded mess."
 - **Headless:** a window or pane sized down becomes a run strip: engine · profile · state · elapsed
   · last line. "Waiting for you" is oxide.
-- **Orchestrator:** rigs first (saved layouts opened by one combo). Agent-driven panes come later.
+- **Orchestrator:** rigs first (saved layouts opened by one combo; beta built 2026-11-23, vision v1 §5). Agent-driven panes moved to Reid command center.
 
 How it gets built is `vision\Spec\SPEC-rust-rewrite.md` (Tauri 2 + Rust, same data files). Betas are in the
-Rust app only (`rs\target\release\Reidcc.exe`): session windows, snap, the sizes (built as full with its
-form, and medium; to be renamed main / medium / small) and the pod. The Python app has none of it. Headless and orchestrator aren't built.
+Rust app only (`rs\target\release\Reidcc.exe`): session windows, snap, the sizes (main, medium and small;
+renamed from full / form / medium 2026-11-24) and the pod. The Python app has none of it. Headless and orchestrator aren't built.
 
 ---
 

@@ -17,6 +17,7 @@
 # Proxy captures (your prompts and traffic) and logs
 proxy/claude_audit/
 proxy/claude_prompts/
+proxy/codex_prompts/
 proxy/audit/
 proxy/logs/
 proxy/report.html

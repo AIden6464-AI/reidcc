@@ -120,7 +120,7 @@ and greyed out, as today. Checkbox sentences go in the voice guide (§6).
 
 ## Part 2: when the form shows
 
-Sizes stay **full / medium / mini pod**, with keys `Alt+1/2/3`. (Renamed 2026-11-22, not built yet: the form is now **medium**, the wide layout **main**, old medium **small**, and the pod a toggle; see SPEC-vision-v1 §1.) Full has two layouts of the same things:
+Sizes stay **full / medium / mini pod**, with keys `Alt+1/2/3`. (Renamed 2026-11-22, in the app since 2026-11-24: the form is now **medium**, the wide layout **main**, old medium **small**; the pod as a toggle is still to do; see SPEC-vision-v1 §1.) Full has two layouts of the same things:
 
 | Window | Layout |
 |---|---|

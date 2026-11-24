@@ -245,4 +245,16 @@ Note: after the first turn, Claude Code sends only new messages plus `cc_prev_re
 ./.venv/bin/python -m pytest tests/ -v
 ```
 
-The shared behavior contract in [tests/test_optimize_payload.py](tests/test_optimize_payload.py) runs against both `proxy.optimize_payload` and `claude_optimizer_addon.optimize_payload`, plus module-specific tests where they intentionally diverge (`cache_control` handling, pruning default). One case is a strict `xfail` documenting a known bug (a reminder-only final message gets spliced into the preceding assistant turn). Flow tests for the mitmproxy hooks are in [tests/test_addon_flow.py](tests/test_addon_flow.py). Also covered: the mini MCP tools, the capture addon and the slim addon. Current result: 83 passed, 2 xfailed.
+The shared behavior contract in [tests/test_optimize_payload.py](tests/test_optimize_payload.py) runs against both `proxy.optimize_payload` and `claude_optimizer_addon.optimize_payload`, plus module-specific tests where they intentionally diverge (`cache_control` handling, pruning default). One case is a strict `xfail` documenting a known bug (a reminder-only final message gets spliced into the preceding assistant turn). Flow tests for the mitmproxy hooks are in [tests/test_addon_flow.py](tests/test_addon_flow.py). Also covered: the mini MCP tools, the capture addon, the slim addon and the two Codex add-ons ([tests/test_codex_addons.py](tests/test_codex_addons.py)). Current result: 87 passed, 2 xfailed.
+
+## Codex
+
+Codex profiles get their own add-ons (`vision\Spec\SPEC-codex-proxy.md`). Reidcc picks them by engine, so Claude profiles are unchanged:
+
+| `proxy` | Codex add-on |
+|---|---|
+| `capture` | [codex_capture_addon.py](codex_capture_addon.py): read-only, one folder per distinct setup in `codex_prompts\` (instructions, tools, context, messages, summary) |
+| `slim` / `ultra` | [codex_slim_addon.py](codex_slim_addon.py): shortens Codex's tool docs in the first request of a session. Every name, schema and `exec` TypeScript declaration stays byte for byte. Measured on Codex 0.170.0: tools 48,493 → 36,782 chars, a `reply ok` run 19,013 → 16,612 tokens |
+| `optimize` | not offered: Codex sends a stable prefix and then only deltas, so there's nothing to reorder |
+
+`proxy_drop` takes a namespace (`mcp__cua_repl`) or a tool (`collaboration.spawn_agent`). Codex trusts the CA through `CODEX_CA_CERTIFICATE`.

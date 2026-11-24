@@ -1,8 +1,9 @@
 //! The launcher's sizes (vision\SPEC-vision-v1.md §1): the window size is the mode. The page picks
 //! its layout from its own size; this file has the preset sizes Alt+1/2 jump to, the eased resize
-//! between them, where a session window opens when the launcher is smaller than full, and the mini pod.
+//! between them, where a session window opens when the launcher is smaller than main, and the pod.
+//! Reid's names (2026-11-22): main the wide layout, medium the form, small folder / sessions / combos.
 //!
-//! The mini pod is its own window ("pod", ui\pod.html): borderless and per-pixel transparent, so the
+//! The pod is its own window ("pod", ui\pod.html): borderless and per-pixel transparent, so the
 //! desktop shows outside the capsule. The launcher's window has a themed title bar and an opaque frame
 //! that a transparent window would put at risk, so folding hides it and shows the pod where it was,
 //! and unfolding does the reverse.
@@ -13,14 +14,15 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager, WebviewWindow, Window, WindowEvent};
 use windows_sys::Win32::UI::WindowsAndMessaging::{SetWindowPos, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER};
 
-/// Full: today's size (logical px), set at start (its height depends on the screen), and the
-/// smallest size the full layout fits in.
-pub static FULL: OnceLock<(f64, f64)> = OnceLock::new();
-pub static FULL_MIN: OnceLock<(f64, f64)> = OnceLock::new();
-/// Medium: the spec said "~520×420"; Reid: "The medium is to medium can we make it simi-mini" (2026-11-21).
-pub const MEDIUM: (f64, f64) = (380.0, 320.0);
-/// The form (medium in Reid's names): the old launcher's `geometry("500x800")` (SPEC-form.md).
-pub const FORM: (f64, f64) = (500.0, 800.0);
+/// Main: the wide layout's size (logical px), set at start (its height depends on the screen), and the
+/// smallest size it fits in.
+pub static MAIN: OnceLock<(f64, f64)> = OnceLock::new();
+pub static MAIN_MIN: OnceLock<(f64, f64)> = OnceLock::new();
+/// Small (was medium): the spec said "~520×420"; Reid: "The medium is to medium can we make it simi-mini" (2026-11-21).
+/// 400 tall since rigs (2026-11-24): two rigs show under three sessions and the combos.
+pub const SMALL: (f64, f64) = (380.0, 400.0);
+/// Medium, the form: the old launcher's `geometry("500x800")` (SPEC-form.md).
+pub const MEDIUM: (f64, f64) = (500.0, 800.0);
 /// The settings page's start size, a reid.json value made safe: "main", "medium" or "small".
 pub fn start_size(v: &str) -> &'static str {
     match v { "medium" => "medium", "small" => "small", _ => "main" }
@@ -38,8 +40,8 @@ pub fn folded() -> bool {
 /// The design doc's motion: 120–180 ms, cubic-bezier(0.16, 1, 0.3, 1), no bounce.
 const MS: f64 = 160.0;
 
-fn full() -> (f64, f64) {
-    *FULL.get().unwrap_or(&(1000.0, 880.0))
+fn main_size() -> (f64, f64) {
+    *MAIN.get().unwrap_or(&(1000.0, 880.0))
 }
 
 /// cubic-bezier(0.16, 1, 0.3, 1) at time `x` (0..1).
@@ -75,10 +77,10 @@ fn inside(r: (i32, i32, i32, i32), work: (i32, i32, i32, i32)) -> (i32, i32, i32
     (l, t, l + w, t + h)
 }
 
-/// Where a session window opens: over the launcher, at least full size (centred on the launcher when
+/// Where a session window opens: over the launcher, at least main's size (centred on the launcher when
 /// it's smaller), on screen. Physical px, visible frame.
 pub fn session_rect(launcher: (i32, i32, i32, i32), scale: f64) -> (i32, i32, i32, i32) {
-    let (fw, fh) = full();
+    let (fw, fh) = main_size();
     let (w, h) = ((launcher.2 - launcher.0).max((fw * scale) as i32), (launcher.3 - launcher.1).max((fh * scale) as i32));
     if (w, h) == (launcher.2 - launcher.0, launcher.3 - launcher.1) {
         return launcher;
@@ -95,14 +97,14 @@ fn resized(from: (i32, i32, i32, i32), vis: (i32, i32, i32, i32), dw: i32, dh: i
     (t.0 - (vis.0 - from.0), t.1 - (vis.1 - from.1), t.2 + (from.2 - vis.2), t.3 + (from.3 - vis.3))
 }
 
-/// Alt+1 full, Alt+2 medium: ease the launcher to that size, its top-left corner staying put unless
+/// Alt+1 main, Alt+2 small: ease the launcher to that size, its top-left corner staying put unless
 /// that would put it off screen.
 #[tauri::command]
 pub fn set_size(app: AppHandle, size: String) {
     let Some(w) = app.get_webview_window("main") else { return };
     let (lw, lh) = match size.as_str() {
-        "full" => full(),
-        "medium" => MEDIUM,
+        "main" => main_size(),
+        "small" => SMALL,
         _ => return,
     };
     let (Ok(hwnd), Ok(scale), Ok(inner)) = (w.hwnd(), w.scale_factor(), w.inner_size()) else { return };
@@ -180,7 +182,7 @@ pub async fn pod_fold(app: AppHandle, drag: bool) -> bool {
     true
 }
 
-/// Unfold the pod back into the launcher at `size` (full or medium), from where the pod is.
+/// Unfold the pod back into the launcher at `size` (main or small), from where the pod is.
 #[tauri::command]
 pub async fn pod_unfold(app: AppHandle, size: String) {
     let (Some(main), Some(pod)) = (app.get_webview_window("main"), app.get_webview_window("pod")) else { return };
@@ -268,7 +270,7 @@ mod tests {
 
     #[test]
     fn full_on_a_scaled_screen_shrinks_to_fit_the_work_area() {
-        // medium (380 x 320) at 150%, 7 px invisible edges left/right/bottom; full 1000 x 880 -> 1500 x 1320
+        // small (380 x 320) at 150%, 7 px invisible edges left/right/bottom; main 1000 x 880 -> 1500 x 1320
         let (vis, from, work) = ((100, 100, 670, 580), (93, 100, 677, 587), (0, 0, 1920, 1032));
         let to = resized(from, vis, 1500 - 570, 1320 - 480, work);
         assert_eq!(to, (93, 0, 1607, 1039)); // visible frame (100, 0, 1600, 1032): on screen, above the taskbar

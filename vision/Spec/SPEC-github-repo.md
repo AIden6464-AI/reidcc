@@ -1,6 +1,7 @@
 # SPEC: Reidcc as a GitHub repo (installer, updater, memory, the user's folders, a simulated first day)
 
-Status: PROPOSED. Rev 1 2026-11-21 (repo, zip install, simulation). Rev 2 2026-11-21: a real
+Status: **BUILT through 0.2.x** (checked 2026-11-23): Part 8's steps 1–4 shipped as 0.2.0 on 2026-11-21 (see
+"As built" there); 0.2.1 and 0.2.2 followed. The rest of this page is the plan as written. Rev 1 2026-11-21 (repo, zip install, simulation). Rev 2 2026-11-21: a real
 installer and updater, the launcher at the top, the program and your data in separate folders, and
 how memory (reid.json, reidcc_memory.md, ACA) works once installed. Nothing here is built except
 what Part 7 marks as **ran**.

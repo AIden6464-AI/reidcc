@@ -66,6 +66,15 @@ body.moving #shimmer { opacity: 1; transition-duration: 120ms; animation-play-st
 .grouped #frame { border: 0; }
 .group-header #bar { height: 100%; }
 .grouped #min, .grouped #max { display: none; }
+/* vision v1 §5: save rig names this frame; the name box sits in the header strip */
+#ctl #rig { width: auto; padding: 0 12px; font: 500 11px/15px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; }
+#where #rigname {
+  pointer-events: auto; margin-left: 12px; width: 18ch; height: 22px; padding: 0 6px; box-sizing: border-box;
+  background: var(--canvas); border: 1px solid var(--line2); color: var(--text); font: 12px/16px var(--mono); outline: none;
+}
+#where #rigname:focus { border-color: var(--text3); }
+#where #rignote { margin-left: 12px; text-transform: none; letter-spacing: 0; }
+#where #rignote.error { color: var(--oxide); }
 [data-pane-drag] { cursor: grab; }
 [data-pane-drag]:active { cursor: grabbing; }
 body[data-edge]:not([data-edge=""]) #shimmer { opacity: 0; }

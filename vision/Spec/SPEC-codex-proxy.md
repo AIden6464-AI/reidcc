@@ -1,7 +1,10 @@
 # Spec: the proxy for Codex profiles
 
-Status: **proposed 2026-11-19, not built.** Follows `SPEC-proxy.md` (Claude's proxy, built) and
-`SPEC-codex-signin-persona.md` (built).
+Status: **BUILT 2026-11-23** (both build steps; see "As built" at the end). Follows `SPEC-proxy.md`
+(Claude's proxy, built) and `SPEC-codex-signin-persona.md` (built).
+
+> "All of the build proxy's for Claude code that's in Reidcc needs to be ported/updated support for codex"
+> (Reid, 2026-11-23)
 
 > "persona's don't work? what man" (Reid, 2026-11-19, on his `claude` profile: engine codex, memory on,
 > `proxy: capture`, refused with `Codex can't use the proxy.`)
@@ -183,3 +186,31 @@ state, so there's nothing to reorder. Picking `optimize` on a Codex profile is r
   proxy. Ask first.
 - A long-lived shared proxy (per-session, like Claude).
 - Routing the Codex desktop app.
+
+## As built (2026-11-23)
+
+- **Core** (`rs/core/src/proxy.rs`): `CODEX_ADDONS` (slim/ultra → `codex_slim_addon.py`, capture →
+  `codex_capture_addon.py`) picked by engine; `choices(codex)` gives each picker its own list; `optimize` on a
+  Codex profile is refused with `optimize is Claude's. Pick slim, ultra or capture for Codex.`;
+  `drop_optimize` runs when a profile switches to Codex. `env()` gives Codex `CODEX_CA_CERTIFICATE`, Claude keeps
+  `NODE_EXTRA_CA_CERTS`. `proxy` is no longer in `CLAUDE_ONLY`.
+- **Screens:** the proxy row is live on Codex profiles in the GUI and TUI, with Codex's list (no optimize).
+  Switching to Codex with optimize on says `... optimize is Claude's, so it's off.`
+- **The exec tool.** Codex 0.170.0 puts most of its tool docs in one place: `functions.exec`'s description
+  (28,887 chars), a "### `name`" section per nested tool, each ending in an `exec tool declaration:` TypeScript
+  block. Slim replaces only the prose of listed sections (web__run, update_goal, image_gen, create_goal,
+  request_plugin_install, the MCP resource listers; ultra adds exec_command, write_stdin, read_mcp_resource,
+  view_image) and keeps every declaration byte for byte. The rules in the prose are kept, shorter (exec_command's
+  Windows safety rules, web__run's browse/citation/quote limits). `collaboration.spawn_agent` is left whole: its
+  model list changes with the account.
+- **Measured** (Codex 0.170.0, `codex exec "reply ok"`): tools 48,493 → 36,782 chars (slim), 35,544 (ultra);
+  input 19,013 → 16,612 tokens. A shell + `apply_patch` task through `ultra` worked, and the proxy stopped with the
+  session. WebSocket rewriting through mitmproxy works as is (the compression risk didn't bite).
+- **Checks:** `proxy\tests\test_codex_addons.py` (names, schemas and declarations unchanged, deterministic,
+  deltas untouched, drop by namespace or tool, one capture folder per setup, id-insensitive hash);
+  proxy tests 87 passed, 2 xfailed. Parity against the Python app, where every difference is this change on purpose:
+  CLI 151/154 + 2 known (Codex+proxy no longer refused); TUI 30/48, the other 18 differ only in the proxy row
+  (live, not greyed) and the refusal wording, now listed in `KNOWN`; GUI 162/175 reid.json identical, the other 13
+  all `optimize+capture` → `capture` after switching a profile to Codex (the GUI suite has no `KNOWN`, it reports). Captures go to `proxy\codex_prompts\` (gitignored).
+- **Not done:** the `shell_environment_policy` check (risk above): commands Codex runs still inherit
+  `HTTPS_PROXY`, the same exposure as Claude's proxy. The Python app still refuses a proxy on Codex.

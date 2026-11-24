@@ -231,7 +231,7 @@ Reidcc is being rebuilt in Rust (`rs\`: Tauri 2 + TypeScript + `portable-pty` + 
 | **Stage 1 · 1:1 TUI + GUI** | Built, awaiting sign-off | 48/48 TUI parity, 175/175 GUI `reid.json` parity (`rs\target\release\Reidcc.exe`) |
 | **Stage 2 · session windows** | Beta built in Rust | Embedded ConPTY + xterm.js window with Telemetry Bar and drag shimmer |
 | **Stage 3 · snap and fuse** | Beta built in Rust | Drag session windows together for a shared frame of up to four live panes. Drag the frame header to move them together or a pane header to pull it out. |
-| **Vision v1 · sizes** | Built in Rust | The launcher folds to `full` (`Alt+1`), `medium` (`Alt+2`) and the `mini pod` (`Alt+3`, or drag it small): a capsule with one slot per running session. To be renamed main / medium (the form) / small, with the pod as a toggle |
+| **Vision v1 · sizes** | Built in Rust | The launcher has three sizes: `main` (`Alt+1`), `medium` (the form, drag it narrow) and `small` (`Alt+2`), plus the `pod` (`Alt+3`, or drag it small): a capsule with one slot per running session. To do: a key for medium, and the pod as a toggle |
 | **Vision v1 · headless, rigs** | Proposed | Headless run strips, orchestrator rigs, TUI redesign |
 
 <p align="center">

@@ -16,6 +16,21 @@ The three steps, in the order you take them: pick a folder, pick a profile, open
 "Open a folder. Start coding." everywhere: the launcher title (GUI and TUI), the installer description, the
 READMEs and the website.
 
+**What the name means:**
+> "So there is Reid(Claude code).  And Reid(command center).  = Reidcc     So Reid's tools that's my idea of
+> it rn" (Reid, 2026-11-23, his working idea, not final)
+
+> "Na keep the Reidcc(Claude code).   There different apps but they can work linked" (Reid, 2026-11-23)
+
+**Reidcc means Reid for Claude Code**, the launcher. It keeps that name and this guide's pitch. **Reid command
+center** is a different app (its agent is the harness, also called the gate; vision/Spec/SPEC-agent-cli.md).
+It isn't built yet. "Remember it sits on top" (Reid, 2026-11-23): the command center sits on top of Reidcc
+and the agent CLIs, and drives them through Reidcc's profiles. "But Reidcc launcher can work independently still" (Reid,
+2026-11-23): Reidcc installs and runs without the command center, and shows nothing about it unless it is
+installed. Reid's tools is the
+name for both together. Reidcc copy
+never presents the command center as part of Reidcc.
+
 **One sentence:**
 > Reidcc is a simple launcher for Claude Code: pick a folder and a profile, and your
 > persona, memory and settings are already there.
@@ -150,13 +165,13 @@ Proposed words for vision version 1 (`vision\SPEC-vision-v1.md`; not current UI 
 
 | Situation | Proposed |
 |---|---|
-| Window sizes | `main` · `medium` · `small`, and the `pod`, which is a toggle, not a size (Reid: "this is main [...] sec is medium [...] small is [...] and pod is   (witch should be a toggle not a size thange)", 2026-11-22). `main` is the wide layout, `medium` the form, `small` folder / sessions / combos. Not renamed in the app yet: it still says `full` · `medium` · `mini pod` (built 2026-11-20). Each pod slot reads `CL  main  ●  01:42 · ctx 42% · lim 61%` (mark `CL` / `CX` / `OC`, profile, dot, elapsed, then Claude's own usage; a failed one adds `code <n>`); an empty pod says `No sessions running.` (Reid: "For the mini pod I can have more on it", 2026-11-21) |
+| Window sizes | `main` · `medium` · `small`, and the `pod`, which is a toggle, not a size (Reid: "this is main [...] sec is medium [...] small is [...] and pod is   (witch should be a toggle not a size thange)", 2026-11-22). `main` is the wide layout, `medium` the form, `small` folder / sessions / combos. Renamed in the app 2026-11-24 ("Ok fix the nameing"); it said `full` · `medium` · `mini pod` before. Each pod slot reads `CL  main  ●  01:42 · ctx 42% · lim 61%` (mark `CL` / `CX` / `OC`, profile, dot, elapsed, then Claude's own usage; a failed one adds `code <n>`); an empty pod says `No sessions running.` (Reid: "For the mini pod I can have more on it", 2026-11-21) |
 | One key opens a profile | `combo`. Built in the Rust app: the small size's list labels are `sessions` and `combos` (built as `medium`), and an empty list says `No sessions running.` |
 | The window the gate opens into | a `session window` by default; Windows Terminal is the other choice (`Session open in Windows Terminal.`) |
 | Joining windows | `snap` / `unsnap` |
 | Shrunk session | `headless`; its line is the `run strip` |
 | Run strip states | `running` · `waiting for you` (oxide) · `finished` · `failed · exit <n>` |
-| Saved layout | `rig` |
+| Saved layout | `rig`. Built 2026-11-23 in the Rust app: a snapped frame's header has `save rig`, then a `rig name` box (Enter saves, Escape cancels) and `Saved as rig <name>.`; medium lists them under `rigs` as `<name>  <profile> · <profile>  ×` (× forgets it), and empty says `No rigs yet. Snap sessions together, then press save rig.` Opening says `Rig <name> open.`; refusals: `There's no rig called <name>.` · `Rig <name> uses profile <p>, which isn't there any more.` · `Rig <name>: can't find <folder>. It may have moved.` · `Rig <name>, <profile>: <the profile's own error>` · `Rig <name> in reid.json has an error. Fix it, or save the rig again.` |
 
 ---
 
@@ -193,9 +208,10 @@ Proposed words for vision version 1 (`vision\SPEC-vision-v1.md`; not current UI 
 | Fields | `name` `engine` `model` `sign-in` `persona` `persona mode` `memory` `proxy` `tools` `mcp` `chrome` `connectors` `safe mode` `extra args` |
 | Engine | `claude` / `codex`; model shows `engine default` for Codex with no model |
 | Codex profile tag | `CODEX · GREYED FIELDS ARE CLAUDE'S` |
-| Engine switched | `Engine is now codex. Model and sign-in reset to its defaults.` |
-| Claude-only field on | `Codex can't use the proxy. Turn it off for <profile>, or pick a Claude profile.` (also `a tools limit`, `an MCP choice`, `safe mode`, `chrome off`, `connectors off`, `settings_json`) |
-| Claude-only field in the TUI editor | `proxy is Claude's. Switch engine to change it.` |
+| Engine switched | `Engine is now codex. Model and sign-in reset to its defaults.` (plus ` optimize is Claude's, so it's off.` when it was on) |
+| Claude-only field on | `Codex can't use a tools limit. Turn it off for <profile>, or pick a Claude profile.` (also `an MCP choice`, `safe mode`, `chrome off`, `connectors off`, `settings_json`) |
+| Claude-only field in the TUI editor | `tools is Claude's. Switch engine to change it.` |
+| optimize on a Codex profile | `optimize is Claude's. Pick slim, ultra or capture for Codex.` |
 | Sign-in default on Codex | `codex login · ChatGPT` / `· API key` / `· signed in` / `· not signed in` (oxide) / `· checking…` |
 | Codex not signed in | `Codex isn't signed in. Run codex login in a terminal, then try again.` |
 | Persona mode on Codex | `add to Codex's prompt` / `replace Codex's prompt` |

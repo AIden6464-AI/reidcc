@@ -131,7 +131,7 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
         }
         if let Some(plan) = &plan {
             let p = proxy::start(ctx, name, plan)?;
-            launch.env.extend(proxy::env(&p));
+            launch.env.extend(proxy::env(&p, !claude));
             errln!("{TEXT3}proxy {} on 127.0.0.1:{} · log {}{R}", proxy::list(prof).join("+"), p.port, crate::show_path(&p.log_path));
             px = Some(p);
         }

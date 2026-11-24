@@ -336,7 +336,7 @@ impl Model {
             models,
             auths,
             personas: pvals,
-            proxies: std::iter::once(s("off")).chain(proxy::CHOICES.iter().map(|c| s(c))).collect(),
+            proxies: std::iter::once(s("off")).chain(proxy::choices(cx).iter().map(|c| s(c))).collect(),
             tools_choices: TOOLS_CHOICES.iter().map(|c| s(c)).collect(),
             mcps: mvals,
         };
@@ -385,7 +385,7 @@ impl Model {
         }
         let tool = if cx { "Codex" } else { "Claude Code" };
         let mut disabled = Map::new();
-        let live = [("proxy", !proxy::list(&p).is_empty()), ("tools", p.contains_key("tools")), ("mcp", on(&p, "mcp")),
+        let live = [("tools", p.contains_key("tools")), ("mcp", on(&p, "mcp")),
                     ("safe", on(&p, "safe")), ("chrome", on(&p, "no_chrome")), ("connectors", on(&p, "no_connectors"))];
         for (k, live_on) in live {
             disabled.insert(s(k), Value::Bool(cx && !live_on));
@@ -440,10 +440,12 @@ impl Model {
             put(&mut p, "engine", if engine == "claude" { Value::Null } else { Value::String(engine.clone()) });
             put(&mut p, "model", Value::Null);
             put(&mut p, "settings", Value::Null); // sign-in files are per engine too
+            let no_opt = engine == "codex" && proxy::drop_optimize(&mut p);
             set_profile(&mut cfg, &cur, p);
             self.save(&cfg);
             self.load_profile(&cfg, &cur); // new model and sign-in lists for the new engine
-            self.push(say(format!("Engine is now {engine}. Model and sign-in reset to its defaults."), "quiet", &[], Some(3.0)));
+            let tail = if no_opt { " optimize is Claude's, so it's off." } else { "" };
+            self.push(say(format!("Engine is now {engine}. Model and sign-in reset to its defaults.{tail}"), "quiet", &[], Some(3.0)));
             return;
         }
         let mode_changed = text_or(&p, "mode", "append") != v.mode;

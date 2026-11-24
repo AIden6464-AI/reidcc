@@ -1,6 +1,9 @@
 # SPEC: what the TUI is missing next to the GUI
 
-Status: **PROPOSED** (2026-11-17). Nothing here is built yet.
+Status: **PROPOSED** (2026-11-17). Nothing here is built yet. Still true of the Rust TUI (checked
+2026-11-23): it was ported 1:1 from the Python one, so it kept these gaps (the separate `settings · <name>`
+screen, `n` copies, no `j` / `o` on the main screen, no tab title, no mouse). Read `TUI` / `reid.py` below
+as `rs/cli/src/tui.rs`.
 
 Reid, 2026-11-17, with a screenshot of the GUI and `reid` side by side:
 > "spec what your missing from useing the tui"

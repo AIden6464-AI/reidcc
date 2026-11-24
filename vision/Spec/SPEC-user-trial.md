@@ -1,6 +1,6 @@
 # SPEC: the user trial (two AI testers play new users who found Reidcc on Reddit)
 
-Status: SPEC 2026-11-23. Not run. Runs on Reid's word; it uses his Gemini, Codex and a little Claude usage.
+Status: SPEC 2026-11-23. Run 2026-11-23, results in SPEC-user-trial-results-2026-11-23.md.
 
 > "Idea   Spec a doc to have Gemini 4 argon and codex gpt 6.2 sol  act like there new users of Reidcc and saw
 > the Reddit post and is installing it and useing what kind of parts the user likes wants or hopefulness for the
@@ -128,4 +128,5 @@ memory, persona and usage bar are the same whichever engine runs. Put to the tes
 
 | Date | Tester | Score | Results doc |
 |---|---|---|---|
-| | | | |
+| 2026-11-23 | Sam (Gemini 4 Argon) | 4/5 | SPEC-user-trial-results-2026-11-23.md |
+| 2026-11-23 | Jo (Codex GPT 6.2 Sol, via `codex exec`: the interactive window stuck on a start prompt) | 3/5 | same |

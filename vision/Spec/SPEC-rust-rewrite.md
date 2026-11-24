@@ -2,7 +2,9 @@
 
 Status: **stage 0 built 2026-11-20** (see "Stage 0 as built"). **Stage 1's 1:1 TUI and GUI built
 2026-11-20**, waiting on Reid's sign-off (`SPEC-rust-tui-gui.md`). Betas built 2026-11-20: session windows
-(stage 2), snap (stage 3), and all three sizes (full, medium, mini pod). Headless and stage 4 aren't built.
+(stage 2), snap (stage 3), and all three sizes and the pod (main, medium, small; named full, medium, mini pod until 2026-11-24). Stage 4 (rigs) beta built 2026-11-23 ("Ya build that as you can because we have added a lot from that time"; vision v1 §5). Headless isn't built.
+**Since 0.2.0 (2026-11-21) the Rust app is what ships** (installer, updater, `reid.exe`); the Python app
+in `python\` is legacy, kept only as the parity reference (`rs/tests/*parity.py`). Checked 2026-11-23.
 This is how Reidcc is rebuilt in Rust. What it builds
 toward (sizes, session windows, snap, headless, orchestrator) is `vision\SPEC-vision-v1.md`. Today's
 Python app (source in `python\`, built into `app\`) stays the daily driver until stage 2 passes.
@@ -176,7 +178,7 @@ Order:
 4. Session windows (stage 2). **Beta built 2026-11-20** (vision v1 §2). This is the biggest risk: Codex's and OpenCode's full-screen TUIs inside
    xterm.js are unproven, so check that first.
 5. Snap (stage 3).
-6. Rigs (stage 4).
+6. Rigs (stage 4). **Beta built 2026-11-23**: save rig on a frame, open from medium (vision v1 §5).
 
 Vision v1's open questions 1, 2, 3, 5 and 6 were answered on 2026-11-20 (see that doc):
 - the pod is a normal window

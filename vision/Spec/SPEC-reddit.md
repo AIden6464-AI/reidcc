@@ -123,6 +123,22 @@ Rewrite it for each later sub (Part 3's angle), never paste it unchanged.
 - Check that the latest release downloads and installs on a clean machine or account.
 - Reid checks that his account has some normal history in the sub (rule 8).
 
+## Part 5b: parked 2026-11-23
+
+> "Ok start the Reddit post and watch them" ... "Ok save that for later" (Reid, 2026-11-23)
+
+Tried and stopped: the Claude in Chrome extension wasn't connected, and Reddit refuses plain downloads
+(403), so the rules couldn't be read without it. Nothing filled in, nothing posted.
+
+When Reid says go again:
+1. Reid opens Chrome with Claude in Chrome connected (same account as Claude Code) and signs in to Reddit.
+2. Claude reads r/ClaudeAI's rules, flair and recent project posts that day; if projects go in a weekly
+   thread, post there.
+3. Claude fits Part 4 to the rules, fills title, body, flair and `docs/session-window.png` only (the
+   launcher and settings shots are stale, Part 5), and stops. Reid presses **Post**.
+4. Watch: Claude checks the thread in the browser every 20–30 min, lists new comments and drafts
+   replies; Reid posts them. Log the link in Part 6.
+
 ## Part 6: log
 
 | Date | Sub | Link | Notes |

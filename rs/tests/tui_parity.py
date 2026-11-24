@@ -38,7 +38,11 @@ K = {"up": "\x1b[A", "down": "\x1b[B", "right": "\x1b[C", "left": "\x1b[D", "ent
 BASE_PY = getattr(sys, "_base_executable", sys.executable)
 SID = "00000000-0000-4000-8000-000000000000"
 # Differences accepted, each with its reason: {sequence label: reason}. Anything else that differs fails.
-KNOWN = {}
+_CODEX_PROXY = ("Codex has its own proxy in Rust (SPEC-codex-proxy.md, 2026-11-23): its proxy row isn't greyed "
+                "and the refusal no longer names the proxy; the Python app still refuses it")
+KNOWN = {label: _CODEX_PROXY for label in ("browse", "edit codex claude-fields", "new rename delete default",
+                                           "launch codex --version, gate skipped", "launch claude --version",
+                                           "reid back + resume")}
 
 EXTRA_PROFILES = {
     "t-missing-persona": {"persona": "personas/nope.md"},
