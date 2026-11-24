@@ -58,6 +58,8 @@ impl Out {
 
 pub struct Sess {
     info: Info,
+    /// the real folder it runs in (info.folder is the shown one)
+    cwd: String,
     started: Instant,
     file: String,
     master: Mutex<Box<dyn MasterPty + Send>>,
@@ -110,9 +112,17 @@ impl Sessions {
         self.map.lock().unwrap().get(&id).cloned()
     }
 
+    /// A rig's pane: the session's profile and real folder.
+    pub fn leaf(&self, id: u32) -> Option<Value> {
+        let s = self.get(id)?;
+        Some(serde_json::json!({"profile": s.info.profile, "folder": s.cwd}))
+    }
+
     /// Start `cmd` in a ConPTY and make its window, hidden, over `rect` (physical px). Returns the window.
-    pub fn open(&self, app: &AppHandle, info: Info, cwd: &str, cmd: &[String], rect: (i32, i32, i32, i32))
-                -> Result<tauri::Window, String> {
+    /// With `host` (a rig's frame and the pane's bounds in it) the page is made there instead: moving a
+    /// WebView that's receiving output can drop a channel message, and the terminal then stalls for good.
+    pub fn open(&self, app: &AppHandle, info: Info, cwd: &str, cmd: &[String], rect: (i32, i32, i32, i32),
+                host: Option<(tauri::Window, (i32, i32, i32, i32))>) -> Result<tauri::Window, String> {
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
         let file = reidcc::py::join(&reidcc::py::gettempdir(), &[&format!("reidcc_session_{}_{id}.json", std::process::id())]);
         for f in [file.clone(), format!("{file}.end")] {
@@ -135,7 +145,7 @@ impl Sessions {
         let writer = pair.master.take_writer().map_err(|e| e.to_string())?;
         let out = Arc::new(Mutex::new(Out::default()));
         let sess = Arc::new(Sess {
-            info, started: Instant::now(), file: file.clone(), master: Mutex::new(pair.master), writer: Mutex::new(writer),
+            info, cwd: cwd.to_string(), started: Instant::now(), file: file.clone(), master: Mutex::new(pair.master), writer: Mutex::new(writer),
             killer: Mutex::new(child.clone_killer()), pid: child.process_id(), out: out.clone(),
         });
 
@@ -198,12 +208,20 @@ impl Sessions {
                     }
                 }
                 let mut view = tauri::webview::WebviewBuilder::new(format!("{PANE}{id}"), tauri::WebviewUrl::App(format!("session.html?id={id}").into()))
-                    .auto_resize().background_color(CANVAS);
+                    .background_color(CANVAS);
+                if host.is_none() {
+                    view = view.auto_resize();
+                }
                 if let Some(d) = crate::WEBVIEW_DIR.get() {
                     view = view.data_directory(d.clone());
                 }
                 let size = w.inner_size().unwrap_or_else(|_| tauri::PhysicalSize::new((r - l) as u32, (b - t) as u32));
-                if let Err(e) = w.add_child(view, PhysicalPosition::new(0, 0), size) {
+                let added = match &host {
+                    Some((frame, (hl, ht, hr, hb))) => frame.add_child(view, PhysicalPosition::new(*hl, *ht),
+                                                                       tauri::PhysicalSize::new((hr - hl).max(1) as u32, (hb - ht).max(1) as u32)),
+                    None => w.add_child(view, PhysicalPosition::new(0, 0), size),
+                };
+                if let Err(e) = added {
                     let _ = w.destroy();
                     self.end(id);
                     return Err(e.to_string());
@@ -294,7 +312,7 @@ pub fn sess_close(app: AppHandle, id: u32, note: Option<String>) {
     let _ = app.run_on_main_thread(move || crate::dock::close_pane(&handle, id));
 }
 
-/// One running (or just ended) session, for the medium size's session list.
+/// One running (or just ended) session, for the small size's session list.
 #[derive(Serialize)]
 pub struct Row {
     id: u32,

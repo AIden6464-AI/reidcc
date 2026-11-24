@@ -6,19 +6,19 @@
 The proxy is in the source repo, not the installer. It needs Python and mitmproxy.
 :::
 
-A profile's `proxy` field runs its Claude Code session through a private request proxy, to trim what's sent or to capture it.
+A profile's `proxy` field runs its session through a private request proxy, to trim what's sent or to capture it. It works for Claude Code and Codex profiles; each engine has its own add-ons.
 
 | Value | Does |
 |---|---|
-| `slim` | Drops parts of the request Claude Code doesn't need |
+| `slim` | Shortens the long built-in tool descriptions the engine sends |
 | `ultra` | Trims further |
-| `optimize` | Rewrites requests to use fewer tokens |
+| `optimize` | Rewrites requests to use fewer tokens (Claude Code only) |
 | `capture` | Logs the requests, for study |
 
 Values combine, for example `"proxy": ["slim", "capture"]`. Each session starts a hidden `mitmdump` on a free port, closed with the session, and logs to `proxy\logs\<profile>.log`.
 
 ::: warning
-`slim` and `ultra` rewrite requests and can break when Claude Code updates.
+`slim` and `ultra` rewrite requests and can break when Claude Code or Codex updates.
 :::
 
 ## Setup

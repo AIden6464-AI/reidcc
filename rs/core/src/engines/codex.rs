@@ -359,6 +359,7 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
         return err(format!("Codex can't use {listing}. Turn {} off for {name}, or pick a Claude profile.",
                            if on_c.len() > 1 { "them" } else { "it" }));
     }
+    crate::proxy::plan(ctx, prof)?; // validates the proxy field
     let model = text(prof, "model");
     if is_claude_model(&model) {
         return err(format!("{model} is a Claude model. Clear the model to use Codex's default, or type a Codex model."));

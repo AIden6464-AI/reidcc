@@ -15,6 +15,33 @@ pub const ADDONS: [(&str, &str, Option<(&str, &str)>); 4] = [
     ("capture", "capture_addon.py", None),
 ];
 pub const CHOICES: [&str; 7] = ["slim", "ultra", "optimize", "capture", "slim+capture", "ultra+capture", "optimize+capture"];
+/// Codex's add-ons (SPEC-codex-proxy.md): its own scripts, and no optimize.
+pub const CODEX_ADDONS: [(&str, &str, Option<(&str, &str)>); 3] = [
+    ("slim", "codex_slim_addon.py", Some(("SLIM_LEVEL", "slim"))),
+    ("ultra", "codex_slim_addon.py", Some(("SLIM_LEVEL", "ultra"))),
+    ("capture", "codex_capture_addon.py", None),
+];
+pub const CODEX_CHOICES: [&str; 5] = ["slim", "ultra", "capture", "slim+capture", "ultra+capture"];
+pub const NO_OPTIMIZE: &str = "optimize is Claude's. Pick slim, ultra or capture for Codex.";
+
+pub fn choices(codex: bool) -> &'static [&'static str] {
+    if codex { &CODEX_CHOICES } else { &CHOICES }
+}
+
+/// Switching a profile to Codex: take optimize out of its proxy field. True if it was there.
+pub fn drop_optimize(prof: &mut Obj) -> bool {
+    let names = list(prof);
+    if !names.iter().any(|n| n == "optimize") {
+        return false;
+    }
+    let rest: Vec<String> = names.into_iter().filter(|n| n != "optimize").collect();
+    if rest.is_empty() {
+        prof.shift_remove("proxy");
+    } else {
+        prof.insert("proxy".into(), Value::String(rest.join("+")));
+    }
+    true
+}
 
 /// The profile's proxy field as add-on names: "slim+capture", "slim,capture" or a list.
 pub fn list(prof: &Obj) -> Vec<String> {
@@ -37,17 +64,22 @@ pub fn plan(ctx: &Ctx, prof: &Obj) -> R<Option<Plan>> {
     if names.is_empty() {
         return Ok(None);
     }
-    let bad: Vec<&str> = names.iter().filter(|n| !ADDONS.iter().any(|a| a.0 == n.as_str())).map(String::as_str).collect();
+    let codex = crate::engines::is_codex(prof);
+    let addons: &[_] = if codex { &CODEX_ADDONS } else { &ADDONS };
+    if codex && names.iter().any(|n| n == "optimize") {
+        return err(NO_OPTIMIZE);
+    }
+    let bad: Vec<&str> = names.iter().filter(|n| !addons.iter().any(|a| a.0 == n.as_str())).map(String::as_str).collect();
     if !bad.is_empty() {
         return err(format!("Unknown proxy add-on: {}. Use one of: {}.", bad.join(", "),
-                           ADDONS.iter().map(|a| a.0).collect::<Vec<_>>().join(", ")));
+                           addons.iter().map(|a| a.0).collect::<Vec<_>>().join(", ")));
     }
     if names.iter().any(|n| n == "slim") && names.iter().any(|n| n == "ultra") {
         return err("slim and ultra are one add-on at two levels. Pick one.");
     }
     let mut p = Plan { scripts: vec![], env: Env::new() };
     for n in &names {
-        let (_, script, e) = ADDONS.iter().find(|a| a.0 == n).unwrap();
+        let (_, script, e) = addons.iter().find(|a| a.0 == n).unwrap();
         p.scripts.push(py::join(&ctx.proxy_dir, &[script]));
         if let Some((k, v)) = e {
             p.env.insert(k.to_string(), v.to_string());
@@ -162,8 +194,10 @@ pub fn stop(px: Option<&mut Proxy>) {
     }
 }
 
-pub fn env(px: &Proxy) -> [(String, String); 3] {
+/// What the session gets: Claude (Node) trusts the CA through NODE_EXTRA_CA_CERTS, Codex through
+/// CODEX_CA_CERTIFICATE.
+pub fn env(px: &Proxy, codex: bool) -> [(String, String); 3] {
     [("HTTPS_PROXY".into(), format!("http://127.0.0.1:{}", px.port)),
-     ("NODE_EXTRA_CA_CERTS".into(), mitm_ca_path()),
+     ((if codex { "CODEX_CA_CERTIFICATE" } else { "NODE_EXTRA_CA_CERTS" }).into(), mitm_ca_path()),
      ("NO_PROXY".into(), "localhost,127.0.0.1,::1".into())]
 }

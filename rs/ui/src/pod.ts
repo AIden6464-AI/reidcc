@@ -1,4 +1,4 @@
-// The mini pod (vision\SPEC-vision-v1.md §1): the launcher folded into a capsule. Each running session
+// The pod (vision\SPEC-vision-v1.md §1): the launcher folded into a capsule. Each running session
 // is a slot in one row: engine mark, profile, ●, elapsed time and (Claude) its own ctx % and lim %;
 // clicking one brings its window forward. The pod grows sideways with its slots. Alt+1 / Alt+2 or a double-click unfold it; dragging the capsule moves it.
 import { invoke } from "@tauri-apps/api/core";
@@ -79,7 +79,7 @@ cap.addEventListener("mousedown", (e) => {
   const now = performance.now();
   if (now - lastDown < 350) {
     lastDown = 0;
-    invoke("pod_unfold", { size: "full" });
+    invoke("pod_unfold", { size: "main" });
     return;
   }
   lastDown = now;
@@ -89,7 +89,7 @@ cap.addEventListener("mousedown", (e) => {
 window.addEventListener("keydown", (e) => {
   if (e.altKey && !e.ctrlKey && (e.code === "Digit1" || e.code === "Digit2")) {
     e.preventDefault();
-    invoke("pod_unfold", { size: e.code === "Digit1" ? "full" : "medium" });
+    invoke("pod_unfold", { size: e.code === "Digit1" ? "main" : "small" });
   }
 });
 

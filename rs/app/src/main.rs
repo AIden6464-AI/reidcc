@@ -7,6 +7,7 @@ mod dock;
 mod fonts;
 mod gate;
 mod model;
+mod rig;
 mod session;
 mod settings;
 mod sizes;
@@ -28,7 +29,7 @@ const TEXT2: u32 = 0x9F978E;
 
 pub struct App {
     pub m: Mutex<Model>,
-    gate: gate::Shared,
+    pub(crate) gate: gate::Shared,
     /// test hooks on (REIDCC_GUI_TEST=1)
     test: bool,
     /// first focus: the list when there's a folder to start in, else pick folder
@@ -99,8 +100,8 @@ struct Init {
     /// the form's opening (SPEC-hand.md): the emblem grows, then the view zooms into the emerald
     emblem: Option<Value>,
     test: bool,
-    /// the smallest size the full layout fits in (logical px); below it the page folds to medium
-    full_min: (f64, f64),
+    /// the smallest size the main layout fits in (logical px); below it the page folds to medium (the form)
+    main_min: (f64, f64),
 }
 
 #[tauri::command]
@@ -113,8 +114,8 @@ fn init(app: AppHandle, st: S) -> Init {
     let meta = |f: &str| asset(f).and_then(|p| py::read_text(&p, false).ok()).and_then(|t| serde_json::from_str(&t).ok());
     let (gate, emblem) = (meta("assets\\gate.json"), meta("assets\\emblem.json"));
     let folder = m.folder.clone();
-    let full_min = *sizes::FULL_MIN.get().unwrap_or(&(960.0, 820.0));
-    Init { ops: done(&app, &mut m), folder, gate, emblem, test: st.test, full_min }
+    let main_min = *sizes::MAIN_MIN.get().unwrap_or(&(960.0, 820.0));
+    Init { ops: done(&app, &mut m), folder, gate, emblem, test: st.test, main_min }
 }
 
 #[tauri::command]
@@ -335,8 +336,8 @@ fn go_now(app: &AppHandle, st: &App, sessions: &session::Sessions, resume: bool,
         // Without the lock: making the window waits on the main thread, whose commands take this lock.
         drop(m);
         let sf = app.get_webview_window("main").and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
-        let rect = sizes::session_rect(session::visible_rect(gate::main_hwnd() as isize), sf); // full size at least
-        let opened = sessions.open(app, info, &cwd, &cmd, rect);
+        let rect = sizes::session_rect(session::visible_rect(gate::main_hwnd() as isize), sf); // main's size at least
+        let opened = sessions.open(app, info, &cwd, &cmd, rect, None);
         m = st.m.lock().unwrap();
         let w = match opened {
             Ok(w) => w,
@@ -513,19 +514,19 @@ fn main() {
                 ((m.size().width as f64 / s) as i32, (m.size().height as f64 / s) as i32)
             }).unwrap_or((1920, 1080));
             let h = 880.min(sh - 140); // leave room for the title bar and the taskbar
-            let _ = sizes::FULL.set((1000.0, h as f64));
-            let _ = sizes::FULL_MIN.set((960.0, 820.min(h) as f64));
+            let _ = sizes::MAIN.set((1000.0, h as f64));
+            let _ = sizes::MAIN_MIN.set((960.0, 820.min(h) as f64));
             // Settings → start size (reid.json "start_size"); the page lays itself out for whatever size it gets
             let start = app.state::<App>().m.lock().unwrap().cfg().and_then(|c| c.get("start_size").map(reidcc::pyjson::py_str));
             let (ww, wh) = match sizes::start_size(&start.unwrap_or_default()) {
-                "medium" => (sizes::FORM.0 as i32, (sizes::FORM.1 as i32).min(sh - 140)),
-                "small" => (sizes::MEDIUM.0 as i32, sizes::MEDIUM.1 as i32),
+                "medium" => (sizes::MEDIUM.0 as i32, (sizes::MEDIUM.1 as i32).min(sh - 140)),
+                "small" => (sizes::SMALL.0 as i32, sizes::SMALL.1 as i32),
                 _ => (1000, h),
             };
             let mut b = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
                 .title(concat!("Reidcc ", env!("CARGO_PKG_VERSION")))
                 .inner_size(ww as f64, wh as f64)
-                .min_inner_size(sizes::MIN.0, sizes::MIN.1) // medium below the full layout's size (vision v1 §1)
+                .min_inner_size(sizes::MIN.0, sizes::MIN.1) // medium and small below main's size (vision v1 §1)
                 // Place it ourselves: Windows' cascade can push the bottom bar under the taskbar.
                 .position(0.max((sw - ww) / 2) as f64, 0.max((sh - 48 - wh - 40) / 2) as f64)
                 .background_color(tauri::window::Color(4, 4, 4, 255))
@@ -551,7 +552,7 @@ fn main() {
             init, folder_text, select, apply, rename, action, open_persona, pick_folder, browse_persona, recent,
             set_folder, go, gate_handover, gate_skip, gate_finish, test_login, show, metrics,
             session::sess_attach, session::sess_write, session::sess_resize, session::sess_meters, session::sess_close,
-            session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control, update::update_foot, update::update_install,
+            session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control, dock::dock_grouped, rig::rig_list, rig::rig_save, rig::rig_delete, rig::rig_open, update::update_foot, update::update_install,
             update::update_check, settings::settings_get, settings::settings_set, settings::settings_plugins, settings::settings_open
         ])
         .run(tauri::generate_context!())

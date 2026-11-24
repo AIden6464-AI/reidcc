@@ -522,7 +522,7 @@ impl Tui {
             // same as the GUI: say why the greyed rows are greyed out
             tags.insert(0, CODEX_TAG.into());
         }
-        let greyed: &[&str] = if cx { &["proxy", "tools", "mcp"] } else { &[] };
+        let greyed: &[&str] = if cx { &["tools", "mcp"] } else { &[] };
         let mut right = vec![format!("{TEXT}{B}{name}{R}   {DIM}{}{R}", tags.join(" · ")), String::new()];
         for (k, v) in &rows {
             if *k == "switches" {
@@ -927,8 +927,10 @@ impl Tui {
                 // a model and a sign-in file belong to one engine; start from the new engine's defaults
                 setk(p, "model", Value::Null);
                 setk(p, "settings", Value::Null);
+                let no_opt = ENGINES[i] == "codex" && proxy::drop_optimize(p);
                 let on_ = if ENGINES[i] == "codex" { engines::claude_only_on(p) } else { vec![] };
                 self.msg = format!("Engine is now {}. Model and sign-in reset to its defaults.", ENGINES[i])
+                    + if no_opt { " optimize is Claude's, so it's off." } else { "" }
                     + &if on_.is_empty() { String::new() } else { format!(" Codex can't use {}: turn it off to open the gate.", on_.join(", ")) };
             }
             "model" => {
@@ -1040,7 +1042,7 @@ impl Tui {
             }
             "proxy" => {
                 let mut opts = vec!["off".to_string()];
-                opts.extend(proxy::CHOICES.iter().map(|s| s.to_string()));
+                opts.extend(proxy::choices(engines::is_codex(&prof(cfg, name))).iter().map(|s| s.to_string()));
                 let cur = proxy::list(&prof(cfg, name)).join("+");
                 let cur = if cur.is_empty() { "off".into() } else { cur };
                 let at = opts.iter().position(|o| *o == cur).unwrap_or(0);
@@ -1145,7 +1147,7 @@ impl Tui {
 }
 
 fn claude_only_field(f: &str) -> bool {
-    ["proxy", "tools", "mcp", "chrome", "connectors", "safe"].contains(&f)
+    ["tools", "mcp", "chrome", "connectors", "safe"].contains(&f)
 }
 
 /// Is this Claude-only field set to something a Codex launch would refuse?

@@ -1,6 +1,7 @@
 //! Vision v1 §3. A frame owns the layout. Each pane keeps its original WebView and PTY.
 use crate::session::{self, PANE, PREFIX};
 use serde::Serialize;
+use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     sync::{atomic::{AtomicBool, AtomicU32, Ordering}, Mutex},
@@ -512,7 +513,7 @@ impl Drag {
     }
 }
 
-fn on_ui<T: Send + 'static>(app: &AppHandle, f: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+pub(crate) fn on_ui<T: Send + 'static>(app: &AppHandle, f: impl FnOnce() -> T + Send + 'static) -> Option<T> {
     let (tx, rx) = std::sync::mpsc::sync_channel(1);
     app.run_on_main_thread(move || { let _ = tx.send(f()); }).ok()?;
     rx.recv().ok()
@@ -593,6 +594,10 @@ pub fn dock_drag(app: AppHandle, webview: Webview) {
     });
 }
 
+/// Whether this pane is in a frame: a page that loads after its pane was snapped (a rig) missed dock-grouped.
+#[tauri::command]
+pub fn dock_grouped(webview: Webview) -> bool { webview.window().label().starts_with(GROUP) }
+
 #[tauri::command]
 pub fn dock_control(webview: Webview, action: &str) {
     let window = webview.window();
@@ -605,6 +610,80 @@ pub fn dock_control(webview: Webview, action: &str) {
         "close" if window.label().starts_with(GROUP) && webview.label().starts_with(HEADER) => { let _ = window.destroy(); }
         _ => {}
     }
+}
+
+// ------------------------------------------------------------------ rigs ---
+// A rig (vision v1 §5) saves a frame's layout as JSON: a leaf is {"profile", "folder"}, a split is
+// {"split": "h" | "v", "portion", "first", "second"}.
+
+impl Panes {
+    fn to_json(&self, leaf: &dyn Fn(u32) -> Option<Value>) -> Option<Value> {
+        match self {
+            Self::One(id) => leaf(*id),
+            Self::Split { horizontal, first, second, portion } => Some(json!({
+                "split": if *horizontal { "h" } else { "v" }, "portion": (portion * 1000.0).round() / 1000.0,
+                "first": first.to_json(leaf)?, "second": second.to_json(leaf)?,
+            })),
+        }
+    }
+    /// The saved layout with its leaves numbered by `ids`, in order.
+    fn from_json(v: &Value, ids: &mut impl Iterator<Item = u32>) -> Option<Self> {
+        let Some(split) = v.get("split").and_then(Value::as_str) else {
+            return v.get("profile").and_then(Value::as_str).and_then(|_| ids.next()).map(Self::One);
+        };
+        let portion = v.get("portion").and_then(Value::as_f64).unwrap_or(0.5).clamp(0.2, 0.8);
+        let first = Box::new(Self::from_json(v.get("first")?, ids)?);
+        let second = Box::new(Self::from_json(v.get("second")?, ids)?);
+        Some(Self::Split { horizontal: split == "h", first, second, portion })
+    }
+}
+
+/// A saved layout's leaves ({"profile", "folder"}), in pane order. None if it isn't one.
+pub fn rig_leaves(layout: &Value) -> Option<Vec<Value>> {
+    fn walk(v: &Value, out: &mut Vec<Value>) -> Option<()> {
+        if v.get("split").is_some() {
+            walk(v.get("first")?, out)?;
+            walk(v.get("second")?, out)
+        } else {
+            v.get("profile").and_then(Value::as_str)?;
+            out.push(v.clone());
+            Some(())
+        }
+    }
+    let mut out = vec![];
+    walk(layout, &mut out)?;
+    (1..=4).contains(&out.len()).then_some(out)
+}
+
+/// The frame this webview is in, as a rig: its layout and its visible rect (physical px).
+pub fn rig_of(app: &AppHandle, window: Window, leaf: &dyn Fn(u32) -> Option<Value>) -> Option<Value> {
+    let f = frame(app, window)?;
+    let r = rect(&f.window)?;
+    Some(json!({"layout": f.panes.to_json(leaf)?, "rect": [r.l, r.t, r.r, r.b]}))
+}
+
+/// A rig's frame at `at` (physical px, kept on screen), hidden, and where each pane goes in it (window
+/// coordinates, pane order). Main thread only.
+pub fn rig_frame(app: &AppHandle, saved: &Value, at: (i32, i32, i32, i32)) -> Option<(Window, Vec<(i32, i32, i32, i32)>)> {
+    let n = rig_leaves(saved)?.len() as u32;
+    let tree = Panes::from_json(saved, &mut (0..n))?;
+    let at = Rect::from(at).inside(work_area(at.into()));
+    let scale = app.get_webview_window("main").and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+    let group = create_group(app, at, scale).ok()?;
+    let Some((_, mut tiles)) = group_tiles(&group, &tree) else { let _ = group.destroy(); return None };
+    tiles.sort_by_key(|(id, _)| *id);
+    Some((group, tiles.into_iter().map(|(_, r)| (r.l, r.t, r.r, r.b)).collect()))
+}
+
+/// The rig's sessions `ids` are open inside `group`: make it a live frame and show it. Main thread only.
+pub fn rig_show(app: &AppHandle, group: &Window, saved: &Value, ids: &[u32]) -> bool {
+    let Some(tree) = Panes::from_json(saved, &mut ids.iter().copied()) else { return false };
+    dock(app).groups.lock().unwrap().insert(group.label().into(), tree.clone());
+    layout(group, &tree);
+    for id in tree.ids() { membership(app, id, true); }
+    let _ = group.show();
+    let _ = group.set_focus();
+    true
 }
 
 #[cfg(test)]
@@ -625,5 +704,21 @@ mod tests {
         tree.tiles((0, 0, 601, 400).into(), 1, &mut tiles);
         assert_eq!(tiles, vec![(1, (0, 0, 300, 400).into()), (2, (301, 0, 601, 400).into())]);
         assert_eq!(tree.without(1), Some(Panes::One(2)));
+    }
+
+    #[test]
+    fn a_rig_layout_round_trips_and_numbers_its_panes_in_order() {
+        let a: Rect = (0, 0, 600, 400).into();
+        let tree = Panes::One(7).joins(Panes::One(8).joins(Panes::One(9), Side::Bottom, a, a), Side::Right, a, a);
+        let leaf = |id: u32| Some(json!({"profile": format!("p{id}"), "folder": "~/projects/kiln"}));
+        let saved = tree.to_json(&leaf).unwrap();
+        assert_eq!(saved["split"], "h");
+        assert_eq!(saved["second"]["split"], "v");
+        let names: Vec<_> = rig_leaves(&saved).unwrap().iter().map(|l| l["profile"].as_str().unwrap().to_owned()).collect();
+        assert_eq!(names, ["p7", "p8", "p9"]);
+        let back = Panes::from_json(&saved, &mut [1, 2, 3].into_iter()).unwrap();
+        assert_eq!(back.ids(), [1, 2, 3]);
+        assert!(Panes::from_json(&saved, &mut [1, 2].into_iter()).is_none()); // too few sessions
+        assert!(rig_leaves(&json!({"split": "h", "first": {"profile": "a"}})).is_none());
     }
 }

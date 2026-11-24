@@ -122,20 +122,21 @@ button, input { font: inherit; color: inherit; margin: 0; }
 #gate canvas, #emblem canvas { position: absolute; left: 0; top: 0; }
 #gate .gtxt, #emblem .gtxt { position: absolute; white-space: pre; }
 
-/* medium (vision v1 §1): a fold of the same window, below the size the full layout fits in */
+/* small (vision v1 §1): a fold of the same window, below the size the form fits in */
 /* "semi-mini" (Reid, 2026-11-21): tight edges, no folder label, no footer hint */
-#medium { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 16px; overflow: hidden; }
-body[data-size="medium"] #main { display: none; }
-body[data-size="medium"] #medium { display: flex; }
-body[data-size="medium"] #medium > div:first-child { margin: 12px 0 4px !important; }
-body[data-size="medium"] .flabel, body[data-size="medium"] .hint { display: none; }
-body[data-size="medium"] #medium .btn { margin-left: 6px !important; }
-body[data-size="medium"] #footer > div:last-child { padding: 7px 16px !important; }
-body[data-size="medium"] #msgbar:has(> .lbl:empty):not(:has(button)) { height: 0; }
-body[data-size="medium"] #msgbar > .lbl { margin-left: 16px !important; }
-#medium > .lbl:first-of-type { margin-top: 0; }
+#small { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 16px; overflow-y: auto; } /* scrolls once sessions + combos + rigs outgrow it */
+body[data-size="small"] #main { display: none; }
+body[data-size="small"] #small { display: flex; }
+body[data-size="small"] #small > div:first-child { margin: 12px 0 4px !important; }
+body[data-size="small"] .flabel, body[data-size="small"] .hint { display: none; }
+body[data-size="small"] #small .btn { margin-left: 6px !important; }
+body[data-size="small"] #footer > div:last-child { padding: 7px 16px !important; }
+body[data-size="small"] #msgbar:has(> .lbl:empty):not(:has(button)) { height: 0; }
+body[data-size="small"] #msgbar > .lbl { margin-left: 16px !important; }
+#small > .lbl:first-of-type { margin-top: 0; }
 .mlist { flex: none; display: flex; flex-direction: column; margin-bottom: 8px; overflow: hidden; }
-.mcombos { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 24px; align-content: start; column-gap: 8px; }
+.mlist > .lbl { white-space: normal; } /* an empty list's one-line note wraps instead of clipping */
+.mcombos { flex: none; display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 24px; align-content: start; column-gap: 8px; }
 .mrow { display: flex; align-items: center; height: 24px; padding: 0 8px; white-space: pre; overflow: hidden; cursor: pointer;
   font: 12px/16px var(--mono); letter-spacing: var(--ls12); color: var(--text2); }
 .mrow:hover { background: var(--s2); color: var(--text); }
@@ -147,19 +148,19 @@ body[data-size="medium"] #msgbar > .lbl { margin-left: 16px !important; }
 .mlist > .lbl { padding-left: 8px; }
 
 /* the form (vision\Spec\SPEC-form.md): 0.2.0's main screen laid out like the old launcher, for a window
-   narrower or shorter than full. 20 px edges, an 88 px label column, 26 px rows on a 34 px pitch,
+   narrower or shorter than main. 20 px edges, an 88 px label column, 26 px rows on a 34 px pitch,
    word buttons on the right with flush right edges, open gate last */
-#form { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 20px; }
-body[data-size="form"] #main { display: none; }
-body[data-size="form"] #form { display: flex; }
-body[data-size="form"] #footer > div:last-child { padding: 7px 20px !important; }
-body[data-size="form"] #msgbar > .lbl { margin-left: 20px !important; }
-body[data-size="form"] #settings { padding: 0 20px; }
+#medium { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 20px; }
+body[data-size="medium"] #main { display: none; }
+body[data-size="medium"] #medium { display: flex; }
+body[data-size="medium"] #footer > div:last-child { padding: 7px 20px !important; }
+body[data-size="medium"] #msgbar > .lbl { margin-left: 20px !important; }
+body[data-size="medium"] #settings { padding: 0 20px; }
 .fhead { display: flex; align-items: flex-start; margin: 20px 0 24px; flex: none; }
 .fhead > div:first-child { flex: 1; min-width: 0; margin-right: 12px; }
 .wordmark { font: 600 28px/34px var(--ui); color: var(--text); }
 .fsub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#form .btn { height: 26px; }
+#medium .btn { height: 26px; }
 /* the scrollbar sits in the right edge's gutter, so the right edges line up whether it shows or not */
 .fbody { padding-bottom: 0; margin-right: -9px; scrollbar-gutter: stable; }
 .fgrid { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; row-gap: 8px; align-items: center; }
@@ -168,15 +169,15 @@ body[data-size="form"] #settings { padding: 0 20px; }
 .fbtns { display: flex; gap: 6px; margin-left: 12px; }
 .fcell { display: flex; min-width: 0; }
 .fcell > .combo, .fcell > .entry { flex: 1; min-width: 0; }
-#form .check { font: 14px/19px var(--ui); height: 26px; }
-#form .combo .entry { height: auto; }
+#medium .check { font: 14px/19px var(--ui); height: 26px; }
+#medium .combo .entry { height: auto; }
 .fbar { display: flex; justify-content: flex-end; gap: 6px; margin: 12px 0; flex: none; }
 
 /* settings page (vision "Direction from Reid", 2026-11-21): takes the launcher's place; app-wide choices only */
 #settings { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 var(--pad); }
-body[data-view="settings"] #main, body[data-view="settings"] #medium, body[data-view="settings"] #form { display: none; }
+body[data-view="settings"] #main, body[data-view="settings"] #small, body[data-view="settings"] #medium { display: none; }
 body[data-view="settings"] #settings { display: flex; }
-body[data-size="medium"] #settings { padding: 0 16px; }
+body[data-size="small"] #settings { padding: 0 16px; }
 .shead { display: flex; align-items: center; margin: 18px 0 12px; flex: none; }
 .sbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
 .ssec { display: flex; flex-direction: column; padding: 14px 0 12px; border-bottom: 1px solid var(--line); }
@@ -187,7 +188,7 @@ body[data-size="medium"] #settings { padding: 0 16px; }
 .slist { display: flex; flex-direction: column; }
 .slist .mrow { cursor: default; padding: 0; }
 .slist .mrow:hover { background: none; color: var(--text2); }
-.sbody::-webkit-scrollbar { width: 9px; }
-.sbody::-webkit-scrollbar-track { background: transparent; }
-.sbody::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--canvas); }
-.sbody::-webkit-scrollbar-thumb:hover { background: var(--line2); }
+.sbody::-webkit-scrollbar, #small::-webkit-scrollbar { width: 9px; }
+.sbody::-webkit-scrollbar-track, #small::-webkit-scrollbar-track { background: transparent; }
+.sbody::-webkit-scrollbar-thumb, #small::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--canvas); }
+.sbody::-webkit-scrollbar-thumb:hover, #small::-webkit-scrollbar-thumb:hover { background: var(--line2); }
