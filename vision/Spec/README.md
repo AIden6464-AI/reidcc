@@ -16,7 +16,7 @@ hitting a wall, going public, or outside voices. That's the "why".
 | 11-19 | SPEC-codex-signin-persona | Codex profiles had sign-in, persona and memory greyed out: "can we spec [...] for codex the signin and persona's" | built 11-19 |
 | 11-19 | SPEC-codex-proxy | his `claude` profile (codex + `proxy: capture`) was refused: "persona's don't work? what man" | built 11-23 ("All of the build proxy's [...] needs to be ported") |
 | 11-23 | SPEC-user-trial (+ results) | "act like there new users [...] what can be pushed more like a custom cli that sits on top" | run · 0/13 fixes done |
-| 11-23 | SPEC-agent-cli | the trial plus his Discord poll: "The agent cli that sits on top of agent clis" | idea · Reid command center, a separate app on top of Reidcc · outside review added 11-25 (Part 7) |
+| 11-23 | SPEC-agent-cli | the trial plus his Discord poll: "The agent cli that sits on top of agent clis" | idea · Reid command center, a separate app on top of Reidcc · outside reviews added 11-25 (Part 7: plumbing, what Reidcc needs) |
 
 **Why it moved this way:** every step came from using Codex inside Reidcc and finding the gap with Claude
 (greyed fields, then the refused proxy). Once Codex came close to Claude, the next question was more

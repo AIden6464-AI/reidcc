@@ -250,3 +250,58 @@ until it's added to that list.
 
 **Note:** this matches Part 5 steps 1–2 and 4, with Part 5's step 0 (Codex level with Claude) assumed
 done. It adds the registry and IPC (7a items 1 and 6) as their own step before the window.
+
+### 7d. What Reidcc itself needs (a second outside review, 2026-11-25, with corrections)
+
+Reidcc needs no rewrite for the command center to sit on top: finish what's in flight on dev, then add four
+small building blocks in `rs/core` and `rs/app`. Reidcc stays unaware of the command center.
+
+**Step A: stabilize dev first.**
+- Finish SPEC-one-window and SPEC-one-look. Frames are still untested on dev, and the windows the command
+  center opens are these session windows.
+- Clear the SPEC-user-trial reliability fixes (0/13), above all profiles, sign-in env and session crashes:
+  the command center inherits every one of them.
+
+**Step B: the four moves.**
+
+| Move | Where | What | Why the command center needs it |
+|---|---|---|---|
+| 1. Headless runner | `rs/core/src/engines/` | A non-PTY runner (`claude -p --output-format stream-json`, `codex exec --json`) on the existing profile, sign-in, persona, proxy and memory builder, emitting `started`, `chunk`, `tool_call`, `usage`, `done`, `error` | Headless isn't built; the conductor's run tool can't exist without it |
+| 2. Session registry and locks | `rs/core` | One file per session: id, engine, profile, folder, context %, state (`idle`, `running-headless`, `attached-in-window`), pid, window handle | Lists sessions, and stops the conductor writing to a session you're typing in |
+| 3. `Reidcc.exe --resume <id>` | `rs/app` (`main.rs`, `session.rs`) | Open that session in a window, or bring it forward if it's already open; state `attached-in-window` while open, `idle` after | Clicking a sub-run (or "open it") takes you straight there, and the conductor can peek right after you close it |
+| 4. Usage and typed errors | `rs/core` | Context %, cost and failures (`rate_limited`, `auth_expired`, `context_full`, `crashed`, `unknown { exit_code, raw }`) as plain Rust types | Status per sub-run, and the conductor pauses cleanly instead of reading stderr |
+
+**Skip for now:** conductor, ledger and MCP code inside `rs/app` (Reidcc stays a standalone launcher);
+OpenCode, agy and SPEC-tui polish. Prove the headless + `--resume` seam with Claude Code and Codex first.
+Then the command center is a new `rs/command` crate in the same workspace.
+
+**Corrections and additions** (checked against the code 2026-11-25; the last three from Reid via Gemini):
+
+1. **"Release" waits for Reid.** A release means publishing dev to the public main, and main changes only
+   when Reid says so (`git push origin dev:publish`, then a tag). Before that: fix the SPEC-one-window review
+   finding (a session that ends in the background or minimized moves Reidcc to it, off screen if minimized)
+   and test docking in a frame. The trial's fixes 1–4 are about an hour (README).
+2. **Move 1, step 0: Codex session ids and resume.** Claude is half there: `session::run`
+   (`rs/core/src/session.rs`) already picks Claude's session id at launch, so a headless Claude run gets one
+   free. Codex has neither: resume is refused ("Resume is for Claude profiles for now") and its session id
+   isn't recorded. Capture the Codex id (`codex exec --json` reports it; interactive sessions need it too)
+   and pass `codex resume` / `codex exec resume` through. This blocks moves 2 and 3 for Codex, and is Part 5's
+   step 0.
+3. **Move 2: where and how.**
+   - In Reidcc's own folder, not `%LOCALAPPDATA%`: `REIDCC_HOME\sessions\<id>.json`, beside
+     `reid_state.json` (which already keeps the last session).
+   - **One file per session**, written atomically (temp file, then rename). Reid runs 5+ `Reidcc.exe`
+     processes at once, each owning the sessions it opened; one shared file would race. A file per session
+     means each process writes only its own. Readers retry once: a rename can fail while a reader has the file
+     open.
+   - The command center **watches that folder** for attach / detach. No named pipe needed.
+   - Stale entries: a crashed process leaves `attached-in-window` behind and would lock the conductor out
+     for good. Prune on read (rule 4).
+4. **Move 3: `Reidcc.exe` takes `--cwd` and `--update` today**, and every launch is a new process. `--resume
+   <id>` is new. "Bring it forward if open" is the registry's pid and window handle plus a focus call; no IPC.
+5. **Pid and window handle are checked together**, on focus and when pruning: the window still exists
+   (`IsWindow`) and its owning process (`GetWindowThreadProcessId`) is the entry's pid. Windows reuses both
+   numbers after a crash, so one alone can point at someone else's window.
+6. **Move 4: reuse what's there, expect drift.** Claude's context % already comes from the statusline
+   (`cmd_statusline`). The typed errors come from matching each engine's error text, which changes when the
+   CLIs change; anything that doesn't match is `unknown { exit_code, raw }`, never dropped.
