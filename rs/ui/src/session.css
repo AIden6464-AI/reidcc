@@ -1,16 +1,7 @@
+@import "./tokens.css";
 /* The Reidcc session window (vision\SPEC-vision-v1.md §2): the Telemetry Bar over the real engine.
    Tokens from vision\reidcc-palette.md; zones from the design doc §5. */
 
-:root {
-  --canvas: #040404; --s1: #0E0D0C; --s2: #171513; --stone: #292723;
-  --line: #2A2724; --line2: #4A4540;
-  --text: #D6D0C8; --text2: #9F978E; --text3: #746F69;
-  --bronze: #C99A45; --oxide: #C0584B;
-  --ui: Inter, Geist, "Segoe UI Variable Text", "Segoe UI", sans-serif;
-  --mono: "Geist Mono", "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  color-scheme: dark;
-}
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--canvas); color: var(--text); overflow: hidden; }
 body { font-family: var(--ui); user-select: none; cursor: default; }
