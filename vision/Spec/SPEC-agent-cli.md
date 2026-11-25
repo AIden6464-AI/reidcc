@@ -1,6 +1,7 @@
 # SPEC: the agent CLI that sits on top of agent CLIs
 
-Status: SPEC 2026-11-23. Idea, not scheduled. Nothing here is built.
+Status: SPEC 2026-11-23. Idea, not scheduled. Nothing here is built. An outside review was added
+2026-11-25 (Part 7); its calls are suggestions, not decisions.
 
 > "Idea   Spec a doc to have Gemini 4 argon and codex gpt 6.2 sol  act like there new users of Reidcc and saw
 > the Reddit post and is installing it and useing what kind of parts the user likes wants or hopefulness for the
@@ -157,3 +158,95 @@ Headless commands to build on (check each on the day, flags move):
 - How this meets COS (Planner/Builder/Critic/Dreamer): `review` is a Critic, `run` a Builder. Reuse that
   split, or keep Reidcc's tools plain.
 - Watch: every engine added is upkeep (flags change). Ship step 1 with two engines before adding more.
+
+## Part 7: outside review (2026-11-25)
+
+Reid pasted this review to add here. Its words are kept; **notes** in this style say where it doesn't
+match this spec or the code (checked 2026-11-25).
+
+**Note: the review read a different draft.** It names 4 tools (`ask`, `peek`, `handoff`, `sessions`), a
+"Worker Strip", `open <worker>`, "One screen, two areas", "refusing node-graph clutter" and 7 open questions.
+None of these are in this file or its history. This spec has `engines`, `run`, `review`, `handoff`,
+`resume`, `usage` (Part 3) and the open items in Part 6. Read the review's `ask` as `run`/`resume`
+(`continue=true` = `resume`), `sessions` as `engines` plus a list of sub-runs, and `peek` as a new
+read-only tool: show a sub-run's state and last output without taking it over. The open-question table
+below answers its own 7 questions. Most of them match Part 6 or the naming notes at the top.
+
+> You already have the hardest part right: the two-app boundary, the MCP tools, and refusing node-graph
+> clutter. Where a Claude dev will get stuck or invent awkward workarounds is in the plumbing between the
+> conductor, the workers, and Reidcc.
+
+### 7a. Seven missing parts
+
+1. **Session locking (preventing collisions).** What happens if the conductor resumes a session while you
+   have that same session open in a Reidcc window? *Fix:* give every session a state in a shared registry:
+   `idle`, `running-headless`, `attached-in-window`. While attached, the conductor can peek but can't ask
+   until you close or hand back the window.
+2. **Working-tree concurrency.** If Claude Code edits files while Codex runs tests or fixes in the same
+   folder, they clobber each other's uncommitted diffs. *Fix:* one writer per folder at a time (read-only
+   reviews and peeks any time). Defer `git worktree` isolation to v2 unless parallel edits on one repo are
+   wanted.
+   **Note:** Part 4 rule 1 already says one writer, and offers a worktree as the fallback. The review
+   moves the worktree to v2.
+3. **One normalized headless engine trait (reidcc-core).** Claude (`-p --output-format stream-json`), Codex
+   (`exec --json`) and agy all output different JSON. *Fix:* one small trait, e.g. `HeadlessEngine`, that
+   turns every CLI into 5 events: `started(session_id)`, `chunk(text)`, `tool_call(name, summary)`,
+   `usage(tokens, ctx_pct, cost)`, `done(status, reply)`. That one stream drives the live status and
+   context % beside each sub-run.
+   **Note:** a plain enum of those 5 events plus one parser per engine does the same job. A trait only pays
+   off at 3+ engines.
+4. **Auto-mode guardrails and a hard kill.** "Claude codes → Codex reviews → Claude fixes" can loop and burn
+   tokens. *Fix:* circuit breakers in the spec: max turns per ask, max consecutive handoffs (e.g. 3), a
+   per-task cost/token cap, a wall-clock timeout. A visible Stop button kills the child process tree
+   cleanly on Windows.
+   **Note:** the kill exists. `rs/core/src/win.rs` puts children in a job object
+   (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`, `TerminateJobObject`). Reuse it.
+5. **Single-writer ledger.** If every engine edits the ledger, it turns into a bloated transcript. *Fix:*
+   only the conductor writes it (workers read). Cap it to a fixed ~40-line template: Goal, Current State,
+   Decisions, Open Tasks, Last Touch (engine, time, changed files / commit).
+   **Note:** this narrows Part 4 rule 5 ("a sub-run writes to it only if its profile has memory on") for the
+   ledger. The project's memory file (ACA) stays as rule 5 says.
+6. **App-to-app handoff (IPC).** The command center and Reidcc are separate apps: click a sub-run and Reidcc
+   opens on that session; the command center needs to know when you close it. *Fix:* a small shared
+   session registry file (e.g. `%LOCALAPPDATA%\reidcc\sessions.json`) plus a Windows named pipe (or loopback
+   JSON-RPC) so Reidcc tells the command center on attach / detach.
+   **Notes:** `Reidcc.exe` has no `--resume <session_id>` today. `reid --resume [profile]` continues the
+   *last* session (`rs/cli/src/main.rs`), not one by id, so that flag is new work. The registry belongs in
+   Reidcc's own folder (`REIDCC_HOME`, beside `reid_state.json`), not a second `%LOCALAPPDATA%` folder.
+   Reidcc stays independent (top of this spec): it writes the registry and the pipe events whether or not
+   the command center listens.
+7. **Structured failure recovery.** Engines hit rate limits, lose auth or fill their context mid-run. *Fix:*
+   the run tool returns typed errors (`rate_limited`, `auth_expired`, `context_full`, `crashed`) instead of
+   raw stderr. The conductor can then offer "open in Reidcc to sign in again" or a handoff to another
+   engine.
+
+### 7b. Calls on the open questions (the review's 7)
+
+| Open question | Recommended call | Why |
+|---|---|---|
+| CLI name | Keep `reid` for Reidcc; `reid-cmd` (or `reid gate`) for the command center | Doesn't break `reid.exe` habits and scripts |
+| Repo / crate | Same repo, new workspace crate `rs/command` next to `rs/app` | Shares reidcc-core directly, no version drift while it moves fast |
+| "Gate" name clash | Call the conductor **the conductor** (or **the desk**); keep **gate** for Reidcc's `open gate` | No confusion when talking about both apps in one sentence |
+| Which engine conducts | A profile you pick, Claude Code by default | Fits the ACA memory and hooks; Codex / agy stay possible |
+| Minimum agy wrapper | agy in phase 2; Claude + Codex first | Two solid adapters prove the contract before a third CLI |
+| "The ledger" name | Keep **the ledger** | Short, distinct, Reidcc's voice, no clash with "memory" (ACA) |
+| First real-user test | "Code with Claude, review with Codex" on a real repo | Exercises run, handoff, sessions, the ledger and taking over a sub-run in one loop |
+
+**Notes:** the gate rename goes against Reid's own words at the top ("the harness is = to the gate"). It's
+his call. "Same repo" answers Part 6's "one repo with two exes, or two repos", but the public `main` is
+built from `dev`'s file list (`.github/workflows/publish-main.yml`), so a new crate stays off `main`
+until it's added to that list.
+
+### 7c. Suggested build order
+
+1. **Core headless + registry (reidcc-core):** the normalized events for Claude Code and Codex, the
+   session registry and its lock states.
+2. **The MCP server:** the tools with approval metadata, auto-mode caps and single-writer ledger updates.
+   Testable from the CLI before any UI.
+3. **Reidcc resume + attach / detach bridge:** opening a sub-run brings up a live Reidcc session window
+   (the SPEC-one-look / SPEC-one-window chrome) and hands control back on close.
+4. **The command center window ("one screen, two areas"):** a thin Tauri window on the same `tokens.css`.
+   The conductor chat in the main area, the sub-runs with a Stop button and an approval banner at the side.
+
+**Note:** this matches Part 5 steps 1–2 and 4, with Part 5's step 0 (Codex level with Claude) assumed
+done. It adds the registry and IPC (7a items 1 and 6) as their own step before the window.
