@@ -45,6 +45,7 @@ const ROLE_BY_SIZE: Record<string, Role> = { "20": "title", "16": "head", "14": 
 function fit(e: HTMLElement) {
   if (e.classList.contains("ch")) return;
   const text = e.textContent || "";
+  if (!text) return; // nothing to fit; an emptied row may hold the form's place-markers (main.ts put())
   if (e.dataset.fit === text && e.querySelector(":scope > .ch")) return; // already done
   if (e.children.length && !e.querySelector(":scope > .ch")) return;     // not a text leaf
   const cs = getComputedStyle(e);

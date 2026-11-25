@@ -28,13 +28,20 @@ const sep = () => span("sep", " · ");
 // ---------------------------------------------------------------- terminal ---
 let size = 13;
 const term = new Terminal({
-  fontFamily: '"Cascadia Mono", Consolas, monospace',
+  // one monospace list for the whole app (tokens.css --mono, SPEC-one-look Part 1.2)
+  fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "Consolas, monospace",
   fontSize: size,
   cursorBlink: true,
   scrollback: 10000,
   windowsPty: { backend: "conpty", buildNumber: 26200 },
+  // SPEC-one-look Part 7.1: the engine's 16 colours in Reidcc's palette (red oxide, yellow bronze, green
+  // emerald, blue/magenta/cyan bone-family stones); bright = a step lighter
   theme: { background: "#040404", foreground: "#D6D0C8", cursor: "#D6D0C8", cursorAccent: "#040404",
-           selectionBackground: "#292723" },
+           selectionBackground: "#292723",
+           black: "#171513", red: "#C0584B", green: "#00C463", yellow: "#C99A45",
+           blue: "#928A82", magenta: "#A8968A", cyan: "#9F978E", white: "#D6D0C8",
+           brightBlack: "#746F69", brightRed: "#D4705F", brightGreen: "#2BD57E", brightYellow: "#DDB264",
+           brightBlue: "#B4ACA2", brightMagenta: "#C4B3A6", brightCyan: "#BDB6AD", brightWhite: "#EDE8E1" },
 });
 (window as unknown as { __term: Terminal }).__term = term; // rs\tests\session_flow.py reads the screen
 const fit = new FitAddon();
@@ -80,6 +87,9 @@ term.attachCustomKeyEventHandler((e) => {
   if (plain && (k === "=" || k === "+")) return take(() => zoom(1));
   if (plain && k === "-") return take(() => zoom(-1));
   if (plain && k === "0") return take(() => zoom(0));
+  // SPEC-one-window: Alt+2 Reidcc beside this session, Alt+1 full; never sent to the engine
+  if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.code === "Digit1" || e.code === "Digit2"))
+    return take(() => invoke("panel", { want: e.code === "Digit1" ? "full" : "beside" }));
   return true;
 });
 
@@ -90,13 +100,17 @@ let meters: Meters = {};
 let state = ""; // "" while running, then "finished" / "failed · code N"
 let hover = "";
 
+// SPEC-one-look Part 2 / 7.2: the shared tags. Folder name in bone (full path on hover), then
+// `profile · persona name · engine`, lowercase, one line.
 function drawWhere() {
   const w = $("where");
-  w.replaceChildren(span("path", info.folder));
-  const tags: [string, string][] = [["PROFILE", info.profile]];
-  if (info.persona) tags.push(["PERSONA", info.persona]);
-  tags.push(["ENGINE", info.engine]);
-  for (const [k, v] of tags) w.append(sep(), span("tag", `${k} · ${v}`));
+  const name = info.folder.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || info.folder;
+  w.replaceChildren(span("path", name));
+  w.title = info.folder;
+  const tags = [info.profile];
+  if (info.persona) tags.push(`persona ${info.persona}`);
+  tags.push(info.engine);
+  w.append(sep(), span("tag", tags.join(" · ")));
 }
 
 const level = (p: number) => (p >= 90 ? "m hot" : p >= 75 ? "m warn" : "m");
@@ -140,7 +154,11 @@ function drawMeters() {
   if (num(meters.context) !== null) meter("context", meters.context!);
   if (num(meters.limit) !== null) meter("limit", meters.limit!);
   if (state) parts.push(span(state === "finished" ? "m" : "m failed", state));
-  else parts.push(span("m", clock(performance.now() - t0)));
+  else { // Part 7.3: the screen's one emerald, while the session runs
+    const t = span("m", clock(performance.now() - t0));
+    t.prepend(span("live", "● "));
+    parts.push(t);
+  }
   m.replaceChildren();
   parts.forEach((p, i) => { if (i) m.append(sep()); m.append(p); });
 }
@@ -150,13 +168,18 @@ function close(note: string | null) {
   invoke("sess_close", { id, note });
 }
 
-function ended(rc: number, back: boolean) {
+/** SPEC-one-window fix 2: a session that ends by itself turns its window into Reidcc. */
+function back(note: string) {
+  invoke("sess_back", { id, note });
+}
+
+function ended(rc: number, isBack: boolean) {
   const codex = info.engine === "codex";
-  if (back) return close("Back from the session.");
+  if (isBack) return back("Back from the session.");
   if (rc === 0) {
     state = "finished";
     drawMeters();
-    setTimeout(() => close(codex ? "Back from Codex." : "Back from the session."), 1500);
+    setTimeout(() => back(codex ? "Back from Codex." : "Back from the session."), 1500);
     return;
   }
   state = `failed · code ${rc >>> 0} · any key closes`;
@@ -166,6 +189,9 @@ function ended(rc: number, back: boolean) {
 
 // ------------------------------------------------------- window and shimmer ---
 $("close").addEventListener("click", () => close(null));
+// RC: Reidcc beside this session, then full, then closed again (SPEC-one-window fix 1)
+$("mark").title = "Reidcc · Alt+2 beside · Alt+1 full";
+$("mark").addEventListener("click", () => invoke("panel", { want: "toggle" }));
 bindDock();
 
 let still = 0, resized = 0;

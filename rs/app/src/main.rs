@@ -7,6 +7,8 @@ mod dock;
 mod fonts;
 mod gate;
 mod model;
+mod panel;
+mod recolor;
 mod rig;
 mod session;
 mod settings;
@@ -102,6 +104,8 @@ struct Init {
     test: bool,
     /// the smallest size the main layout fits in (logical px); below it the page folds to medium (the form)
     main_min: (f64, f64),
+    /// the bar's title: "Reidcc 0.2.2" (" dev" on a dev build)
+    title: String,
 }
 
 #[tauri::command]
@@ -115,7 +119,7 @@ fn init(app: AppHandle, st: S) -> Init {
     let (gate, emblem) = (meta("assets\\gate.json"), meta("assets\\emblem.json"));
     let folder = m.folder.clone();
     let main_min = *sizes::MAIN_MIN.get().unwrap_or(&(960.0, 820.0));
-    Init { ops: done(&app, &mut m), folder, gate, emblem, test: st.test, main_min }
+    Init { ops: done(&app, &mut m), folder, gate, emblem, test: st.test, main_min, title: app_title() }
 }
 
 #[tauri::command]
@@ -172,8 +176,14 @@ fn open_persona(st: S, persona: String) -> Vec<Op> {
     m.take()
 }
 
-fn parent(app: &AppHandle) -> Option<tauri::WebviewWindow> {
-    app.get_webview_window("main")
+/// The window the launcher is in now (home, or the session window it's docked in): file pickers belong to it.
+fn parent(app: &AppHandle) -> Option<tauri::Window> {
+    panel::launcher_window(app)
+}
+
+/// "Reidcc 0.2.2", and " dev" on a dev build (REIDCC_DEV set at build time), so the two copies tell apart.
+pub fn app_title() -> String {
+    format!("Reidcc {}{}", env!("CARGO_PKG_VERSION"), if option_env!("REIDCC_DEV").is_some() { " dev" } else { "" })
 }
 
 #[tauri::command]
@@ -335,7 +345,7 @@ fn go_now(app: &AppHandle, st: &App, sessions: &session::Sessions, resume: bool,
                                    persona: reidcc::profile::persona_name(&prof), elapsed_ms: 0 };
         // Without the lock: making the window waits on the main thread, whose commands take this lock.
         drop(m);
-        let sf = app.get_webview_window("main").and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+        let sf = panel::launcher_window(app).and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
         let rect = sizes::session_rect(session::visible_rect(gate::main_hwnd() as isize), sf); // main's size at least
         let opened = sessions.open(app, info, &cwd, &cmd, rect, None);
         m = st.m.lock().unwrap();
@@ -350,6 +360,8 @@ fn go_now(app: &AppHandle, st: &App, sessions: &session::Sessions, resume: bool,
         if !gate_ok {
             let _ = w.show();
             let _ = w.set_focus();
+            let h = app.clone();
+            let _ = app.run_on_main_thread(move || panel::go_home(&h, false)); // docked: done here (fix 4)
             say(&mut m, &note, "quiet", vec![], Some(4.0));
             return ops(&mut m);
         }
@@ -439,6 +451,10 @@ fn gate_finish(app: AppHandle, st: S) {
     };
     gate::fine_timer(false);
     gate::lock_foreground(false);
+    // opened from the docked launcher: the new window is in front now, so the launcher goes home (hidden)
+    if panel::docked_in(&app).is_some() {
+        panel::go_home(&app, false);
+    }
     if restart {
         start_watch(&app, &st.gate); // skipped before the window appeared: keep watching to bring it forward
     }
@@ -464,6 +480,7 @@ fn main() {
     let test = std::env::var("REIDCC_GUI_TEST").is_ok_and(|v| v == "1");
     let mut ctx = Ctx::new();
     ctx.cli = cli_command();
+    recolor::set_from(&reidcc::peek_config(&ctx));
     let args: Vec<String> = std::env::args().collect();
     let cwd = args.iter().position(|a| a == "--cwd").and_then(|i| args.get(i + 1)).cloned();
     let state = reidcc::load_state(&ctx);
@@ -490,9 +507,11 @@ fn main() {
         .manage(app_state)
         .manage(session::Sessions::default())
         .manage(dock::Dock::default())
+        .manage(panel::Panel::default())
         .manage(update::Updates::default())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .on_window_event(|w, e| {
+            panel::window_event(w, e); // before dock's: a closing window gives the launcher back first
             dock::window_event(w, e);
             sizes::window_event(w, e);
         })
@@ -513,18 +532,22 @@ fn main() {
                 let s = m.scale_factor();
                 ((m.size().width as f64 / s) as i32, (m.size().height as f64 / s) as i32)
             }).unwrap_or((1920, 1080));
-            let h = 880.min(sh - 140); // leave room for the title bar and the taskbar
-            let _ = sizes::MAIN.set((1000.0, h as f64));
-            let _ = sizes::MAIN_MIN.set((960.0, 820.min(h) as f64));
+            let h = 880.min(sh - 140); // leave room for the taskbar
+            let bar = sizes::BAR as i32; // the page's own bar, inside the window
+            let _ = sizes::MAIN.set((1000.0, (h + bar) as f64));
+            let _ = sizes::MAIN_MIN.set((960.0, (820.min(h) + bar) as f64));
             // Settings → start size (reid.json "start_size"); the page lays itself out for whatever size it gets
             let start = app.state::<App>().m.lock().unwrap().cfg().and_then(|c| c.get("start_size").map(reidcc::pyjson::py_str));
             let (ww, wh) = match sizes::start_size(&start.unwrap_or_default()) {
                 "medium" => (sizes::MEDIUM.0 as i32, (sizes::MEDIUM.1 as i32).min(sh - 140)),
                 "small" => (sizes::SMALL.0 as i32, sizes::SMALL.1 as i32),
-                _ => (1000, h),
+                _ => (1000, h + bar),
             };
-            let mut b = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-                .title(concat!("Reidcc ", env!("CARGO_PKG_VERSION")))
+            // A window plus a page, not one webview window, so the page can move into a session window
+            // (SPEC-one-window.md). Borderless: the page draws the 36 px bar (SPEC-one-look Part 3).
+            let mut b = tauri::Window::builder(app, "main")
+                .title(app_title())
+                .decorations(false)
                 .inner_size(ww as f64, wh as f64)
                 .min_inner_size(sizes::MIN.0, sizes::MIN.1) // medium and small below main's size (vision v1 §1)
                 // Place it ourselves: Windows' cascade can push the bottom bar under the taskbar.
@@ -532,15 +555,13 @@ fn main() {
                 .background_color(tauri::window::Color(4, 4, 4, 255))
                 .theme(Some(tauri::Theme::Dark))
                 .visible(false);
-            if let Some(d) = WEBVIEW_DIR.get() {
-                b = b.data_directory(d.clone());
-            }
             if let Some(ico) = asset("reidcc.ico").and_then(|p| std::fs::read(p).ok()) {
                 if let Ok(img) = tauri::image::Image::from_bytes(&ico) {
                     b = b.icon(img.to_owned())?;
                 }
             }
             let w = b.build()?;
+            panel::make_launcher(&w).ok_or("the launcher's page couldn't start")?;
             update::start(app.handle(), update_now);
             if let Ok(h) = w.hwnd() {
                 gate::MAIN.store(h.0 as isize, std::sync::atomic::Ordering::Relaxed);
@@ -553,7 +574,8 @@ fn main() {
             set_folder, go, gate_handover, gate_skip, gate_finish, test_login, show, metrics,
             session::sess_attach, session::sess_write, session::sess_resize, session::sess_meters, session::sess_close,
             session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control, dock::dock_grouped, rig::rig_list, rig::rig_save, rig::rig_delete, rig::rig_open, update::update_foot, update::update_install,
-            update::update_check, settings::settings_get, settings::settings_set, settings::settings_plugins, settings::settings_open
+            update::update_check, settings::settings_get, settings::settings_set, settings::settings_plugins, settings::settings_open, settings::settings_change,
+            panel::panel, panel::launcher_control, session::sess_back
         ])
         .run(tauri::generate_context!())
         .expect("Reidcc couldn't start");
@@ -562,7 +584,7 @@ fn main() {
 /// The page is drawn: show the window (no white flash before the first paint).
 #[tauri::command]
 fn show(app: AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
+    if let Some(w) = panel::home(&app) {
         let _ = w.show();
         let _ = w.set_focus();
     }

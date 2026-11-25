@@ -56,7 +56,9 @@ pub struct Ctx {
 
 impl Ctx {
     pub fn new() -> Ctx {
-        Ctx::at(&home_dir())
+        let ctx = Ctx::at(&home_dir());
+        apply_locations(&peek_config(&ctx));
+        ctx
     }
 
     pub fn at(home: &str) -> Ctx {
@@ -102,6 +104,31 @@ impl Default for Ctx {
     }
 }
 
+/// reid.json as it is on disk, without load_config's first-run write or checks ({} if missing or bad).
+pub fn peek_config(ctx: &Ctx) -> Obj {
+    match py::read_text(&ctx.config, false).ok().and_then(|t| pyjson::loads(&t).ok()) {
+        Some(Value::Object(o)) => o,
+        _ => Obj::new(),
+    }
+}
+
+/// The settings page's location choices, for this process and everything it starts: `temp_dir` ->
+/// TMPDIR (gettempdir looks there first), `ai_temp_dir` -> CLAUDE_CODE_TMPDIR (Claude Code's scratch
+/// folder). A key that's gone, or not a folder, puts back what the environment had at start.
+pub fn apply_locations(cfg: &Obj) {
+    static ORIG: std::sync::OnceLock<[Option<String>; 2]> = std::sync::OnceLock::new();
+    let orig = ORIG.get_or_init(|| [std::env::var("TMPDIR").ok(), std::env::var("CLAUDE_CODE_TMPDIR").ok()]);
+    for (i, (key, var)) in [("temp_dir", "TMPDIR"), ("ai_temp_dir", "CLAUDE_CODE_TMPDIR")].into_iter().enumerate() {
+        match cfg.get(key).and_then(Value::as_str).filter(|d| py::isdir(d)) {
+            Some(d) => std::env::set_var(var, d),
+            None => match &orig[i] {
+                Some(v) => std::env::set_var(var, v),
+                None => std::env::remove_var(var),
+            },
+        }
+    }
+}
+
 /// The Reidcc data folder: REIDCC_HOME, else the nearest folder above this exe with a reid.json
 /// (E:\reidcc for rs\target\release\reid.exe and for app\reid.exe), else %USERPROFILE%\Reidcc (an installed copy).
 pub fn home_dir() -> String {
@@ -110,6 +137,11 @@ pub fn home_dir() -> String {
             return py::abspath(&h);
         }
     }
+    default_home_dir()
+}
+
+/// Where this copy keeps its data when REIDCC_HOME isn't set (settings: `local data` back to the default).
+pub fn default_home_dir() -> String {
     let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let exe_dir = py::dirname(&py::abspath(&exe));
     let mut d = exe_dir.clone();
