@@ -1,13 +1,16 @@
 # main is what users see: the app's source, assets, docs, license and a user README. dev has
-# everything (specs, vision, the Python original, proxy, tests). Running this (by hand: Actions → publish
-# main → Run workflow) rewrites main's files from dev's, from the list below, as one commit on main (site/ is
-# the website; pages.yml deploys it after this). Pushing to dev never touches main (Reid, 2026-11-25:
-# "I don't wanna change main that's public"). Never commit to main by hand: the next publish overwrites
-# it. Releases are tagged on main (release.yml): publish first, then tag.
+# everything (specs, vision, the Python original, proxy, tests). Publishing is by hand:
+#     git push origin dev:publish
+# rewrites main's files from that commit, from the list below, as one commit on main (site/ is the website;
+# pages.yml deploys it after this). Pushing to dev never touches main (Reid, 2026-11-25: "I don't wanna
+# change main that's public"). A push to the `publish` branch, not Run workflow: that button only shows for
+# workflows on the default branch (main), and this file lives on dev. Never commit to main by hand: the
+# next publish overwrites it. Releases are tagged on main (release.yml): publish first, then tag.
 name: publish main
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [publish]
 
 permissions:
   contents: write
