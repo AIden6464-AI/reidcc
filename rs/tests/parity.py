@@ -15,7 +15,8 @@ RS = os.path.join(os.environ.get("REIDCC_BIN") or os.path.join(REIDCC, "rs", "ta
 RS_STATUSLINE = '"%s" "--statusline"' % RS.replace("\\", "/")
 TRACEBACK = "Traceback (most recent call last)"
 # Differences accepted for stage 0, each with its reason. Anything else that differs fails.
-KNOWN = {"-l": "Rust asks Codex for its sign-in once; the Python app prints 'checking…' (user trial fix 4)",
+KNOWN = {"config missing": "a new reid.json leaves out memory_file, its default (user trial fix 12)",
+         "-l": "Rust asks Codex for its sign-in once; the Python app prints 'checking…' (user trial fix 4)",
          "--dry c-toml-bad": "TOML error wording is the toml crate's, not tomllib's (same line and column)",
          "--dry c-proxy": "Codex has its own proxy in Rust (SPEC-codex-proxy.md); the Python app still refuses it",
          "--dry c-three": "Codex has its own proxy in Rust (SPEC-codex-proxy.md); the Python app still refuses it"}
@@ -344,6 +345,10 @@ def main():
                 open(cfgp, "w", encoding="utf-8").write(text)
             r = run(which, h2, ["-l"], work)
             outs.append((r, open(cfgp, "rb").read() if os.path.exists(cfgp) else None))
+        if outs[0][0] == outs[1][0] and outs[0] != outs[1] and label in KNOWN:  # same output, the file differs
+            crashes.append(label)
+            print("known  %s: %s" % (label, KNOWN[label]))
+            continue
         print(("ok    " if outs[0] == outs[1] else "DIFF  ") + label)
         if outs[0] != outs[1]:
             fails.append(label)

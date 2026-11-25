@@ -13,9 +13,10 @@ const HELP: &str = r#"reid -- Reidcc, in the terminal.
     reid                      open the Reidcc TUI (pick, edit, open gate, resume)
     reid <profile> [args]     start a session with that profile; extra args go to its engine
     reid -c / reid "do X"     anything that isn't a profile goes to the default profile's engine
-    reid --resume [profile]   continue the last session, with that profile or the one it had
+    reid --resume [profile]   continue the last session (that profile, or the one it had)
     reid -l                   list profiles
     reid --dry [profile]      print what would run, don't run it
+    reid --dry -v [profile]   ... and the prompt and settings files it adds
     reid --edit / --mem       open reid.json / the memory file
     reid --tui / --gui        force the TUI or the window
     reid --version            show the Reidcc version
@@ -85,6 +86,21 @@ fn open_gui(from_terminal: bool) -> i32 {
     1
 }
 
+/// What `reid --resume [profile] [args]` continues: the profile (named, else the last session's, else the
+/// default), the last session's folder, its id ("-c" when there's none) and the extra args.
+fn resume_target(ctx: &Ctx, cfg: &reidcc::Obj, rest: &[String]) -> (String, String, String, Vec<String>) {
+    let last = load_state(ctx).get("last").and_then(|v| v.as_object().cloned()).unwrap_or_default();
+    let s = |k: &str| reidcc::text(&last, k);
+    let (name, extra) = match rest.first() {
+        Some(n) if profiles(cfg).contains_key(n) => (n.clone(), rest[1..].to_vec()),
+        _ if !s("profile").is_empty() => (s("profile"), rest.to_vec()),
+        _ => (default_profile(cfg).to_string(), rest.to_vec()),
+    };
+    let cwd = if !s("cwd").is_empty() && py::isdir(&s("cwd")) { s("cwd") } else { py::getcwd() };
+    let sid = if s("sid").is_empty() { "-c".to_string() } else { s("sid") };
+    (name, cwd, sid, extra)
+}
+
 fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
     let a0 = args.first().cloned().unwrap_or_default();
     match a0.as_str() {
@@ -106,18 +122,10 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
             return Ok(open_gui(false));
         }
         "--resume" => {
-            // reid --resume [profile]: continue the last session
+            // reid --resume [profile] [args]: continue the last session
             let cfg = load_config(ctx)?;
-            let last = load_state(ctx).get("last").and_then(|v| v.as_object().cloned()).unwrap_or_default();
-            let s = |k: &str| reidcc::text(&last, k);
-            let name = match args.get(1) {
-                Some(n) if profiles(&cfg).contains_key(n) => n.clone(),
-                _ if !s("profile").is_empty() => s("profile"),
-                _ => default_profile(&cfg).to_string(),
-            };
-            let cwd = if !s("cwd").is_empty() && py::isdir(&s("cwd")) { s("cwd") } else { py::getcwd() };
-            let sid = if s("sid").is_empty() { "-c".to_string() } else { s("sid") };
-            let end = session::run(ctx, &cfg, &name, &cwd, &[], Some(&sid))?;
+            let (name, cwd, sid, extra) = resume_target(ctx, &cfg, &args[1..]);
+            let end = session::run(ctx, &cfg, &name, &cwd, &extra, Some(&sid))?;
             if let Some(rc) = session::window_end(&end) {
                 return Ok(rc);
             }
@@ -161,9 +169,36 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
     if dry {
         args.remove(0);
     }
+    // --dry -v: also print the prompt / settings files' text (they're deleted after the preview)
+    let show = dry && args.first().map(String::as_str) == Some("-v");
+    if show {
+        args.remove(0);
+    }
+    if dry && args.first().map(String::as_str) == Some("--resume") {
+        // the resume preview: what `reid --resume [profile] [args]` would run, and where
+        let (name, cwd, sid, extra) = resume_target(ctx, &cfg, &args[1..]);
+        let mut launch = engines::build(ctx, &cfg, &name, &extra, Some(&cwd), true)?;
+        launch.remove_temps();
+        if sid == "-c" || !session::session_exists(&sid) {
+            launch.argv.push("-c".into());
+        } else {
+            launch.argv.extend(["--resume".into(), sid]);
+        }
+        out!("profile: {name}  ({})", profile::summary(ctx, &cfg, &name));
+        out!("folder:  {}", reidcc::show_path(&cwd));
+        out!("{}", py::list2cmdline(&launch.argv));
+        return Ok(0);
+    }
     let (name, extra) = match args.first() {
         Some(n) if profiles(&cfg).contains_key(n) => (n.clone(), args[1..].to_vec()),
-        _ => (default_profile(&cfg).to_string(), args.clone()),
+        Some(n) => {
+            // anything that isn't a profile goes to the engine, unless it's a profile name mistyped
+            if let Some(near) = profiles(&cfg).keys().find(|p| one_edit(p, n)) {
+                return reidcc::err(format!("There's no profile {n}. Did you mean {near}?"));
+            }
+            (default_profile(&cfg).to_string(), args.clone())
+        }
+        None => (default_profile(&cfg).to_string(), args.clone()),
     };
     let empty = reidcc::Obj::new();
     let prof = profiles(&cfg).get(&name).and_then(|v| v.as_object()).unwrap_or(&empty);
@@ -192,10 +227,16 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
         let pp = codex::prompt_path(ctx, &name);
         if is_codex(prof) && py::exists(&pp) && launch.argv.iter().any(|a| a.contains("model_instructions_file=")) {
             out!("  prompt file: {}, {} chars", reidcc::show_path(&pp), py::getsize(&pp));
+            if show {
+                out!("{}", std::fs::read_to_string(&pp).unwrap_or_default());
+            }
         }
         for t in &launch.temps {
             let kind = if t.contains("reid_settings_") { "settings file" } else { "prompt file" };
             out!("  {kind}: {} chars", py::getsize(t));
+            if show {
+                out!("{}", std::fs::read_to_string(t).unwrap_or_default());
+            }
             let _ = std::fs::remove_file(t);
         }
         return Ok(0);
@@ -214,4 +255,31 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
         return Ok(tui::Tui::new(ctx, &py::getcwd(), "Back from the session. r resumes it.").run());
     }
     Ok(end.rc)
+}
+
+/// One typo apart: a letter changed, added, dropped, or two neighbours swapped. Case alone counts too.
+fn one_edit(a: &str, b: &str) -> bool {
+    let (a, b): (Vec<char>, Vec<char>) = (a.to_lowercase().chars().collect(), b.to_lowercase().chars().collect());
+    if a == b || a.len().abs_diff(b.len()) > 1 || a.len().min(b.len()) < 3 {
+        return a == b;
+    }
+    let start = a.iter().zip(&b).take_while(|(x, y)| x == y).count();
+    let (ra, rb) = (&a[start..], &b[start..]);
+    let tail = |i: usize, j: usize| ra.get(i..) == rb.get(j..);
+    tail(1, 1) || tail(1, 0) || tail(0, 1) || (ra.len() >= 2 && rb.len() >= 2 && ra[0] == rb[1] && ra[1] == rb[0] && tail(2, 2))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::one_edit;
+
+    #[test]
+    fn typos_are_one_edit_and_prompts_are_not() {
+        for (a, b) in [("codex-kiln", "codex-klin"), ("main", "mian"), ("main", "man"), ("main", "mains"), ("review", "reveiw"), ("Main", "main")] {
+            assert!(one_edit(a, b), "{a} / {b}");
+        }
+        for (a, b) in [("main", "do X"), ("main", "-c"), ("ab", "ba"), ("review", "rvwiee"), ("main", "mainly")] {
+            assert!(!one_edit(a, b), "{a} / {b}");
+        }
+    }
 }

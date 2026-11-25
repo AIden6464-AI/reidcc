@@ -4,6 +4,8 @@
 
 A persona is who the session is: a plain Markdown file in `personas\`. It's optional.
 
+A new Reidcc folder starts with no personas: `personas\` is yours to fill. `personas/plain.md` below is an example name; make the file first.
+
 ## Attaching one
 
 Pick a file in the profile's **persona** field. Then choose how it's used (for a Codex profile the labels say Codex):

@@ -38,6 +38,11 @@ pub fn find_codex() -> R<(String, Vec<(String, String)>)> {
     if let Some(exe) = py::which("codex.exe") {
         return Ok((exe, vec![]));
     }
+    // shortcut: a wrapper we can't see through (pnpm, volta, scoop, a .cmd of your own) runs as is, like
+    // find_claude; cmd.exe may re-parse odd quotes in its arguments. Look inside more wrappers if one breaks.
+    if let Some(shim) = py::which("codex") {
+        return Ok((shim, vec![]));
+    }
     err("Can't find Codex. Install it (npm install -g @openai/codex), then try again.")
 }
 

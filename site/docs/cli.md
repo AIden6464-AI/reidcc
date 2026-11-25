@@ -8,11 +8,12 @@
 reid                      open the Reidcc TUI (pick, edit, open gate, resume)
 reid <profile> [args]     start a session with that profile; extra args go to its engine
 reid -c / reid "do X"     anything that isn't a profile goes to the default profile's engine
-reid --resume [profile]   continue the last session, with that profile or the one it had
+reid --resume [profile]   continue the last session (that profile, or the one it had)
 reid -l                   list profiles
 reid --version            show the Reidcc version
 reid --update             install the latest Reidcc (installed copies only)
 reid --dry [profile]      print what would run, don't run it
+reid --dry -v [profile]   ... and the prompt and settings files it adds
 reid --edit / --mem       open reid.json / the memory file
 reid --tui / --gui        force the TUI or the window
 ```
@@ -30,4 +31,10 @@ reid --tui / --gui        force the TUI or the window
 cd ~/projects/kiln
 reid main            # start main in this folder
 reid --dry review    # show the exact command review would run
+reid --dry -v review # ... and the persona / memory prompt and settings it adds
+reid --dry --resume  # what reid --resume would run, and in which folder
+reid --resume main --verbose   # continue the last session with main; extra args go along
 ```
+
+A dry run of a Codex profile writes its prompt file (`codex\prompts\<profile>.md`) and asks Codex for its
+sign-in, because the prompt file's size depends on Codex's own prompt. Claude dry runs write nothing that stays.

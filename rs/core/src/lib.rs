@@ -210,8 +210,8 @@ pub fn show_path(path: &str) -> String {
 
 // ---------------------------------------------------------------- config ---
 pub fn default_config() -> Value {
-    serde_json::json!({"default": "main", "memory_file": "reidcc_memory.md",
-                       "profiles": {"main": {"model": "opus", "memory": true}}})
+    // no memory_file: reidcc_memory.md is its default, and a setting at its default isn't written
+    serde_json::json!({"default": "main", "profiles": {"main": {"model": "opus", "memory": true}}})
 }
 
 /// json.dump(indent=2, ensure_ascii=False) to a temp file, then replace.
@@ -224,7 +224,8 @@ pub fn save_json(path: &str, data: &Value) -> std::io::Result<()> {
 pub fn load_config(ctx: &Ctx) -> R<Obj> {
     if !py::exists(&ctx.config) {
         let _ = std::fs::create_dir_all(&ctx.home); // first run of an installed copy: %USERPROFILE%\Reidcc
-        save_json(&ctx.config, &default_config()).map_err(|e| ReidError(e.to_string()))?;
+        save_json(&ctx.config, &default_config()).map_err(|e| ReidError(format!(
+            "Can't make the Reidcc folder {} ({e}). Set REIDCC_HOME to a folder you can write to.", ctx.home)))?;
     }
     let bad = |e: String| ReidError(format!("reid.json has an error ({e}). Fix it, then try again."));
     let text = py::read_text(&ctx.config, false).map_err(bad)?;
