@@ -160,8 +160,10 @@ def live(t, bin_, seen):
     check("Claude draws in the terminal", "Claude" in text, "%d chars" % len(text.strip()))
     print("      " + "\n      ".join(l for l in text.splitlines() if l.strip())[:1600])
     where, meters = page.js("document.getElementById('where').textContent"), page.js("document.getElementById('meters').textContent")
-    check("bar: where you are and who's loaded", "PROFILE · win_live" in where and "ENGINE · claude" in where, where)
+    check("bar: where you are and who's loaded (lowercase tags)", "win_live" in where and where.endswith("· claude") and "PROFILE" not in where, where)
     check("bar: elapsed clock", any(c.isdigit() for c in meters), meters)
+    check("bar: live dot while running", meters.lstrip().startswith("●") or "· ●" in meters, meters)
+    check("no duplicate REIDCC banner in a session window", "REIDCC ·" not in text, "")
     os.makedirs(SHOTS, exist_ok=True)
     guihome.client_shot(h).save(os.path.join(SHOTS, "live.png"))
 

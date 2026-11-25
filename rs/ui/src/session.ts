@@ -97,13 +97,17 @@ let meters: Meters = {};
 let state = ""; // "" while running, then "finished" / "failed · code N"
 let hover = "";
 
+// SPEC-one-look Part 2 / 7.2: the shared tags. Folder name in bone (full path on hover), then
+// `profile · persona name · engine`, lowercase, one line.
 function drawWhere() {
   const w = $("where");
-  w.replaceChildren(span("path", info.folder));
-  const tags: [string, string][] = [["PROFILE", info.profile]];
-  if (info.persona) tags.push(["PERSONA", info.persona]);
-  tags.push(["ENGINE", info.engine]);
-  for (const [k, v] of tags) w.append(sep(), span("tag", `${k} · ${v}`));
+  const name = info.folder.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || info.folder;
+  w.replaceChildren(span("path", name));
+  w.title = info.folder;
+  const tags = [info.profile];
+  if (info.persona) tags.push(`persona ${info.persona}`);
+  tags.push(info.engine);
+  w.append(sep(), span("tag", tags.join(" · ")));
 }
 
 const level = (p: number) => (p >= 90 ? "m hot" : p >= 75 ? "m warn" : "m");
@@ -147,7 +151,11 @@ function drawMeters() {
   if (num(meters.context) !== null) meter("context", meters.context!);
   if (num(meters.limit) !== null) meter("limit", meters.limit!);
   if (state) parts.push(span(state === "finished" ? "m" : "m failed", state));
-  else parts.push(span("m", clock(performance.now() - t0)));
+  else { // Part 7.3: the screen's one emerald, while the session runs
+    const t = span("m", clock(performance.now() - t0));
+    t.prepend(span("live", "● "));
+    parts.push(t);
+  }
   m.replaceChildren();
   parts.forEach((p, i) => { if (i) m.append(sep()); m.append(p); });
 }

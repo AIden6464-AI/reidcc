@@ -16,7 +16,9 @@ body { font-family: var(--ui); user-select: none; cursor: default; }
 }
 #where { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 #where .path { font: 12px/16px var(--mono); color: var(--text); }
-#where .tag { font: 500 11px/15px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: var(--text2); }
+#where .tag { font: 12px/16px var(--mono); color: var(--text2); }
+#mark { flex: none; margin-right: -4px; font: 600 12px/16px var(--mono); letter-spacing: 0.06em; color: var(--linework); }
+#meters .live { color: var(--emerald); }
 .sep { color: var(--text3); font: 12px/16px var(--mono); }
 #meters { flex: none; font: 12px/16px var(--mono); font-variant-numeric: tabular-nums; color: var(--text2); }
 #meters .m { color: var(--text2); }

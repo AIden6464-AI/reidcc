@@ -121,8 +121,12 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
         if is_tty() {
             write(&format!("{TERM_RESET}\x1b[?1049l"));
         }
-        errln!("{TEXT2}REIDCC{TEXT} · {name} {TEXT3}{}{R}",
-               if claude { "· /reid comes back here" } else { "· codex · /quit comes back here" });
+        let back = if claude { "/reid comes back here" } else { "codex · /quit comes back here" };
+        if window_file().is_some() {
+            errln!("{TEXT3}{back}{R}"); // a session window's bar already names the profile (SPEC-one-look 7.4)
+        } else {
+            errln!("{TEXT2}REIDCC{TEXT} · {name} {TEXT3}· {back}{R}");
+        }
         if !claude && is_tty() {
             write(&format!("\x1b]0;REIDCC · codex · {name}\x07")); // the tab title (Codex's own is off)
         }
