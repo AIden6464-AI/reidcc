@@ -18,6 +18,8 @@ body { font-family: var(--ui); user-select: none; cursor: default; }
 #where .path { font: 12px/16px var(--mono); color: var(--text); }
 #where .tag { font: 12px/16px var(--mono); color: var(--text2); }
 #mark { flex: none; margin-right: -4px; font: 600 12px/16px var(--mono); letter-spacing: 0.06em; color: var(--linework); }
+#mark { cursor: pointer; padding: 4px 6px; margin-left: -6px; transition: color 120ms var(--ease), background-color 120ms var(--ease); }
+#mark:hover { color: var(--text); background: var(--s2); }
 #meters .live { color: var(--emerald); }
 .sep { color: var(--text3); font: 12px/16px var(--mono); }
 #meters { flex: none; font: 12px/16px var(--mono); font-variant-numeric: tabular-nums; color: var(--text2); }

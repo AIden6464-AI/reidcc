@@ -18,6 +18,7 @@ import guihome
 from session_flow import check, results, find, frame, ours, windows_of, Page, session_target, PORT, SHOTS
 
 u32 = ctypes.windll.user32
+BAR = 36  # the launcher's own title bar (SPEC-one-look Part 3): content sizes stay, the window is this much taller
 u32.GetForegroundWindow.restype = W.HWND
 
 
@@ -145,7 +146,7 @@ def mini_pod(t, bin_, seen):
     pod.js("window.dispatchEvent(new KeyboardEvent('keydown', {code: 'Digit2', key: '2', altKey: true}))")
     time.sleep(0.8)
     s = size_now(t)
-    check("Alt+2 on the pod: small", visible(t.hwnd) and s[0] == "small" and s[1:] == [380, 400], s)
+    check("Alt+2 on the pod: small", visible(t.hwnd) and s[0] == "small" and s[1:] == [380, 400 + BAR], s)
 
     if page:
         procs = ours(bin_)
@@ -257,12 +258,12 @@ def form_checks(t, cfgp, w0, h0):
             time.sleep(0.1)
         time.sleep(1.2)  # the session's processes end after its window
 
-    resize_inner(t, 500, 720)
+    resize_inner(t, 500, 720 + BAR)
     scroll = t.js("""(() => { const b = document.querySelector('.fbody'), g = [...document.querySelectorAll('button')]
         .find(x => x.textContent === 'open gate').getBoundingClientRect();
         return [b.scrollHeight > b.clientHeight, g.bottom <= innerHeight, __reid.size()]; })()""")
     check("500 x 720: still the form, it scrolls, open gate stays on screen", scroll == [True, True, "medium"], scroll)
-    resize_inner(t, 470, 720)
+    resize_inner(t, 470, 720 + BAR)
     check("narrower than the old minsize: small", size_now(t)[0] == "small", size_now(t))
     resize_inner(t, 500, 860)
     t.js("__slides = []")
@@ -297,7 +298,7 @@ def main():
         key(t, "Digit2", alt=True)
         time.sleep(0.6)
         s = size_now(t)
-        check("Alt+2: small (semi-mini), about 380x400", s[0] == "small" and abs(s[1] - 380) <= 2 and abs(s[2] - 400) <= 2, s)
+        check("Alt+2: small (semi-mini), about 380x400", s[0] == "small" and abs(s[1] - 380) <= 2 and abs(s[2] - 400 - BAR) <= 2, s)
         check("small has the folder", folder_in(t, "small"))
         names = t.js("__reid.state().names")
         combos = t.js("__reid.combos()")
@@ -350,6 +351,8 @@ def main():
         resize_outer(t.hwnd, w0, h0)
         time.sleep(0.4)
         check("dragged back: main", size_now(t)[0] == "main" and folder_in(t, "main"), size_now(t))
+        sw = t.js("[...document.querySelectorAll('.check')].filter(c => /^(memory|chrome|connectors|safe mode)$/.test(c.innerText)).map(c => c.offsetWidth > 0)")
+        check("main has its four switches back after the form", sw == [True] * 4, sw)
 
         mini_pod(t, bin_, seen)
     finally:

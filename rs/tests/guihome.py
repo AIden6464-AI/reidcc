@@ -9,7 +9,7 @@ import os, sys, json, shutil, subprocess, tempfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 REIDCC = os.path.dirname(os.path.dirname(HERE))
 PYDIR = os.path.join(REIDCC, "python")
-RELEASE = os.path.join(REIDCC, "rs", "target", "release")
+RELEASE = os.environ.get("REIDCC_BIN") or os.path.join(REIDCC, "rs", "target", "release")  # REIDCC_BIN: test another build
 LINKED = ("personas", "mds", "json", "assets")
 
 

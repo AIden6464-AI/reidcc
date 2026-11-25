@@ -24,7 +24,35 @@ button, input { font: inherit; color: inherit; margin: 0; }
 .c-text { color: var(--text); } .c-text2 { color: var(--text2); } .c-text3 { color: var(--text3); }
 .c-emerald { color: var(--emerald); } .c-oxide { color: var(--oxide); } .c-bronze { color: var(--bronze); }
 
-#root { display: flex; flex-direction: column; height: 100%; }
+/* the 1 px hairline frame, as a session window's (borderless window, SPEC-one-look Part 3) */
+#root { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--line); }
+/* Docked beside a session (SPEC-one-window), the session's own frame line is the seam */
+body[data-docked="beside"] #root { border-right: 0; }
+
+/* The launcher's bar: 36 px, like the session window's Telemetry Bar */
+#lbar {
+  order: -1; flex: none; height: 36px; display: flex; align-items: center; gap: 12px;
+  padding-left: 14px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden;
+}
+#lmark { flex: none; font: 600 12px/16px var(--mono); letter-spacing: 0.06em; color: var(--linework); }
+#lbar .ltitle { flex: none; font: 12px/16px var(--mono); color: var(--text2); }
+#lbar .lback {
+  display: none; flex: none; height: 24px; padding: 0 8px; margin-left: -8px; border: 0; background: transparent;
+  color: var(--text); font: 12px/16px var(--mono); transition: color 120ms var(--ease), background-color 120ms var(--ease);
+}
+#lbar .lback:hover { background: var(--s2); }
+#lbar .ldrag { flex: 1 1 auto; align-self: stretch; }
+#lctl { flex: none; display: flex; height: 100%; }
+#lctl button {
+  width: 44px; height: 100%; border: 0; background: transparent; color: var(--text3);
+  font: 14px/1 var(--ui); padding: 0; transition: color 120ms var(--ease), background-color 120ms var(--ease);
+}
+#lctl button:hover { color: var(--text); background: var(--s2); }
+#lctl #lclose:hover { color: var(--oxide); }
+body[data-docked] #lbar .lback { display: inline-block; }
+body[data-docked] #lbar .ltitle { display: none; }
+body[data-docked] #lclose { display: none; }
+body[data-docked="beside"] #lmark, body[data-docked="beside"] #lctl { display: none; }
 #footer { order: 3; flex: none; }
 #msgbar { order: 2; flex: none; height: 34px; display: flex; align-items: center; overflow: hidden; }
 #main { order: 1; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }

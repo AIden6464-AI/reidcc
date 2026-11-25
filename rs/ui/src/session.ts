@@ -87,6 +87,9 @@ term.attachCustomKeyEventHandler((e) => {
   if (plain && (k === "=" || k === "+")) return take(() => zoom(1));
   if (plain && k === "-") return take(() => zoom(-1));
   if (plain && k === "0") return take(() => zoom(0));
+  // SPEC-one-window: Alt+2 Reidcc beside this session, Alt+1 full; never sent to the engine
+  if (e.altKey && !e.ctrlKey && !e.shiftKey && (e.code === "Digit1" || e.code === "Digit2"))
+    return take(() => invoke("panel", { want: e.code === "Digit1" ? "full" : "beside" }));
   return true;
 });
 
@@ -165,13 +168,18 @@ function close(note: string | null) {
   invoke("sess_close", { id, note });
 }
 
-function ended(rc: number, back: boolean) {
+/** SPEC-one-window fix 2: a session that ends by itself turns its window into Reidcc. */
+function back(note: string) {
+  invoke("sess_back", { id, note });
+}
+
+function ended(rc: number, isBack: boolean) {
   const codex = info.engine === "codex";
-  if (back) return close("Back from the session.");
+  if (isBack) return back("Back from the session.");
   if (rc === 0) {
     state = "finished";
     drawMeters();
-    setTimeout(() => close(codex ? "Back from Codex." : "Back from the session."), 1500);
+    setTimeout(() => back(codex ? "Back from Codex." : "Back from the session."), 1500);
     return;
   }
   state = `failed · code ${rc >>> 0} · any key closes`;
@@ -181,6 +189,9 @@ function ended(rc: number, back: boolean) {
 
 // ------------------------------------------------------- window and shimmer ---
 $("close").addEventListener("click", () => close(null));
+// RC: Reidcc beside this session, then full, then closed again (SPEC-one-window fix 1)
+$("mark").title = "Reidcc · Alt+2 beside · Alt+1 full";
+$("mark").addEventListener("click", () => invoke("panel", { want: "toggle" }));
 bindDock();
 
 let still = 0, resized = 0;
