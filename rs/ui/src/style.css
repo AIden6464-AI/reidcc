@@ -31,21 +31,14 @@ button, input { font: inherit; color: inherit; margin: 0; }
 
 .hair { height: 1px; background: var(--line); flex: none; }
 
-/* tk.Button: flat, 34 px tall, a 1 px ring that Tk on Windows paints in the button's own colour; with
-   focus it draws a dotted rectangle in the text colour just inside it (dots from the corner's next pixel) */
+/* tk.Button: flat, 34 px tall, a 1 px ring in the button's own colour */
 .btn {
   height: 34px; padding: 0; border: 1px solid transparent; background: var(--s1); color: var(--text);
   font: 13px/17px var(--ui); white-space: pre; flex: none; overflow: hidden; cursor: pointer;
   display: flex; align-items: center; justify-content: center; position: relative;
 }
 .btn:hover, .btn:active { background: var(--s2); }
-.btn:focus::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  --h: repeating-linear-gradient(to right, transparent 0 1px, currentColor 1px 2px);
-  --v: repeating-linear-gradient(to bottom, transparent 0 1px, currentColor 1px 2px);
-  background: var(--h) left top / 100% 1px no-repeat, var(--h) left bottom / 100% 1px no-repeat,
-    var(--v) left top / 1px 100% no-repeat, var(--v) right top / 1px 100% no-repeat;
-}
+.btn:focus { border-color: var(--line2); } /* SPEC-one-look Part 1.6: a 1 px ring, not Tk's dotted box */
 .btn.primary { background: var(--text); color: var(--canvas); }
 .btn.primary:hover, .btn.primary:active { background: var(--linework); }
 .btn.dim { color: var(--text3); }
@@ -165,21 +158,28 @@ body[data-size="medium"] #settings { padding: 0 20px; }
 #medium .combo .entry { height: auto; }
 .fbar { display: flex; justify-content: flex-end; gap: 6px; margin: 12px 0; flex: none; }
 
-/* settings page (vision "Direction from Reid", 2026-11-21): takes the launcher's place; app-wide choices only */
+/* settings page (vision\Spec\SPEC-one-look.md Part 5): takes the launcher's place; app-wide choices only.
+   Two columns: the section title in bone on the left, its control (help under it) on the right. */
 #settings { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 var(--pad); }
-body[data-view="settings"] #main, body[data-view="settings"] #small, body[data-view="settings"] #medium { display: none; }
+body[data-view="settings"] #main, body[data-view="settings"] #small, body[data-view="settings"] #medium,
+body[data-view="settings"] #footer { display: none; }
 body[data-view="settings"] #settings { display: flex; }
 body[data-size="small"] #settings { padding: 0 16px; }
-.shead { display: flex; align-items: center; margin: 18px 0 12px; flex: none; }
-.sbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
-.ssec { display: flex; flex-direction: column; padding: 14px 0 12px; border-bottom: 1px solid var(--line); }
-.ssec > .lbl:first-child { margin-bottom: 6px; }
-.srow { display: flex; align-items: center; min-height: 34px; }
-.snote { margin-top: 2px; }
+.shead { display: flex; align-items: center; gap: 14px; margin: 18px 0 12px; flex: none; }
+.sbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 16px 12px 0; }
+.ssec { display: grid; grid-template-columns: 180px minmax(0, 1fr); column-gap: 24px; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
+.ssec > .lbl:first-child { padding-top: 8px; }
+.sctl { min-width: 0; }
+body[data-size="small"] .ssec { grid-template-columns: minmax(0, 1fr); }
+body[data-size="small"] .ssec > .lbl:first-child { padding-top: 0; }
+.srow { display: flex; align-items: center; flex-wrap: wrap; min-height: 34px; }
+.snote { margin-top: 2px; white-space: normal; }
 .spath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; margin-right: 12px; }
+.slink { cursor: pointer; } .slink:hover { color: var(--text); }
 .slist { display: flex; flex-direction: column; }
 .slist .mrow { cursor: default; padding: 0; }
 .slist .mrow:hover { background: none; color: var(--text2); }
+.slist .dim, .slist .sep { color: var(--text3); }
 .sbody::-webkit-scrollbar, #small::-webkit-scrollbar { width: 9px; }
 .sbody::-webkit-scrollbar-track, #small::-webkit-scrollbar-track { background: transparent; }
 .sbody::-webkit-scrollbar-thumb, #small::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--canvas); }

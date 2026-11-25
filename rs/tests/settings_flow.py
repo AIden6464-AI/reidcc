@@ -63,7 +63,8 @@ def main():
         check(wait(lambda: "open_in" not in cfg(), 5), "default removes open_in again")
         check(radio("codex"), "click codex")
         check(wait(lambda: cfg().get("default_engine") == "codex", 5), "default_engine = codex in reid.json")
-        check(not radio("dev releases") or "updates" not in cfg(), "dev releases is disabled (writes nothing)")
+        check("dev releases" not in text(), "no dev releases option (SPEC-one-look Part 5)")
+        check(not t.js("document.getElementById('footer').offsetParent"), "no status bar on settings")
         check(radio("medium"), "click start size medium")
         check(wait(lambda: cfg().get("start_size") == "medium", 5), "start_size = medium in reid.json")
 
@@ -79,7 +80,7 @@ def main():
         t.js("__reid.button('settings')")
         check(radio("claude"), "back to claude")
         check(wait(lambda: "default_engine" not in cfg(), 5), "default removes default_engine")
-        t.js("__reid.button('back')")
+        t.js("__reid.button('← back')")
         check(not t.js("__reid.settings().open"), "back returns to the launcher")
         guihome.client_shot(t.hwnd).save(os.path.join(OUT, "settings_button.png"))
         t.close()
