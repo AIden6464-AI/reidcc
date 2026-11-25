@@ -82,7 +82,7 @@ pub struct Changed {
 
 /// `change` beside a location: pick a folder, then point Reidcc at it. Picking the default puts it back.
 #[tauri::command]
-pub fn settings_change(app: tauri::AppHandle, which: String) -> Changed {
+pub async fn settings_change(app: tauri::AppHandle, which: String) -> Changed { // async: off the main thread, so copying `local data` never freezes the app
     let st = app.state::<App>();
     let v = view(&st);
     let cur = match which.as_str() {
@@ -133,7 +133,9 @@ fn copy_missing(from: &std::path::Path, to: &std::path::Path) -> std::io::Result
         std::fs::create_dir_all(to)?;
         for e in std::fs::read_dir(from)? {
             let e = e?;
-            if e.file_name() != "logs" { // proxy\logs: old captures stay where they are
+            // proxy\logs: old captures stay where they are. A venv only works where it was made (115 MB of
+            // absolute paths); without one, proxy.rs says how to build it again.
+            if !matches!(e.file_name().to_str(), Some("logs" | ".venv" | ".pytest_cache" | "__pycache__")) {
                 copy_missing(&e.path(), &to.join(e.file_name()))?;
             }
         }
