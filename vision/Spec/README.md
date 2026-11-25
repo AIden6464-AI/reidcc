@@ -44,7 +44,7 @@ reference.
 | 11-22 | SPEC-form | "can we meger the uis for the 2.0 because i like the form facter" | built 11-22 (third draft) |
 | 11-22 | SPEC-hand | the emblem as medium's opening: "it's coming around and it's growing out" | built 11-22 |
 | 11-24 | SPEC-one-look | a UI review: "the Reidcc terminal vs the Reidcc main don't look the same at all" | building: tokens, settings, session window done |
-| 11-25 | SPEC-one-window | a review of what opens on its own: "there should be a button for a sidebar of like medium Reidcc or full but in the app not a outside part" | dev build 11-25 (dock_flow 29/29); frames untested; not released |
+| 11-25 | SPEC-one-window | a review of what opens on its own: "there should be a button for a sidebar of like medium Reidcc or full but in the app not a outside part" | built on dev 11-25 (dock_flow 43/43, frames too); not released |
 
 **Why:** one rule, "if it's supposed to be simple to use, why are we hiding in settings?" (11-17). Every
 redesign since then removed a screen or merged two. Open next: renaming the sizes to main / medium / small,

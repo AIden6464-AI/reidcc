@@ -103,6 +103,8 @@ def main():
         home_vis = visible(t.hwnd)  # the launcher stays behind a session it opened; docking gives that back
         before, cols = frame(h), page.js("__term.cols")
         shot(h, "04_session")
+        folder = t.js("__reid.folder()")
+        t.js("__reid.setFolderText('typed before docking')")
         page.js("document.getElementById('mark').click()")
         wait(lambda: t.js("__reid.docked()") == "beside")
         time.sleep(0.6)
@@ -114,6 +116,7 @@ def main():
         check("the terminal kept its size (no resize)", page.js("__term.cols") == cols, (cols, page.js("__term.cols")))
         check("the launcher's back button names the session", "dock_live" in t.js("__reid.bar()"), t.js("__reid.bar()").replace("\n", " | "))
         check("the launcher's own window stays hidden", not visible(t.hwnd))
+        check("what was typed in the launcher went along", t.js("__reid.folder()") == "typed before docking", t.js("__reid.folder()"))
         shot(h, "05_beside")
         desk(now, "05b_beside_desktop")
 
@@ -131,6 +134,8 @@ def main():
         check("RC a third time: closed", not t.js("__reid.docked()"))
         check("the window is back to the terminal's size and place", frame(h) == before, (before, frame(h)))
         check("the launcher went home, as it was (behind the session)", visible(t.hwnd) == home_vis)
+        check("and the typed text came home with it", t.js("__reid.folder()") == "typed before docking")
+        t.js("__reid.setFolderText(%s)" % json.dumps(folder))
         shot(h, "07_closed")
 
         # 3. keys: Alt+2 / Alt+1 in the terminal, Escape and the back button in the launcher
@@ -179,6 +184,14 @@ def main():
                 desk(frame(p), "09_pod")  # a see-through window: PrintWindow gets only its fill
                 PodPage().js("window.dispatchEvent(new KeyboardEvent('keydown', {code: 'Digit1', key: '1', altKey: true}))")
                 check("Alt+1 on the pod: the launcher is back", wait(lambda: visible(t.hwnd) and not visible(p), 4))
+
+        # 5b. x on a window the launcher is docked in: the launcher goes home first, alive
+        if page2:
+            page2.js("document.getElementById('mark').click()")
+            wait(lambda: t.js("__reid.docked()") == "beside")
+            u32.PostMessageW(W.HWND(h2), 0x0010, 0, 0)
+            check("x on the docked window: the launcher is home and answers",
+                  wait(lambda: not find(t.proc.pid, title2), 5) and not t.js("__reid.docked()") and t.js("__reid.size()") is not None)
 
         # 6. a session that ends by itself turns its window into Reidcc
         for hh in (h, h2):

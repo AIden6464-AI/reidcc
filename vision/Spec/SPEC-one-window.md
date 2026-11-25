@@ -1,6 +1,7 @@
 # SPEC: one window (Reidcc comes to the session, not the other way round)
 
-Status: **SPEC, not built** (2026-11-25). It follows a review of every part of the app that opens on its
+Status: **BUILT on dev** (2026-11-25, not released): fixes 1–5, frames and rigs included; `dock_flow.py`
+43/43. Not checked by a test: the zero-`sess_resize` count, and Alt+1/2 never reaching the PTY. It follows a review of every part of the app that opens on its
 own instead of staying in the session window. It builds on `SPEC-one-look.md`: Part 3 there (the
 borderless launcher) makes step 2 here seamless.
 
