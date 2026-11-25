@@ -1,7 +1,15 @@
-@import "./tokens.css";
 /* The launcher's look, 1:1 with python\reid_gui.py: tokens from vision\reidcc-palette.md (`C`),
    fonts and pixel sizes from `_fonts`, sizes measured off the Tk window at 1000x880. */
-:root { --pad: 40px; }
+:root {
+  --canvas: #040404; --s1: #0E0D0C; --s2: #171513; --stone: #292723;
+  --line: #2A2724; --line2: #4A4540; --linework: #928A82;
+  --text: #D6D0C8; --text2: #9F978E; --text3: #746F69;
+  --emerald: #00C463; --bronze: #C99A45; --oxide: #C0584B;
+  --ui: Inter, Geist, "Segoe UI Variable Text", "Segoe UI", Helvetica, "Lucida Sans Unicode", sans-serif;
+  --mono: "Geist Mono", "JetBrains Mono", "Cascadia Mono", Consolas, Menlo, monospace;
+  --pad: 40px;
+  color-scheme: dark;
+}
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--canvas); color: var(--text); overflow: hidden; }
 body { font-family: var(--ui); -webkit-user-select: none; user-select: none; cursor: default; }
@@ -24,49 +32,28 @@ button, input { font: inherit; color: inherit; margin: 0; }
 .c-text { color: var(--text); } .c-text2 { color: var(--text2); } .c-text3 { color: var(--text3); }
 .c-emerald { color: var(--emerald); } .c-oxide { color: var(--oxide); } .c-bronze { color: var(--bronze); }
 
-/* the 1 px hairline frame, as a session window's (borderless window, SPEC-one-look Part 3) */
-#root { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--line); }
-/* Docked beside a session (SPEC-one-window), the session's own frame line is the seam */
-body[data-docked="beside"] #root { border-right: 0; }
-
-/* The launcher's bar: 36 px, like the session window's Telemetry Bar */
-#lbar {
-  order: -1; flex: none; height: 36px; display: flex; align-items: center; gap: 12px;
-  padding-left: 14px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden;
-}
-#lmark { flex: none; font: 600 12px/16px var(--mono); letter-spacing: 0.06em; color: var(--linework); }
-#lbar .ltitle { flex: none; font: 12px/16px var(--mono); color: var(--text2); }
-#lbar .lback {
-  display: none; flex: none; height: 24px; padding: 0 8px; margin-left: -8px; border: 0; background: transparent;
-  color: var(--text); font: 12px/16px var(--mono); transition: color 120ms var(--ease), background-color 120ms var(--ease);
-}
-#lbar .lback:hover { background: var(--s2); }
-#lbar .ldrag { flex: 1 1 auto; align-self: stretch; }
-#lctl { flex: none; display: flex; height: 100%; }
-#lctl button {
-  width: 44px; height: 100%; border: 0; background: transparent; color: var(--text3);
-  font: 14px/1 var(--ui); padding: 0; transition: color 120ms var(--ease), background-color 120ms var(--ease);
-}
-#lctl button:hover { color: var(--text); background: var(--s2); }
-#lctl #lclose:hover { color: var(--oxide); }
-body[data-docked] #lbar .lback { display: inline-block; }
-body[data-docked] #lbar .ltitle { display: none; }
-body[data-docked] #lclose { display: none; }
-body[data-docked="beside"] #lmark, body[data-docked="beside"] #lctl { display: none; }
+#root { display: flex; flex-direction: column; height: 100%; }
 #footer { order: 3; flex: none; }
 #msgbar { order: 2; flex: none; height: 34px; display: flex; align-items: center; overflow: hidden; }
 #main { order: 1; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 .hair { height: 1px; background: var(--line); flex: none; }
 
-/* tk.Button: flat, 34 px tall, a 1 px ring in the button's own colour */
+/* tk.Button: flat, 34 px tall, a 1 px ring that Tk on Windows paints in the button's own colour; with
+   focus it draws a dotted rectangle in the text colour just inside it (dots from the corner's next pixel) */
 .btn {
   height: 34px; padding: 0; border: 1px solid transparent; background: var(--s1); color: var(--text);
   font: 13px/17px var(--ui); white-space: pre; flex: none; overflow: hidden; cursor: pointer;
   display: flex; align-items: center; justify-content: center; position: relative;
 }
 .btn:hover, .btn:active { background: var(--s2); }
-.btn:focus { border-color: var(--line2); } /* SPEC-one-look Part 1.6: a 1 px ring, not Tk's dotted box */
+.btn:focus::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  --h: repeating-linear-gradient(to right, transparent 0 1px, currentColor 1px 2px);
+  --v: repeating-linear-gradient(to bottom, transparent 0 1px, currentColor 1px 2px);
+  background: var(--h) left top / 100% 1px no-repeat, var(--h) left bottom / 100% 1px no-repeat,
+    var(--v) left top / 1px 100% no-repeat, var(--v) right top / 1px 100% no-repeat;
+}
 .btn.primary { background: var(--text); color: var(--canvas); }
 .btn.primary:hover, .btn.primary:active { background: var(--linework); }
 .btn.dim { color: var(--text3); }
@@ -186,28 +173,21 @@ body[data-size="medium"] #settings { padding: 0 20px; }
 #medium .combo .entry { height: auto; }
 .fbar { display: flex; justify-content: flex-end; gap: 6px; margin: 12px 0; flex: none; }
 
-/* settings page (vision\Spec\SPEC-one-look.md Part 5): takes the launcher's place; app-wide choices only.
-   Two columns: the section title in bone on the left, its control (help under it) on the right. */
+/* settings page (vision "Direction from Reid", 2026-11-21): takes the launcher's place; app-wide choices only */
 #settings { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 var(--pad); }
-body[data-view="settings"] #main, body[data-view="settings"] #small, body[data-view="settings"] #medium,
-body[data-view="settings"] #footer { display: none; }
+body[data-view="settings"] #main, body[data-view="settings"] #small, body[data-view="settings"] #medium { display: none; }
 body[data-view="settings"] #settings { display: flex; }
 body[data-size="small"] #settings { padding: 0 16px; }
-.shead { display: flex; align-items: center; gap: 14px; margin: 18px 0 12px; flex: none; }
-.sbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 16px 12px 0; }
-.ssec { display: grid; grid-template-columns: 180px minmax(0, 1fr); column-gap: 24px; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
-.ssec > .lbl:first-child { padding-top: 8px; }
-.sctl { min-width: 0; }
-body[data-size="small"] .ssec { grid-template-columns: minmax(0, 1fr); }
-body[data-size="small"] .ssec > .lbl:first-child { padding-top: 0; }
-.srow { display: flex; align-items: center; flex-wrap: wrap; min-height: 34px; }
-.snote { margin-top: 2px; white-space: normal; }
+.shead { display: flex; align-items: center; margin: 18px 0 12px; flex: none; }
+.sbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
+.ssec { display: flex; flex-direction: column; padding: 14px 0 12px; border-bottom: 1px solid var(--line); }
+.ssec > .lbl:first-child { margin-bottom: 6px; }
+.srow { display: flex; align-items: center; min-height: 34px; }
+.snote { margin-top: 2px; }
 .spath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; margin-right: 12px; }
-.slink { cursor: pointer; } .slink:hover { color: var(--text); }
 .slist { display: flex; flex-direction: column; }
 .slist .mrow { cursor: default; padding: 0; }
 .slist .mrow:hover { background: none; color: var(--text2); }
-.slist .dim, .slist .sep { color: var(--text3); }
 .sbody::-webkit-scrollbar, #small::-webkit-scrollbar { width: 9px; }
 .sbody::-webkit-scrollbar-track, #small::-webkit-scrollbar-track { background: transparent; }
 .sbody::-webkit-scrollbar-thumb, #small::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--canvas); }

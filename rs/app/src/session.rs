@@ -57,7 +57,7 @@ impl Out {
 }
 
 pub struct Sess {
-    pub(crate) info: Info,
+    info: Info,
     /// the real folder it runs in (info.folder is the shown one)
     cwd: String,
     started: Instant,
@@ -129,7 +129,7 @@ impl Sessions {
             let _ = std::fs::remove_file(f);
         }
         let (l, t, r, b) = rect;
-        let sf = crate::panel::launcher_window(app).and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+        let sf = app.get_webview_window("main").and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
         // a first guess at the grid (the page fits it exactly once it loads): 8x17 px cells at 100%
         let cols = (((r - l) as f64 / sf - 26.0) / 8.0).max(40.0) as u16;
         let rows = (((b - t) as f64 / sf - 36.0 - 26.0) / 17.0).max(10.0) as u16;
@@ -151,14 +151,13 @@ impl Sessions {
 
         let o = out.clone();
         std::thread::spawn(move || {
-            let (mut reader, mut buf, mut carry, mut held) = (reader, vec![0u8; 65536], Vec::new(), String::new());
+            let (mut reader, mut buf, mut carry) = (reader, vec![0u8; 65536], Vec::new());
             while let Ok(n) = reader.read(&mut buf) {
                 if n == 0 {
                     break;
                 }
                 carry.extend_from_slice(&buf[..n]);
-                let (text, h) = crate::recolor::recolor(&(std::mem::take(&mut held) + &take_text(&mut carry)));
-                held = h; // a colour code cut off at the chunk's end
+                let text = take_text(&mut carry);
                 if !text.is_empty() {
                     o.lock().unwrap().send(Msg::Data { text });
                 }
@@ -300,11 +299,8 @@ pub fn sess_meters(st: S, id: u32) -> Option<Value> {
 /// Close the window (the session ends with it). With a note, the launcher comes forward and says it.
 #[tauri::command]
 pub fn sess_close(app: AppHandle, id: u32, note: Option<String>) {
-    if let Some(w) = app.get_webview(&format!("{PANE}{id}")).map(|v| v.window()) {
-        crate::panel::leaving(&app, &w); // docked here: the launcher goes home before the window goes
-    }
     if let Some(note) = note.filter(|_| !crate::sizes::folded()) { // folded: the pod's slot just goes
-        if let Some(m) = crate::panel::home(&app) {
+        if let Some(m) = app.get_webview_window("main") {
             let _ = m.unminimize();
             let _ = m.show();
             let _ = m.set_focus();
@@ -314,45 +310,6 @@ pub fn sess_close(app: AppHandle, id: u32, note: Option<String>) {
     }
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || crate::dock::close_pane(&handle, id));
-}
-
-/// The session ended by itself (/reid, Codex's /quit, a clean exit): the window you were in turns into
-/// Reidcc (SPEC-one-window.md fix 2). Alone, the launcher's window takes its place and size and the session
-/// window goes; in a frame, the pane goes and the launcher docks beside what's left.
-#[tauri::command]
-pub fn sess_back(app: AppHandle, id: u32, note: String) {
-    let Some(host) = app.get_webview(&format!("{PANE}{id}")).map(|v| v.window()) else { return };
-    if crate::sizes::folded() {
-        return sess_close(app, id, None); // the pod stands in for the launcher: its slot just goes
-    }
-    // "session-group-N" starts with PREFIX too: a solo window's label is PREFIX plus a number
-    if host.label().strip_prefix(PREFIX).and_then(|n| n.parse::<u32>().ok()).is_none() {
-        let mates: Vec<String> = host.webviews().into_iter().map(|v| v.label().to_string())
-            .filter(|l| l.starts_with(PANE) && *l != format!("{PANE}{id}")).collect();
-        crate::panel::leaving(&app, &host);
-        crate::dock::close_pane(&app, id);
-        if let Some(w) = mates.first().and_then(|l| app.get_webview(l)).map(|v| v.window()) {
-            crate::panel::open(&app, &w, crate::panel::Mode::Beside);
-        }
-        let _ = tauri::Emitter::emit_to(&app, "main", "session-note", note);
-        return;
-    }
-    crate::panel::go_home(&app, false);
-    let Some(home) = crate::panel::home(&app) else { return sess_close(app, id, Some(note)) };
-    if host.is_maximized().unwrap_or(false) {
-        let _ = home.maximize();
-    } else if let (Ok(hh), Ok(sh)) = (home.hwnd(), host.hwnd()) {
-        if home.is_maximized().unwrap_or(false) { let _ = home.unmaximize(); }
-        let (l, t, r, b) = crate::gate::window_rect(sh.0 as _); // both borderless: same window rect, same frame
-        unsafe {
-            windows_sys::Win32::UI::WindowsAndMessaging::SetWindowPos(hh.0 as _, std::ptr::null_mut(), l, t, r - l, b - t, 0x0004 | 0x0010);
-        }
-    }
-    let _ = home.show();
-    let _ = home.set_focus();
-    crate::gate::bring_front(crate::gate::main_hwnd());
-    let _ = tauri::Emitter::emit_to(&app, "main", "session-note", note);
-    crate::dock::close_pane(&app, id);
 }
 
 /// One running (or just ended) session, for the small size's session list.

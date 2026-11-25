@@ -10,12 +10,12 @@ export function bindDock() {
   body.style.setProperty("--gate-pace", String(PACE));
   const header = document.querySelector("[data-pane-drag]");
   header?.addEventListener("pointerdown", (event) => {
-    if ((event as PointerEvent).button === 0 && !(event.target as Element).closest("button, .detail, #mark")) {
+    if ((event as PointerEvent).button === 0 && !(event.target as Element).closest("button, .detail")) {
       void invoke("dock_drag");
     }
   });
   header?.addEventListener("dblclick", (event) => {
-    if (!body.classList.contains("grouped") && !(event.target as Element).closest("button, .detail, #mark")) {
+    if (!body.classList.contains("grouped") && !(event.target as Element).closest("button, .detail")) {
       void invoke("dock_control", { action: "max" });
     }
   });

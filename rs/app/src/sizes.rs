@@ -4,7 +4,7 @@
 //! Reid's names (2026-11-22): main the wide layout, medium the form, small folder / sessions / combos.
 //!
 //! The pod is its own window ("pod", ui\pod.html): borderless and per-pixel transparent, so the
-//! desktop shows outside the capsule. The launcher's window draws its own bar on an opaque frame
+//! desktop shows outside the capsule. The launcher's window has a themed title bar and an opaque frame
 //! that a transparent window would put at risk, so folding hides it and shows the pod where it was,
 //! and unfolding does the reverse.
 
@@ -20,12 +20,9 @@ pub static MAIN: OnceLock<(f64, f64)> = OnceLock::new();
 pub static MAIN_MIN: OnceLock<(f64, f64)> = OnceLock::new();
 /// Small (was medium): the spec said "~520×420"; Reid: "The medium is to medium can we make it simi-mini" (2026-11-21).
 /// 400 tall since rigs (2026-11-24): two rigs show under three sessions and the combos.
-pub const SMALL: (f64, f64) = (380.0, 400.0 + BAR);
-/// The launcher's own 36 px bar (SPEC-one-look Part 3: borderless, like session windows) sits inside
-/// the window, so every size is that much taller than it was under Windows' title bar.
-pub const BAR: f64 = 36.0;
+pub const SMALL: (f64, f64) = (380.0, 400.0);
 /// Medium, the form: the old launcher's `geometry("500x800")` (SPEC-form.md).
-pub const MEDIUM: (f64, f64) = (500.0, 800.0 + BAR);
+pub const MEDIUM: (f64, f64) = (500.0, 800.0);
 /// The settings page's start size, a reid.json value made safe: "main", "medium" or "small".
 pub fn start_size(v: &str) -> &'static str {
     match v { "medium" => "medium", "small" => "small", _ => "main" }
@@ -72,11 +69,6 @@ fn work_area(r: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
     (w.left, w.top, w.right, w.bottom)
 }
 
-/// `r` (physical px) moved onto its monitor's work area, shrunk only when it's bigger.
-pub fn on_screen(r: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
-    inside(r, work_area(r))
-}
-
 /// `r` moved (not shrunk, unless it's bigger) so it's all on its monitor's work area.
 fn inside(r: (i32, i32, i32, i32), work: (i32, i32, i32, i32)) -> (i32, i32, i32, i32) {
     let (w, h) = ((r.2 - r.0).min(work.2 - work.0), (r.3 - r.1).min(work.3 - work.1));
@@ -109,10 +101,7 @@ fn resized(from: (i32, i32, i32, i32), vis: (i32, i32, i32, i32), dw: i32, dh: i
 /// that would put it off screen.
 #[tauri::command]
 pub fn set_size(app: AppHandle, size: String) {
-    if crate::panel::docked_in(&app).is_some() {
-        return; // docked: Alt+1/2 switch full / beside (the page asks `panel` itself)
-    }
-    let Some(w) = crate::panel::home(&app) else { return };
+    let Some(w) = app.get_webview_window("main") else { return };
     let (lw, lh) = match size.as_str() {
         "main" => main_size(),
         "small" => SMALL,
@@ -149,7 +138,7 @@ fn pod(app: &AppHandle) -> Option<WebviewWindow> {
         return Some(p);
     }
     let mut b = tauri::WebviewWindowBuilder::new(app, "pod", tauri::WebviewUrl::App("pod.html".into()))
-        .title(crate::app_title())
+        .title(concat!("Reidcc ", env!("CARGO_PKG_VERSION")))
         .inner_size(POD.0, POD.1)
         .decorations(false)
         .transparent(true)
@@ -178,8 +167,7 @@ pub async fn pod_fold(app: AppHandle, drag: bool) -> bool {
     if drag && unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON)) } < 0 {
         return false;
     }
-    crate::panel::go_home(&app, false); // docked: the launcher comes home (hidden) and folds from there
-    let (Some(main), Some(pod)) = (crate::panel::home(&app), pod(&app)) else { return false };
+    let (Some(main), Some(pod)) = (app.get_webview_window("main"), pod(&app)) else { return false };
     let Ok(h) = main.hwnd() else { return false };
     let vis = crate::session::visible_rect(h.0 as isize);
     let scale = main.scale_factor().unwrap_or(1.0);
@@ -197,8 +185,7 @@ pub async fn pod_fold(app: AppHandle, drag: bool) -> bool {
 /// Unfold the pod back into the launcher at `size` (main or small), from where the pod is.
 #[tauri::command]
 pub async fn pod_unfold(app: AppHandle, size: String) {
-    crate::panel::go_home(&app, false);
-    let (Some(main), Some(pod)) = (crate::panel::home(&app), app.get_webview_window("pod")) else { return };
+    let (Some(main), Some(pod)) = (app.get_webview_window("main"), app.get_webview_window("pod")) else { return };
     let (Ok(mh), Ok(ph)) = (main.hwnd(), pod.hwnd()) else { return };
     let (mh, at) = (mh.0 as isize, crate::gate::window_rect(ph.0 as _));
     // the launcher's visible frame to the pod's corner (its window rect has invisible edges)
@@ -243,7 +230,7 @@ pub fn window_event(window: &Window, event: &WindowEvent) {
     match (window.label(), event) {
         ("pod", WindowEvent::CloseRequested { api, .. }) => {
             api.prevent_close();
-            if let Some(m) = crate::panel::home(app) {
+            if let Some(m) = app.get_webview_window("main") {
                 let _ = m.close();
             }
         }

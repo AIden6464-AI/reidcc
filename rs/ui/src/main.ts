@@ -9,10 +9,10 @@ import { C, Check, Combo, Listbox, button, closePopups, el, entry, label, measur
 
 const PAD = 40;
 /** vision v1 §1: smaller than this (CSS px), the launcher folds into the mini pod */
-const POD_BELOW: [number, number] = [340, 240 + 36]; // + the launcher's own 36 px bar
+const POD_BELOW: [number, number] = [340, 240];
 const MODES: [string, string][] = [["append", "add to Claude Code's prompt"], ["replace", "replace Claude Code's prompt"]];
 /** Medium, the form (vision\Spec\SPEC-form.md): narrower or shorter than main, at least the old launcher's minsize. */
-const MEDIUM_MIN: [number, number] = [480, 720 + 36];
+const MEDIUM_MIN: [number, number] = [480, 720];
 /** The form's checkbox rows: each switch with a sentence saying what it does (what claude.rs does with it). */
 const SENTENCES: [string, string, string][] = [
   ["memory", "memory", "add your memory file to the session"],
@@ -86,11 +86,6 @@ class App {
   mRigs!: HTMLDivElement;
   sessTimer = 0;
   foldTimer = 0;
-  /** SPEC-one-window: docked in a session window (beside / full), or at home ("") */
-  docked: "" | "beside" | "full" = "";
-  barTitle!: HTMLSpanElement;
-  bBack!: HTMLButtonElement;
-  foot: (f: { text: string; click: boolean }) => void = () => {};
 
   // widgets
   statusText!: HTMLDivElement;
@@ -117,7 +112,6 @@ class App {
 
   constructor() {
     // Built in Tk's creation order, so Tab moves the way Tk's traversal does; `order` places them.
-    this.buildBar();
     this.buildFooter();
     this.buildMsgbar();
     this.buildMain();
@@ -130,71 +124,6 @@ class App {
   }
 
   // ---------------------------------------------------------------- layout ---
-  /** The launcher's own 36 px bar (SPEC-one-look Part 3), like a session window's: RC, the title, and
-   *  docked (SPEC-one-window) `← claude · kiln` back to the session; – ☐ × at the right. No × while
-   *  docked: closing a session window ends the session, and that stays the session bar's ×. */
-  buildBar() {
-    const b = el("div");
-    b.id = "lbar";
-    const mark = el("span", "", "RC");
-    mark.id = "lmark";
-    this.barTitle = el("span", "ltitle", "Reidcc") as HTMLSpanElement;
-    this.bBack = el("button", "lback", "← session") as HTMLButtonElement;
-    this.bBack.tabIndex = -1;
-    this.bBack.title = "back to the session (Escape)";
-    this.bBack.addEventListener("click", () => this.leave());
-    const drag = el("div", "ldrag");
-    const ctl = el("div");
-    ctl.id = "lctl";
-    for (const [id, text, label] of [["lmin", "–", "minimise"], ["lmax", "▢", "maximise"], ["lclose", "×", "close"]]) {
-      const c = el("button", "", text) as HTMLButtonElement;
-      c.id = id;
-      c.tabIndex = -1;
-      c.setAttribute("aria-label", label);
-      c.addEventListener("click", () => invoke("launcher_control", { action: id.slice(1) }));
-      ctl.append(c);
-    }
-    b.addEventListener("pointerdown", (e) => {
-      if (e.button === 0 && !(e.target as Element).closest("button")) invoke("launcher_control", { action: "drag" });
-    });
-    b.addEventListener("dblclick", (e) => { if (!(e.target as Element).closest("button")) invoke("launcher_control", { action: "max" }); });
-    b.append(mark, this.barTitle, this.bBack, drag, ctl);
-    this.root.append(b);
-  }
-
-  /** The backend moved this page (SPEC-one-window): into a session window `beside` it or `full`, or home. */
-  dock(mode: "beside" | "full" | null, session: string) {
-    const was = this.docked;
-    this.docked = mode ?? "";
-    if (mode) document.body.dataset.docked = mode; else delete document.body.dataset.docked;
-    this.bBack.textContent = `← ${session}`;
-    if (!mode) return;
-    if (!was && !REDUCED.matches) { // in from the left: 160 ms on the design curve
-      const o = { duration: 160, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
-      for (const v of this.slides()) v.animate([{ transform: "translateX(-24px)", opacity: 0 }, { transform: "none", opacity: 1 }], o);
-    }
-    if (!was) this.listFocus().focus();
-    // an event can be missed while the page moves: ask once for what one would have carried
-    invoke<{ text: string; click: boolean }>("update_foot").then(this.foot);
-    if (this.size === "small") { void this.drawRigs(); void this.drawSessions(); }
-  }
-
-  /** What slides when the page docks or leaves: everything under the bar. */
-  slides(): HTMLElement[] {
-    return [this.view(), document.getElementById("msgbar")!, document.getElementById("footer")!];
-  }
-
-  /** Back to the session: slide out, then the page goes home. */
-  leave() {
-    if (!this.docked) return;
-    closePopups();
-    const home = () => invoke("panel", { want: "home" });
-    if (REDUCED.matches) { home(); return; }
-    const o = { duration: 160, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "forwards" as FillMode };
-    const anims = this.slides().map((v) => v.animate([{ transform: "none", opacity: 1 }, { transform: "translateX(-24px)", opacity: 0 }], o));
-    anims[0].onfinish = () => { home(); setTimeout(() => anims.forEach((a) => a.cancel()), 50); };
-  }
-
   buildFooter() {
     const f = el("div");
     f.id = "footer";
@@ -220,7 +149,6 @@ class App {
       if (f.click) this.updateText.dataset.click = "1"; else delete this.updateText.dataset.click;
       for (const e of [this.statusDot, this.statusText]) e.style.display = f.text ? "none" : "";
     };
-    this.foot = foot;
     listen<{ text: string; click: boolean }>("update", (e) => foot(e.payload));
     invoke<{ text: string; click: boolean }>("update_foot").then(foot);
     f.append(row);
@@ -546,8 +474,7 @@ class App {
   fit() {
     // Dragged smaller than the pod threshold: fold into the mini pod once the drag ends.
     clearTimeout(this.foldTimer);
-    // docked, a column never turns into the pod (SPEC-one-window 5.5)
-    if (!this.docked && (innerWidth < POD_BELOW[0] || innerHeight < POD_BELOW[1])) this.foldTimer = window.setTimeout(() => this.foldWhenLetGo(), 350);
+    if (innerWidth < POD_BELOW[0] || innerHeight < POD_BELOW[1]) this.foldTimer = window.setTimeout(() => this.foldWhenLetGo(), 350);
     const size = this.sizeFor(), keyed = performance.now() < this.targetUntil;
     if (size === this.size || (keyed && size !== this.target)) return;
     if (keyed && !this.settings?.isOpen) this.push(this.view(), RANK[size] > RANK[this.size] ? 1 : -1, () => this.layout(size));
@@ -708,12 +635,6 @@ class App {
         this.opening.skip();
         return;
       }
-      // docked: Alt+1 full, Alt+2 beside (at home they resize the window)
-      if (this.docked && e.altKey && !e.ctrlKey && (e.code === "Digit1" || e.code === "Digit2")) {
-        e.preventDefault();
-        invoke("panel", { want: e.code === "Digit1" ? "full" : "beside" });
-        return;
-      }
       if (this.settings.isOpen) { // the launcher's keys stay with the launcher
         if (e.key === "Escape") { e.preventDefault(); this.closeSettings(); }
         else if (e.key === "Enter" && document.activeElement instanceof HTMLButtonElement) { e.preventDefault(); document.activeElement.click(); }
@@ -721,11 +642,7 @@ class App {
       }
       if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); this.go(false); }
       else if (e.key === "Enter") this.onReturn(e);
-      else if (e.key === "Escape") {
-        // one layer back: a popup closes itself, then the message, then (docked) back to the session
-        if (document.querySelector(".popdown, .menu")) return;
-        if (this.docked && !this.msgText) this.leave(); else this.clearMsg();
-      }
+      else if (e.key === "Escape") this.clearMsg();
       else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === "o") { e.preventDefault(); this.pickFolder(); }
       else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === "r") { e.preventDefault(); this.go(true); }
       else if (e.altKey && !e.ctrlKey && (e.code === "Digit1" || e.code === "Digit2")) {
@@ -955,13 +872,9 @@ class App {
 async function start() {
   setMetrics(await invoke("metrics"));
   const app = new App();
-  const init = await invoke<{ ops: Op[]; folder: string; gate: Meta | null; emblem: Meta | null; test: boolean; main_min: [number, number]; title: string }>("init").catch(() => null);
+  const init = await invoke<{ ops: Op[]; folder: string; gate: Meta | null; emblem: Meta | null; test: boolean; main_min: [number, number] }>("init").catch(() => null);
   if (!init) return;
   app.mainMin = init.main_min;
-  app.barTitle.textContent = init.title;
-  document.title = init.title;
-  listen<{ mode: "beside" | "full" | null; session: string }>("panel", (e) => app.dock(e.payload.mode, e.payload.session));
-  listen("panel-leave", () => app.leave());
   app.fit();
   app.eFolder.value = init.folder;
   app.buildGate(init.gate, init.emblem);
@@ -1020,11 +933,6 @@ function testHooks(app: App) {
     combos: () => [...app.mCombos.children].map((r) => r.textContent),
     rigs: () => [...app.mRigs.children].map((r) => r.textContent),
     settings: () => ({ open: app.settings.isOpen, text: app.settings.root.innerText }),
-    docked: () => app.docked,
-    bar: () => (document.getElementById("lbar") as HTMLElement).innerText,
-    folder: () => app.eFolder.value,
-    setFolderText: (t: string) => { app.eFolder.value = t; },
-    focused: () => document.hasFocus() && document.activeElement !== document.body,
   };
 }
 
