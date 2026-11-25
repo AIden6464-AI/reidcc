@@ -151,13 +151,14 @@ impl Sessions {
 
         let o = out.clone();
         std::thread::spawn(move || {
-            let (mut reader, mut buf, mut carry) = (reader, vec![0u8; 65536], Vec::new());
+            let (mut reader, mut buf, mut carry, mut held) = (reader, vec![0u8; 65536], Vec::new(), String::new());
             while let Ok(n) = reader.read(&mut buf) {
                 if n == 0 {
                     break;
                 }
                 carry.extend_from_slice(&buf[..n]);
-                let text = take_text(&mut carry);
+                let (text, h) = crate::recolor::recolor(&(std::mem::take(&mut held) + &take_text(&mut carry)));
+                held = h; // a colour code cut off at the chunk's end
                 if !text.is_empty() {
                     o.lock().unwrap().send(Msg::Data { text });
                 }

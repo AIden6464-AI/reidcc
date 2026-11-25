@@ -7,6 +7,7 @@ mod dock;
 mod fonts;
 mod gate;
 mod model;
+mod recolor;
 mod rig;
 mod session;
 mod settings;

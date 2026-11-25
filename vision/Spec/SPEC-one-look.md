@@ -1,6 +1,8 @@
 # SPEC: one look (the launcher, settings, TUI and session windows as one app)
 
-Status: **PROPOSED** (2026-11-24). Nothing here is built. It comes from a UI review of the Rust app
+Status: **BUILDING** (2026-11-24). Built: Part 1.1 (`tokens.css`), 1.2, 1.6, Part 5 (settings), Part 7.1–7.4
+and 7.6 (session window; 7.1 also moves Claude's 24-bit colours into the palette, `rs\app\src\recolor.rs`,
+Reid's pick of the two ways). Not built: 7.5, Parts 1.3–1.5, 2–4, 6, 8. It comes from a UI review of the Rust app
 (screenshots in `rs\tests\gui_shots`, `rs\tests\session_shots`, and the Rust TUI captured at 120×40).
 
 > "how does the UI of Reidcc feel and fit the theme and what is dumb looking like the "settings page" etc"
@@ -159,7 +161,8 @@ then the gui"); the six elements above are its look.
 
    Today only background, text and cursor are set, so Claude Code's prompts show stock bright yellow,
    orange and blue. Claude Code draws some things in full RGB colour, which skips this mapping.
-   - **Open:** can a session be started with Claude Code's ANSI-only theme, so the mapping covers everything?
+   - **Decided (Reid, 2026-11-24, "2"):** the session window moves every 24-bit colour to the nearest palette
+     colour itself (`recolor.rs`), instead of switching Claude Code to its ANSI-only theme.
 2. **The bar's left side** becomes the shared tags: folder name in bone (full path on hover), then
    `win_live · claude` in `--text2`, lowercase. Today it's
    `C:/Temp/…/work · PROFILE · WIN_LIVE · ENGINE · CLAUDE`, with labels and values in the same caps.
