@@ -465,6 +465,7 @@ fn main() {
     let test = std::env::var("REIDCC_GUI_TEST").is_ok_and(|v| v == "1");
     let mut ctx = Ctx::new();
     ctx.cli = cli_command();
+    recolor::set_from(&reidcc::peek_config(&ctx));
     let args: Vec<String> = std::env::args().collect();
     let cwd = args.iter().position(|a| a == "--cwd").and_then(|i| args.get(i + 1)).cloned();
     let state = reidcc::load_state(&ctx);
@@ -554,7 +555,7 @@ fn main() {
             set_folder, go, gate_handover, gate_skip, gate_finish, test_login, show, metrics,
             session::sess_attach, session::sess_write, session::sess_resize, session::sess_meters, session::sess_close,
             session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control, dock::dock_grouped, rig::rig_list, rig::rig_save, rig::rig_delete, rig::rig_open, update::update_foot, update::update_install,
-            update::update_check, settings::settings_get, settings::settings_set, settings::settings_plugins, settings::settings_open
+            update::update_check, settings::settings_get, settings::settings_set, settings::settings_plugins, settings::settings_open, settings::settings_change
         ])
         .run(tauri::generate_context!())
         .expect("Reidcc couldn't start");

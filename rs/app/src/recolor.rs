@@ -2,6 +2,14 @@
 //! window (vision\Spec\SPEC-one-look.md Part 7.1). Claude Code paints most of its UI with `38;2;r;g;b`,
 //! which skips xterm's 16-colour theme, so the theme alone can't put it in the palette.
 
+/// Off when settings says `terminal colours: the engine's own` (reid.json `"colors": "engine"`).
+pub static ON: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_from(cfg: &reidcc::Obj) {
+    let on = cfg.get("colors").and_then(serde_json::Value::as_str) != Some("engine");
+    ON.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Text colours: the bone family, oxide, bronze, emerald, and the session theme's bright steps.
 const FG: &[u32] = &[
     0xD6D0C8, 0x9F978E, 0x746F69, 0x4A4540, 0xEDE8E1, 0x928A82, 0xA8968A, 0xB4ACA2, 0xC4B3A6, 0xBDB6AD,
@@ -51,6 +59,9 @@ fn params(p: &str) -> String {
 /// `text` with every SGR colour moved into the palette. A CSI cut off at the end is returned in the
 /// second part, to go in front of the next chunk.
 pub fn recolor(text: &str) -> (String, String) {
+    if !ON.load(std::sync::atomic::Ordering::Relaxed) {
+        return (text.to_string(), String::new());
+    }
     let (mut out, mut rest) = (String::with_capacity(text.len()), text);
     while let Some(at) = rest.find('\x1b') {
         out.push_str(&rest[..at]);

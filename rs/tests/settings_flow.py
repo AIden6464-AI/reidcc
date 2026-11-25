@@ -35,7 +35,9 @@ def main():
     root, home = guihome.make_home()
     cfg_path = os.path.join(home, "reid.json")
     cfg = lambda: json.load(open(cfg_path, encoding="utf-8"))
-    t = guihome.Tauri(root)
+    pick = os.path.join(root, "pick")  # what the folder dialog "picks" in test mode
+    os.makedirs(pick, exist_ok=True)
+    t = guihome.Tauri(root, extra_env={"REIDCC_TEST_PICK": pick})
     try:
         time.sleep(1)
         t.js("window.__slides = []; const a = Element.prototype.animate;"
@@ -67,6 +69,23 @@ def main():
         check(not t.js("document.getElementById('footer').offsetParent"), "no status bar on settings")
         check(radio("medium"), "click start size medium")
         check(wait(lambda: cfg().get("start_size") == "medium", 5), "start_size = medium in reid.json")
+        check(radio("the engine's own · no translate"), "click terminal colours: the engine's own")
+        check(wait(lambda: cfg().get("colors") == "engine", 5), "colors = engine in reid.json")
+        check(radio("Reidcc palette"), "click terminal colours: Reidcc palette")
+        check(wait(lambda: "colors" not in cfg(), 5), "default removes colors")
+
+        def change(row):  # press `change` on a location row
+            return t.js("""(() => { const r = [...document.querySelectorAll('#settings .srow')].find(x => x.textContent.startsWith(%s));
+                           const b = r && [...r.querySelectorAll('button')].find(b => b.textContent === 'change');
+                           if (!b) return false; b.click(); return true; })()""" % json.dumps(row))
+        check(change("temp files"), "temp files has a change button")
+        check(wait(lambda: cfg().get("temp_dir") == pick, 5), "temp_dir = the picked folder: %s" % cfg().get("temp_dir"))
+        check(wait(lambda: pick in text(), 5), "page shows the new temp folder")
+        check(change("ai temp work"), "ai temp work has a change button")
+        check(wait(lambda: cfg().get("ai_temp_dir") == pick, 5), "ai_temp_dir = the picked folder")
+        check(change("local data"), "local data has a change button")
+        check(wait(lambda: os.path.exists(os.path.join(pick, "reid.json")), 5), "local data: reid.json copied into the new folder")
+        check(wait(lambda: "every copy on this PC" in text(), 5), "local data: page says it applies from the next start")
 
         t.js("document.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")
         t.js("window.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}))")

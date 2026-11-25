@@ -5,7 +5,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Check, button, el, label } from "./widgets";
 
-type View = { open_in: string; engine: string; start_size: string; version: string; installed: boolean; home: string; temp: string; ai_temp: string };
+type View = { open_in: string; engine: string; start_size: string; colors: string; version: string; installed: boolean; home: string; temp: string; ai_temp: string };
 type Plugin = { id: string; version: string; enabled: boolean };
 type Foot = { text: string; click: boolean };
 
@@ -15,6 +15,7 @@ export class Settings {
   paths: Record<string, HTMLDivElement> = {};
   version = label("", "text", "mono");
   update = label("", "text2", "mono");
+  locNote = this.note(""); // what the last `change` did
   plugins = el("div", "slist");
   bBack: HTMLButtonElement;
 
@@ -26,13 +27,14 @@ export class Settings {
     const body = el("div", "sbody");
     body.append(
       this.section("sessions open in", this.choice("open_in", [["reidcc", "Reidcc session window"], ["terminal", "Windows Terminal"]])),
+      this.section("terminal colours", this.choice("colors", [["reidcc", "Reidcc palette"], ["engine", "the engine's own · no translate"]]),
+        this.note("Session windows move Claude Code's colours into Reidcc's palette. Sessions opened after a change use it.")),
       this.section("default engine", this.choice("engine", [["claude", "claude"], ["codex", "codex"]]),
         this.note("a new profile starts on this engine")),
       this.section("default size", this.choice("start_size", [["main", "main"], ["medium", "medium"], ["small", "small"]]),
         this.note("Reidcc opens at this size. Alt+1 and Alt+2 still switch while it's open.")),
       this.section("updates", this.updates()),
-      this.section("locations", this.path("local data", "home"), this.path("temp files", "temp"), this.path("ai temp work", "ai_temp"),
-        this.note("Changing these comes later.")),
+      this.section("locations", this.path("local data", "home"), this.path("temp files", "temp"), this.path("ai temp work", "ai_temp"), this.locNote),
       this.section("plugins", this.plugins, this.note("Claude Code's installed plugins. Turn them on or off with /plugin in a session.")),
     );
     this.root.append(head, el("div", "hair"), body);
@@ -86,18 +88,26 @@ export class Settings {
     l.style.width = "120px";
     this.paths[which] = label("", "text2", "mono");
     this.paths[which].classList.add("spath");
-    const b = button("open", () => invoke("settings_open", { which }));
-    row.append(l, this.paths[which], b);
+    const change = button("change", () => this.change(which));
+    change.style.marginRight = "6px";
+    row.append(l, this.paths[which], change, button("open", () => invoke("settings_open", { which })));
     return row;
   }
 
   paint(v: View) {
-    for (const [key, cur] of [["open_in", v.open_in], ["engine", v.engine], ["start_size", v.start_size]]) for (const [val, r] of this.radios[key]) r.set(val === cur);
+    for (const [key, cur] of [["open_in", v.open_in], ["colors", v.colors], ["engine", v.engine], ["start_size", v.start_size]]) for (const [val, r] of this.radios[key]) r.set(val === cur);
     this.version.textContent = `Reidcc ${v.version}`;
     if (!v.installed && !this.update.textContent) this.update.textContent = "updates come with the installed copy";
     this.paths.home.textContent = v.home;
     this.paths.temp.textContent = v.temp;
     this.paths.ai_temp.textContent = v.ai_temp + "  (Claude Code)";
+  }
+
+  /** `change`: pick a folder (the backend opens the dialog), then show what that did. */
+  async change(which: string) {
+    const r = await invoke<{ view: View; note: string }>("settings_change", { which });
+    this.paint(r.view);
+    if (r.note) this.locNote.textContent = r.note;
   }
 
   async set(key: string, value: string) { this.paint(await invoke<View>("settings_set", { key, value })); }
@@ -121,6 +131,7 @@ export class Settings {
   async open() {
     document.body.dataset.view = "settings";
     this.bBack.focus();
+    this.locNote.textContent = "local data: from Reidcc's next start. Temp folders: for sessions opened after a change.";
     this.paint(await invoke<View>("settings_get"));
     this.plugins.replaceChildren(label("loading…", "text3", "mono"));
     try {
