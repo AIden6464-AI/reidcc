@@ -325,6 +325,12 @@ pub fn sess_back(app: AppHandle, id: u32, note: String) {
     if crate::sizes::folded() {
         return sess_close(app, id, None); // the pod stands in for the launcher: its slot just goes
     }
+    // only the window in front turns into Reidcc; one ending behind (or minimized, or while Reidcc is docked
+    // in another window) closes and the launcher says so, as before
+    let front = host.hwnd().is_ok_and(|h| unsafe { windows_sys::Win32::UI::WindowsAndMessaging::GetForegroundWindow() } == h.0 as _);
+    if !front || crate::panel::docked_in(&app).is_some_and(|l| l != host.label()) {
+        return sess_close(app, id, Some(note));
+    }
     // "session-group-N" starts with PREFIX too: a solo window's label is PREFIX plus a number
     if host.label().strip_prefix(PREFIX).and_then(|n| n.parse::<u32>().ok()).is_none() {
         let mates: Vec<String> = host.webviews().into_iter().map(|v| v.label().to_string())

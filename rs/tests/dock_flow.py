@@ -6,7 +6,7 @@ touched, and only processes started from the temp bin\\ are killed. Screenshots:
 
     python rs\\tests\\dock_flow.py
 """
-import os, sys, json, time, shutil, ctypes
+import os, sys, json, time, shutil, ctypes, urllib.request
 import psutil
 from ctypes import wintypes as W
 
@@ -67,6 +67,8 @@ def main():
     cfg["profiles"]["dock_live"] = {"model": "sonnet"}
     cfg["profiles"]["dock_two"] = {"model": "sonnet"}
     cfg["profiles"]["dock_ends"] = {"model": "opus", "args": ["--version"]}
+    pair = lambda a, b: {"layout": {"split": "h", "portion": 0.5, "first": {"profile": a}, "second": {"profile": b}}}
+    cfg["rigs"] = {"pair": pair("dock_live", "dock_two"), "ends": pair("dock_live", "dock_ends")}
     with open(cfgp, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
     bin_ = os.path.join(home, "bin")
@@ -193,6 +195,64 @@ def main():
             check("Reidcc took the session window's place and size", frame(t.hwnd) == rect, (rect, frame(t.hwnd)))
         shot(t.hwnd, "10_ended_becomes_reidcc")
         check("the launcher says how it ended", "ended" in (t.js("__reid.state().msg") or "") or bool(t.js("__reid.state().msg")), t.js("__reid.state().msg"))
+
+        # 7. a frame (a rig's two panes): RC docks beside them, closing gives the frame back
+        def rig(name):
+            before = set(windows_of(t.proc.pid))
+            t.js("window.__TAURI_INTERNALS__.invoke('rig_open', {name: %s})" % json.dumps(name))
+            wait(lambda: any(windows_of(t.proc.pid).get(w, ("", 0))[0] == "Reidcc · sessions" and visible(w)
+                             for w in set(windows_of(t.proc.pid)) - before), 10)
+            g = next((w for w in set(windows_of(t.proc.pid)) - before if windows_of(t.proc.pid)[w][0] == "Reidcc · sessions"), None)
+            if not g:
+                return None, []
+            top, new = max(seen, default=0), []
+            def two():  # both panes at once: session_target takes only the newest
+                nonlocal new
+                new = sorted((p for p in json.load(urllib.request.urlopen("http://127.0.0.1:%d/json" % PORT, timeout=2))
+                              if "session.html?id=" in p.get("url", "") and int(p["url"].split("id=")[1]) > top),
+                             key=lambda p: int(p["url"].split("id=")[1]))
+                return len(new) >= 2
+            wait(two, 10)
+            seen.update(int(p["url"].split("id=")[1]) for p in new)
+            return g, [Page(p) for p in new[:2]]
+        g, panes = rig("pair")
+        check("a rig opens its frame", bool(g) and len(panes) == 2)
+        if g:
+            time.sleep(1.5)
+            fb, fcols = frame(g), [p.js("__term.cols") for p in panes]
+            shot(g, "11_frame")
+            panes[0].js("document.getElementById('mark').click()")
+            check("RC in a frame pane: beside", wait(lambda: t.js("__reid.docked()") == "beside"))
+            time.sleep(0.6)
+            fn = frame(g)
+            check("the frame grew by the column", abs((fn[2] - fn[0]) - (fb[2] - fb[0]) - COL * sc) <= 3, (fb, fn))
+            check("its tiles moved right, same size (no resize)", [p.js("__term.cols") for p in panes] == fcols,
+                  (fcols, [p.js("__term.cols") for p in panes]))
+            check("the back button says sessions", "sessions" in t.js("__reid.bar()"), t.js("__reid.bar()").replace("\n", " | "))
+            shot(g, "12_frame_beside")
+            desk(fn, "12b_frame_beside_desktop")
+            panes[1].js("document.getElementById('mark').click()")  # RC again (any pane): full
+            wait(lambda: t.js("__reid.docked()") == "full")
+            panes[1].js("document.getElementById('mark').click()")
+            check("RC twice more: closed", wait(lambda: not t.js("__reid.docked()")))
+            time.sleep(0.5)
+            check("the frame is back to its size and place", frame(g) == fb, (fb, frame(g)))
+            u32.PostMessageW(W.HWND(g), 0x0010, 0, 0)
+            time.sleep(3)
+
+        # 8. a pane that ends by itself: it goes, and Reidcc docks beside what's left
+        g, panes = rig("ends")
+        check("the ending rig opens its frame", bool(g))
+        if g:
+            ok = wait(lambda: t.js("__reid.docked()") == "beside", 10)
+            check("a pane ended: Reidcc docks beside the pane left", ok, t.js("__reid.docked()"))
+            time.sleep(0.6)
+            left = find(t.proc.pid, "claude · dock_live")  # two panes less one: the frame gives way to the pane's own window
+            check("the pane left has its own window, Reidcc beside it", visible(left) and "dock_live" in t.js("__reid.bar()"),
+                  (windows_of(t.proc.pid), t.js("__reid.bar()").replace("\n", " | ")))
+            if left:
+                shot(left, "13_frame_pane_ended")
+            check("the launcher says how it ended", bool(t.js("__reid.state().msg")), t.js("__reid.state().msg"))
     finally:
         for p in ours(bin_):
             try:

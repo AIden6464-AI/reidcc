@@ -685,7 +685,7 @@ pub fn rig_frame(app: &AppHandle, saved: &Value, at: (i32, i32, i32, i32)) -> Op
     let n = rig_leaves(saved)?.len() as u32;
     let tree = Panes::from_json(saved, &mut (0..n))?;
     let at = Rect::from(at).inside(work_area(at.into()));
-    let scale = app.get_webview_window("main").and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+    let scale = crate::panel::launcher_window(app).and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
     let group = create_group(app, at, scale).ok()?;
     let Some((_, mut tiles)) = group_tiles(&group, &tree) else { let _ = group.destroy(); return None };
     tiles.sort_by_key(|(id, _)| *id);
