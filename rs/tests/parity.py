@@ -11,11 +11,12 @@ import os, re, sys, json, time, shutil, subprocess, tempfile, difflib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REIDCC = os.path.dirname(os.path.dirname(HERE))
-RS = os.path.join(REIDCC, "rs", "target", "release", "reid.exe")
+RS = os.path.join(os.environ.get("REIDCC_BIN") or os.path.join(REIDCC, "rs", "target", "release"), "reid.exe")  # REIDCC_BIN: test another build
 RS_STATUSLINE = '"%s" "--statusline"' % RS.replace("\\", "/")
 TRACEBACK = "Traceback (most recent call last)"
 # Differences accepted for stage 0, each with its reason. Anything else that differs fails.
-KNOWN = {"--dry c-toml-bad": "TOML error wording is the toml crate's, not tomllib's (same line and column)",
+KNOWN = {"-l": "Rust asks Codex for its sign-in once; the Python app prints 'checking…' (user trial fix 4)",
+         "--dry c-toml-bad": "TOML error wording is the toml crate's, not tomllib's (same line and column)",
          "--dry c-proxy": "Codex has its own proxy in Rust (SPEC-codex-proxy.md); the Python app still refuses it",
          "--dry c-three": "Codex has its own proxy in Rust (SPEC-codex-proxy.md); the Python app still refuses it"}
 MASK = re.compile(r"reid_(prompt|settings)_\d+_[a-z0-9_]{8}")  # the pid is in the name (sweep_temps)
@@ -179,7 +180,8 @@ def main():
     work = os.path.join(root, "work dir é")
     os.makedirs(work)
     names = list(json.load(open(os.path.join(home, "reid.json"), encoding="utf-8"))["profiles"])
-    cases = [["-l"], ["-h"], ["--help"], ["--dry"], ["--dry", "-c"], ["--dry", "not-a-profile", "do X"],
+    # no -h: the Rust help is its own since the user trial (SPEC-user-trial-results fix 1)
+    cases = [["-l"], ["--dry"], ["--dry", "-c"], ["--dry", "not-a-profile", "do X"],
              ["--dry", "slim", "a b", 'q"x', "back\\", ""], ["--back"]]
     cases += [["--dry", n] for n in names]
     status_in = [b"", b"{}", b"garbage", json.dumps({"workspace": {"current_dir": os.path.expanduser("~") + "\\kiln"},
@@ -199,10 +201,6 @@ def main():
             if not name.startswith(".base-"):
                 os.remove(os.path.join(home, "codex", "prompts", name))
         rs = run("rs", home, args, work)
-        if label in ("-h", "--help"):
-            # The version and update flags are specific to the versioned, installable Rust build.
-            rc, stdout, stderr = rs
-            rs = rc, re.sub(r"^    reid --(version|update) +.*\r?\n", "", stdout, flags=re.M), stderr
         after_rs = prompts(home)
         problems = []
         if py != rs and TRACEBACK in py[2] and TRACEBACK not in rs[2]:

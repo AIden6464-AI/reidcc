@@ -2,7 +2,7 @@
 
 # Build from source
 
-Build Reidcc yourself, or until the first installer release.
+Build Reidcc yourself.
 
 ## What you need
 

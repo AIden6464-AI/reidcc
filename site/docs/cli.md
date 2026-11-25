@@ -6,8 +6,9 @@
 
 ```text
 reid                      open the Reidcc TUI (pick, edit, open gate, resume)
-reid <profile> [args]     start a session with that profile; extra args go to claude
-reid -c / reid "do X"     anything that isn't a profile goes to claude (default profile)
+reid <profile> [args]     start a session with that profile; extra args go to its engine
+reid -c / reid "do X"     anything that isn't a profile goes to the default profile's engine
+reid --resume [profile]   continue the last session, with that profile or the one it had
 reid -l                   list profiles
 reid --version            show the Reidcc version
 reid --update             install the latest Reidcc (installed copies only)

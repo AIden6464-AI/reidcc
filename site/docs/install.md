@@ -11,10 +11,6 @@ Reidcc runs on Windows 10 and 11. It's in beta.
 
 ## The installer
 
-::: tip
-The installer comes with the first release on the [releases page](https://github.com/AIden6464-AI/reidcc/releases). Until it's out, [build from source](./build-from-source).
-:::
-
 1. Download `Reidcc_<version>_x64-setup.exe` from the [latest release](https://github.com/AIden6464-AI/reidcc/releases/latest) and run it. It installs for your account only, so it needs no admin rights.
 2. It isn't code-signed yet, so SmartScreen may say *Windows protected your PC*. Click *More info*, then *Run anyway*.
 3. Open **Reidcc** from the Start menu or the desktop, or type `reid` in a new terminal.

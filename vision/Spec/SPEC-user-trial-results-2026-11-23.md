@@ -1,6 +1,7 @@
 # User trial results, 2026-11-23
 
-Status (2026-11-23): **0 of 13 "fix now" items done.** Reid hasn't picked yet.
+Status (2026-11-25): **4 of 13 "fix now" items done on dev** (1–4, SPEC-agent-cli Part 7d Step A), not
+released or published.
 
 Run from SPEC-user-trial.md. Two testers, Reidcc 0.2.2 portable, each in its own trial folder with a fresh
 `REIDCC_HOME`, the r/ClaudeAI post (SPEC-reddit.md) and a clone of `main`. Nothing here goes into the app or

@@ -11,30 +11,31 @@ use reidcc::{default_profile, errln, load_config, load_state, memory_path, out, 
 const HELP: &str = r#"reid -- Reidcc, in the terminal.
 
     reid                      open the Reidcc TUI (pick, edit, open gate, resume)
-    reid <profile> [args]     start a session with that profile; extra args go to claude
-    reid -c / reid "do X"     anything that isn't a profile goes to claude (default profile)
+    reid <profile> [args]     start a session with that profile; extra args go to its engine
+    reid -c / reid "do X"     anything that isn't a profile goes to the default profile's engine
+    reid --resume [profile]   continue the last session, with that profile or the one it had
     reid -l                   list profiles
-    reid --version            show the Reidcc version
-    reid --update             install the latest Reidcc (installed copies only)
     reid --dry [profile]      print what would run, don't run it
     reid --edit / --mem       open reid.json / the memory file
+    reid --tui / --gui        force the TUI or the window
+    reid --version            show the Reidcc version
+    reid --update             install the latest Reidcc (installed copies only)
 
-Inside Claude:
+Inside a session:
     /reid                     end the session and return to the TUI. Your conversation
                               is kept: press r there to resume it, with any profile.
     /exit                     leave as usual, back to your shell.
 
 Profile fields (reid.json): engine (claude | codex), model, settings, persona, mode, memory,
-safe, args, env, plus proxy, proxy_drop, tools, mcp, no_chrome, no_connectors, settings_json.
-A codex profile starts Codex in the folder (vision/SPEC-codex-opencode.md) with the same persona,
-memory and sign-in fields: persona + memory go in codex/prompts/<profile>.md, a sign-in file is a
-codex/*.toml provider file (vision/SPEC-codex-signin-persona.md).
-See SPEC-proxy.md for the proxy and lean-setup fields.
+safe, args, env, plus tools, mcp, no_chrome, no_connectors, settings_json. A codex profile
+starts Codex with the same persona, memory and sign-in fields.
 
-Relative paths in reid.json resolve against this folder, so moving the folder
-(or the drive letter changing) doesn't break anything."#;
+Relative paths in reid.json resolve against the Reidcc folder, so moving it (or the drive
+letter changing) doesn't break anything.
 
-const NO_GUI: &str = "The Rust Reidcc window (Reidcc.exe) isn't built yet. reid --tui opens the TUI.";
+Docs: https://aiden6464-ai.github.io/reidcc/docs/cli"#;
+
+const NO_GUI: &str = "Can't find Reidcc.exe next to reid.exe. reid --tui opens the TUI.";
 
 pub fn open_file(path: &str) {
     match std::env::var("EDITOR").ok().filter(|e| !e.is_empty()) {
@@ -136,6 +137,11 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
     match a0.as_str() {
         "-l" | "--list" => {
             let def = default_profile(&cfg);
+            if profiles(&cfg).values().filter_map(|v| v.as_object()).any(|p| is_codex(p) && reidcc::text(p, "settings").is_empty())
+                && codex::login(ctx, false).is_none()
+            {
+                codex::login_store(ctx, "can't check"); // not "checking…" forever: the CLI asks once, here
+            }
             for n in profiles(&cfg).keys() {
                 out!("{} {:<14} {}", if n == def { "*" } else { " " }, n, profile::summary(ctx, &cfg, n));
             }
