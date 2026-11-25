@@ -28,13 +28,20 @@ const sep = () => span("sep", " · ");
 // ---------------------------------------------------------------- terminal ---
 let size = 13;
 const term = new Terminal({
-  fontFamily: '"Cascadia Mono", Consolas, monospace',
+  // one monospace list for the whole app (tokens.css --mono, SPEC-one-look Part 1.2)
+  fontFamily: getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "Consolas, monospace",
   fontSize: size,
   cursorBlink: true,
   scrollback: 10000,
   windowsPty: { backend: "conpty", buildNumber: 26200 },
+  // SPEC-one-look Part 7.1: the engine's 16 colours in Reidcc's palette (red oxide, yellow bronze, green
+  // emerald, blue/magenta/cyan bone-family stones); bright = a step lighter
   theme: { background: "#040404", foreground: "#D6D0C8", cursor: "#D6D0C8", cursorAccent: "#040404",
-           selectionBackground: "#292723" },
+           selectionBackground: "#292723",
+           black: "#171513", red: "#C0584B", green: "#00C463", yellow: "#C99A45",
+           blue: "#928A82", magenta: "#A8968A", cyan: "#9F978E", white: "#D6D0C8",
+           brightBlack: "#746F69", brightRed: "#D4705F", brightGreen: "#2BD57E", brightYellow: "#DDB264",
+           brightBlue: "#B4ACA2", brightMagenta: "#C4B3A6", brightCyan: "#BDB6AD", brightWhite: "#EDE8E1" },
 });
 (window as unknown as { __term: Terminal }).__term = term; // rs\tests\session_flow.py reads the screen
 const fit = new FitAddon();
