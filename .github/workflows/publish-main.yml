@@ -1,12 +1,13 @@
 # main is what users see: the app's source, assets, docs, license and a user README. dev has
-# everything (specs, vision, the Python original, proxy, tests). Every push to dev rewrites main's
-# files from the list below, as one commit on main (site/ is the website; pages.yml deploys it after this). Never commit to main by hand: the next sync
-# overwrites it. Releases are tagged on main (release.yml).
+# everything (specs, vision, the Python original, proxy, tests). Running this (by hand: Actions → publish
+# main → Run workflow) rewrites main's files from dev's, from the list below, as one commit on main (site/ is
+# the website; pages.yml deploys it after this). Pushing to dev never touches main (Reid, 2026-11-25:
+# "I don't wanna change main that's public"). Never commit to main by hand: the next publish overwrites
+# it. Releases are tagged on main (release.yml): publish first, then tag.
 name: publish main
 
 on:
-  push:
-    branches: [dev]
+  workflow_dispatch:
 
 permissions:
   contents: write
