@@ -94,6 +94,7 @@ class App {
 
   // widgets
   statusText!: HTMLDivElement;
+  where!: HTMLDivElement;
   statusDot!: HTMLDivElement;
   updateText!: HTMLDivElement;
   msgLabel!: HTMLDivElement;
@@ -114,6 +115,7 @@ class App {
   preview!: HTMLDivElement;
   bGo!: HTMLButtonElement;
   bResume!: HTMLButtonElement;
+  bFix!: HTMLButtonElement;
 
   constructor() {
     // Built in Tk's creation order, so Tab moves the way Tk's traversal does; `order` places them.
@@ -126,7 +128,7 @@ class App {
     this.settings = new Settings(() => this.closeSettings());
     this.root.append(this.settings.root);
     this.keys();
-    new ResizeObserver(() => { this.fit(); this.wrapTexts(); }).observe(document.body);
+    new ResizeObserver(() => { this.fit(); this.wrapTexts(); this.showFolderEnd(); }).observe(document.body);
   }
 
   // ---------------------------------------------------------------- layout ---
@@ -158,7 +160,11 @@ class App {
       if (e.button === 0 && !(e.target as Element).closest("button")) invoke("launcher_control", { action: "drag" });
     });
     b.addEventListener("dblclick", (e) => { if (!(e.target as Element).closest("button")) invoke("launcher_control", { action: "max" }); });
-    b.append(mark, this.barTitle, this.bBack, drag, ctl);
+    // settings: one place in every size, top-right (SPEC-one-look Part 4.4)
+    const set = el("button", "lset", "settings") as HTMLButtonElement;
+    set.tabIndex = -1;
+    set.addEventListener("click", () => this.openSettings());
+    b.append(mark, this.barTitle, this.bBack, drag, set, ctl);
     this.root.append(b);
   }
 
@@ -206,7 +212,8 @@ class App {
     const spacer = el("div");
     spacer.style.flex = "1";
     this.statusDot.style.marginRight = "6px";
-    const hint = label("folder → profile → open gate", "text3", "mono");
+    // where you are: folder · profile · engine (SPEC-one-look Part 2's status bar)
+    const hint = this.where = label("", "text2", "mono");
     hint.classList.add("hint");
     // the updater's line takes the status's place while it has something to say (SPEC-github-repo.md 4a)
     this.updateText = label("", "text2", "mono");
@@ -245,6 +252,7 @@ class App {
     banner.src = "http://reid.localhost/assets/banner.png";
     banner.style.cssText = "display:block;margin:14px auto 0;width:720px;height:176px;flex:none";
     banner.onerror = () => banner.remove();
+    banner.id = "banner";
     m.append(banner);
     const col = el("div");
     col.style.cssText = `flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding:0 ${PAD}px`;
@@ -277,6 +285,7 @@ class App {
     // 2. profile: list on the left, the selected profile's fields on the right
     const panel = el("div");
     panel.style.cssText = "display:flex;margin-top:12px;flex:1 0 auto;min-height:0";
+    panel.classList.add("fpanel");
     this.buildProfileList(panel);
     const div = el("div");
     div.style.cssText = `width:1px;background:${C.line};margin:0 18px;flex:none`;
@@ -298,13 +307,10 @@ class App {
     bConfig.style.marginLeft = "8px";
     // DOM order = Tk's creation order (open gate before resume); placed with `order`
     const bMem = button("open memory", () => this.action("open_memory"));
-    // the way into the settings page (Reid, 2026-11-21): after open reid.json, same quiet style
-    const bSettings = button("settings", () => this.openSettings());
-    bSettings.style.marginLeft = "8px";
-    for (const [b, o] of [[bMem, 1], [bConfig, 2], [bSettings, 3], [this.bGo, 6], [this.bResume, 5]] as const) b.style.order = String(o);
+    for (const [b, o] of [[bMem, 1], [bConfig, 2], [this.bGo, 6], [this.bResume, 5]] as const) b.style.order = String(o);
     spacer.style.order = "4";
-    for (const b of [bMem, bConfig, bSettings, this.bGo, this.bResume]) b.style.height = "auto";
-    act.append(bMem, bConfig, bSettings, spacer, this.bGo, this.bResume);
+    for (const b of [bMem, bConfig, this.bGo, this.bResume]) b.style.height = "auto";
+    act.append(bMem, bConfig, spacer, this.bGo, this.bResume);
     col.append(h, act);
     this.root.append(m);
   }
@@ -325,6 +331,7 @@ class App {
     g.style.gridTemplateColumns = `${w}px ${w}px`;
     cmds.forEach(([t, fn], i) => {
       const b = button(t, fn);
+      if (t === "delete") b.classList.add("danger");
       b.style.width = "auto";
       b.style.margin = i % 2 === 0 ? "0 6px 6px 0" : "0 0 6px 0";
       g.append(b);
@@ -347,7 +354,7 @@ class App {
     form.style.cssText = "display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;flex:none";
     let r = 1;
     const row = (text: string, widget: HTMLElement, extra: HTMLElement[] = [], span = 1) => {
-      const l = label(text, "text3", "label");
+      const l = label(text, "text2", "label");
       l.style.cssText += `;grid-row:${r};grid-column:1;margin:2px 14px 2px 0;justify-self:start`;
       widget.style.gridRow = String(r);
       widget.style.gridColumn = `2 / span ${span}`;
@@ -367,7 +374,7 @@ class App {
     // engine: on the name row, right above model, so the form keeps its height
     const ef = el("div");
     ef.style.cssText = "display:flex;align-items:center";
-    const engLabel = label("engine", "text3", "label");
+    const engLabel = label("engine", "text2", "label");
     engLabel.style.marginRight = "8px";
     const combo = (key: string, readonly: boolean, short = false) => {
       const c = new Combo(readonly, short);
@@ -418,7 +425,12 @@ class App {
     const cl = label("command", "text3", "label");
     cl.style.alignSelf = "flex-start";
     this.preview = label("", "text3", "tag");
-    cmdf.append(cl, this.preview);
+    this.bFix = button("copy codex login", () => {
+      void navigator.clipboard.writeText("codex login");
+      this.say("Copied. Run codex login in a terminal; Reidcc notices when you're signed in.", "quiet", [], 6);
+    });
+    this.bFix.style.cssText += ";align-self:flex-start;height:26px;margin-top:6px;display:none";
+    cmdf.append(cl, this.preview, this.bFix);
     right.append(head, form, cmdf);
     panel.append(right);
   }
@@ -436,7 +448,7 @@ class App {
     this.mSessions = el("div", "mlist");
     this.mCombos = el("div", "mlist mcombos");
     this.mRigs = el("div", "mlist");
-    m.append(head("sessions"), this.mSessions, el("div", "hair"), head("combos"), this.mCombos, el("div", "hair"), head("rigs"), this.mRigs);
+    m.append(head("sessions"), this.mSessions, el("div", "hair"), head("profiles"), this.mCombos, el("div", "hair"), head("rigs"), this.mRigs);
     this.root.append(m);
   }
 
@@ -451,7 +463,7 @@ class App {
     const sub = label("Folder. Profile. Gate.", "text2", "body");
     sub.classList.add("fsub");
     hl.append(el("div", "wordmark", "Reidcc"), sub);
-    head.append(hl, button("settings", () => this.openSettings()));
+    head.append(hl);
 
     const grid = el("div", "fgrid");
     const cell = (key: string) => (this.cells[key] = el("div", "fcell"));
@@ -468,7 +480,7 @@ class App {
     arrow.addEventListener("mousedown", (e) => { if (e.button === 0) { e.preventDefault(); this.openRecent(this.folderBox); } });
     this.folderBox.append(arrow);
     this.eFolder.addEventListener("focus", () => this.folderBox.classList.add("focus"));
-    this.eFolder.addEventListener("blur", () => this.folderBox.classList.remove("focus"));
+    this.eFolder.addEventListener("blur", () => { this.folderBox.classList.remove("focus"); this.showFolderEnd(); });
     this.fPick = button("browse", () => this.pickFolder());
     row("folder", this.folderBox, [this.fPick]);
 
@@ -477,8 +489,14 @@ class App {
       const i = this.names.indexOf(this.profCombo.value);
       if (i >= 0 && i !== this.lb.sel) { this.lb.select(i); this.lb.see(i); this.lb.onSelect(i); }
     };
-    row("profile", this.profCombo.root, [button("new", () => this.action("new")), button("delete", () => this.action("delete"))]);
-    row("name", cell("name"), [button("duplicate", () => this.action("dup"))]);
+    const del = button("delete", () => this.action("delete"));
+    del.classList.add("danger");
+    const prow = el("div", "fcell fprof");
+    const pb = el("div", "fbtns");
+    pb.append(button("new", () => this.action("new")), button("duplicate", () => this.action("dup")), del);
+    prow.append(this.profCombo.root, pb);
+    row("profile", prow);
+    row("name", cell("name"));
     this.defCheck = new Check("the profile reid uses when you don't name one");
     this.defCheck.onClick = () => { if (!this.defCheck.on) this.action("default"); }; // default moves, it can't be unset
     row("default", this.defCheck.root);
@@ -498,6 +516,10 @@ class App {
     for (const [k, text] of SENTENCES) row(text, cell(k));
     row("extra args", cell("args"));
 
+    // the right-side buttons get one width (SPEC-one-look 4.5)
+    const side = [...grid.querySelectorAll<HTMLButtonElement>(".fbtns .btn")];
+    const sw = Math.max(...side.map((b) => parseFloat(b.style.width) || 0));
+    side.forEach((b) => { b.style.width = sw + "px"; });
     // no command preview here (Reid, 2026-11-22: "can we remove this"); the wide layout keeps its own
     const body = el("div", "sbody fbody");
     body.append(grid);
@@ -569,6 +591,7 @@ class App {
       this.sessTimer = window.setInterval(() => this.drawSessions(), 1000);
     } else if (size === "medium") this.placeForm();
     this.wrapTexts();
+    requestAnimationFrame(() => this.showFolderEnd());
   }
 
   /** The view on screen: settings, or the launcher's layout for the size. */
@@ -689,6 +712,18 @@ class App {
       r.addEventListener("mousedown", (e) => { if (e.button === 0) invoke("sess_focus", { id: s.id }); });
       return r;
     }));
+  }
+
+  /** Small cuts a long folder from the left (`…/my-project` shows), not the right. */
+  showFolderEnd() {
+    if (this.size === "small" && document.activeElement !== this.eFolder) this.eFolder.scrollLeft = this.eFolder.scrollWidth;
+  }
+
+  paintWhere() {
+    const folder = this.eFolder.value.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || this.eFolder.value;
+    const prof = this.names[this.lb.sel] ?? "";
+    this.where.textContent = [folder, prof, prof ? this.cb.engine?.value : ""].filter(Boolean).join(" · ");
+    this.where.title = this.eFolder.value;
   }
 
   paintModes() { this.radios.forEach((rb, i) => rb.set(MODES[i][0] === this.mode)); this.paintForm(); }
@@ -827,7 +862,7 @@ class App {
 
   setVar(key: string, value: string) {
     if (key === "auths") this.cb.auth.values = JSON.parse(value);
-    else if (key === "folder") { this.eFolder.value = value; }
+    else if (key === "folder") { this.eFolder.value = value; this.showFolderEnd(); this.paintWhere(); }
     else if (key === "name") this.eName.value = value;
     else if (key === "persona_set") { this.cb.persona.value = value; this.apply(); }
     else if (this.cb[key]) this.cb[key].value = value;
@@ -846,11 +881,17 @@ class App {
       this.cb[k].setReadonly(k !== "tools");
     }
     for (const k of ["safe", "chrome", "connectors"]) this.checks[k].setDisabled(r.disabled[k]);
+    for (const k of ["tools", "mcp"]) this.cb[k].root.title = r.disabled[k] ? "Claude only" : "";
+    for (const k of ["safe", "chrome", "connectors"]) this.checks[k].root.title = r.disabled[k] ? "Claude only" : "";
     this.bResume.classList.toggle("dim", r.codex);
+    this.bGo.classList.toggle("off", !r.ready); // SPEC-one-look 1.5: the disabled look while not ready
+    this.paintWhere();
     this.statusDot.style.color = r.ready ? C.emerald : C.oxide;
     this.statusText.textContent = r.status;
     this.previewText = r.preview;
-    this.preview.style.color = r.ready ? C.text3 : C.oxide;    this.wrapTexts();
+    this.preview.style.color = r.ready ? C.text3 : C.oxide;
+    this.bFix.style.display = !r.ready && r.preview.includes("codex login") ? "" : "none";
+    this.wrapTexts();
   }
 
   vars() {
@@ -933,6 +974,15 @@ class App {
 
   calm() { this.gate?.calm(); this.emblem?.calm(); }
 
+  /** SPEC-one-look 4.2: the ghost drops to half its strength over the form, so the fields stay readable. */
+  ghostMask() {
+    const panel = document.querySelector<HTMLElement>(this.size === "medium" ? "#medium .fgrid" : "#main .fpanel");
+    if (!panel) return;
+    const r = panel.getBoundingClientRect(), w = innerWidth, h = innerHeight;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><path fill-rule="evenodd" fill="#fff" d="M0 0H${w}V${h}H0Z M${r.left} ${r.top}H${r.right}V${r.bottom}H${r.left}Z"/><rect x="${r.left}" y="${r.top}" width="${r.width}" height="${r.height}" fill="#fff" fill-opacity=".5"/></svg>`;
+    document.body.style.setProperty("--ghostmask", `url("data:image/svg+xml,${encodeURIComponent(svg)}")`);
+  }
+
   // ------------------------------------------------------------------ gate ---
   buildGate(meta: Meta | null, emblem: Meta | null) {
     const host = { say: (t: string, k: string, s?: number) => this.say(t, k, [], s), focusList: () => this.listFocus().focus() };
@@ -940,7 +990,7 @@ class App {
     if (emblem) this.emblem = new Gate(emblem, host, "emblem");
     // the ghost is this size's opening; small has none, so there the buttons just open the session
     for (const [key, b] of [["go", this.bGo], ["resume", this.bResume]] as const) {
-      const on = (k: string) => this.opener()?.hover(k, true);
+      const on = (k: string) => { this.ghostMask(); this.opener()?.hover(k, true); };
       const off = (k: string) => { this.gate?.hover(k, false); this.emblem?.hover(k, false); };
       b.addEventListener("mouseenter", () => on(key + ":ptr"));
       b.addEventListener("mouseleave", () => off(key + ":ptr"));

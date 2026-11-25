@@ -12,7 +12,6 @@ pub const SUB: &str = "subscription";
 pub const NO_PERSONA: &str = "none";
 pub const TOOLS_CHOICES: [&str; 5] = ["all", "core", "core + web", "web only", "none"];
 pub const MCP_DEFAULT: &str = "your servers";
-pub const CODEX_TAG: &str = "CODEX · GREYED FIELDS ARE CLAUDE'S";
 pub const CODEX_REPLACE_HINT: &str = "replace drops Codex's own instructions; add is the safe one.";
 pub const CORE_TOOLS: [&str; 6] = ["Read", "Edit", "Write", "Glob", "Grep", "Bash"];
 pub const WEB_TOOLS: [&str; 2] = ["WebSearch", "WebFetch"];
@@ -372,16 +371,15 @@ impl Model {
         let empty = Obj::new();
         let p = profiles(cfg).get(&name).and_then(Value::as_object).unwrap_or(&empty).clone();
         let persona = if on(&p, "persona") { profile::persona_name(&p) } else { String::new() };
-        let mut tags = vec![];
+        // the shared tags (SPEC-one-look Part 2): `claude · persona plain · memory`, lowercase. Greyed
+        // fields say "Claude only" on hover, so no tag explains them (4.7).
+        let cx = is_codex(&p);
+        let mut tags = vec![s(if cx { "codex" } else { "claude" })];
         if !persona.is_empty() {
-            tags.push(format!("PERSONA · {}", persona.to_uppercase()));
+            tags.push(format!("persona {persona}"));
         }
         if on(&p, "memory") {
-            tags.push(s("MEMORY · ON"));
-        }
-        let cx = is_codex(&p);
-        if cx {
-            tags.insert(0, s(CODEX_TAG));
+            tags.push(s("memory"));
         }
         let tool = if cx { "Codex" } else { "Claude Code" };
         let mut disabled = Map::new();

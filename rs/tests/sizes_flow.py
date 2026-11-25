@@ -203,7 +203,7 @@ def form_checks(t, cfgp, w0, h0):
     check("one bottom bar, open gate last", bar == ["open memory", "open reid.json", "resume", "open gate"], bar)
     fonts = t.js("[getComputedStyle(document.querySelector('.fgrid > .lbl')).fontSize, getComputedStyle(document.querySelector('.wordmark')).fontSize]")
     check("labels 14 px, the wordmark 28 px", fonts == ["14px", "28px"], fonts)
-    texts = t.js("[...document.querySelectorAll('#medium .fcell .check')].map(c => c.textContent)")
+    texts = t.js("[...document.querySelectorAll('#medium .fcell .check')].map(c => c.querySelector('.txt').textContent)")
     check("each switch is its own row with its sentence", len(texts) == 4 and texts[0] == "add your memory file to the session", texts)
     check("nothing sticks out sideways", t.js("document.getElementById('medium').scrollWidth <= innerWidth"))
     os.makedirs(SHOTS, exist_ok=True)
@@ -213,7 +213,7 @@ def form_checks(t, cfgp, w0, h0):
     check("at 500 x 860 everything fits, no scrolling", t.js(
         "(b => b.scrollHeight <= b.clientHeight)(document.querySelector('.fbody'))"),
         t.js("(b => [b.scrollHeight, b.clientHeight])(document.querySelector('.fbody'))"))
-    wheel(t, "#medium .fgrid > .combo:nth-child(5)")  # the profile combo: the wheel steps to the next profile
+    wheel(t, "#medium .fprof > .combo")  # the profile combo: the wheel steps to the next profile
     st = t.js("[__reid.state().sel, __reid.state().title, __reid.state().name]")
     want = st0["sel"] + 1
     check("picking in the profile combo selects that profile", st == [want, st0["names"][want], st0["names"][want]], st)
@@ -224,7 +224,7 @@ def form_checks(t, cfgp, w0, h0):
     t.js("document.querySelector('#medium .fcell .check').click()")
     time.sleep(0.3)
     check("the prompt combo follows the persona mode, greyed with it",
-          t.js("document.querySelectorAll('#medium .fgrid > .combo')[2].classList.contains('disabled') === __reid.state().disabled.mode"))
+          t.js("document.querySelectorAll('#medium .fgrid > .combo')[1].classList.contains('disabled') === __reid.state().disabled.mode"))
     t.js("document.querySelector('#medium .fgrid > .check').click()")  # default
     time.sleep(0.4)
     d = json.load(open(cfgp, encoding="utf-8")).get("default")
@@ -351,7 +351,7 @@ def main():
         resize_outer(t.hwnd, w0, h0)
         time.sleep(0.4)
         check("dragged back: main", size_now(t)[0] == "main" and folder_in(t, "main"), size_now(t))
-        sw = t.js("[...document.querySelectorAll('.check')].filter(c => /^(memory|chrome|connectors|safe mode)$/.test(c.innerText)).map(c => c.offsetWidth > 0)")
+        sw = t.js("[...document.querySelectorAll('.check')].filter(c => /^(memory|chrome|connectors|safe mode)$/.test(c.querySelector('.txt').innerText)).map(c => c.offsetWidth > 0)")
         check("main has its four switches back after the form", sw == [True] * 4, sw)
 
         mini_pod(t, bin_, seen)

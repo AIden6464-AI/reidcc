@@ -42,6 +42,12 @@ body[data-docked="beside"] #root { border-right: 0; }
 }
 #lbar .lback:hover { background: var(--s2); }
 #lbar .ldrag { flex: 1 1 auto; align-self: stretch; }
+#lbar .lset {
+  flex: none; height: 24px; padding: 0 8px; border: 0; background: transparent; color: var(--text2);
+  font: 12px/16px var(--mono); transition: color 120ms var(--ease), background-color 120ms var(--ease);
+}
+#lbar .lset:hover { color: var(--text); background: var(--s2); }
+body[data-view="settings"] #lbar .lset { display: none; }
 #lctl { flex: none; display: flex; height: 100%; }
 #lctl button {
   width: 44px; height: 100%; border: 0; background: transparent; color: var(--text3);
@@ -70,11 +76,14 @@ body[data-docked="beside"] #lmark, body[data-docked="beside"] #lctl { display: n
 .btn.primary { background: var(--text); color: var(--canvas); }
 .btn.primary:hover, .btn.primary:active { background: var(--linework); }
 .btn.dim { color: var(--text3); }
+/* SPEC-one-look 1.5: destructive in oxide text; disabled is text-3 on canvas (open gate while not ready) */
+.btn.danger { color: var(--oxide); }
+.btn.off, .btn.primary.off, .btn.off:hover, .btn.primary.off:hover { background: var(--canvas); color: var(--text3); border-color: var(--line); }
 
 /* tk.Entry: s1 field, 1 px ring, mono */
 .entry {
   height: 26px; border: 1px solid var(--line); background: var(--s1); color: var(--text); caret-color: var(--text);
-  font: 12px/16px var(--mono); letter-spacing: var(--ls12); padding: 2px 2px 0; min-width: 0; -webkit-user-select: text; user-select: text;
+  font: 400 12px/16px var(--mono); letter-spacing: var(--ls12); padding: 2px 2px 0; min-width: 0; -webkit-user-select: text; user-select: text;
 }
 .entry:focus { border-color: var(--line2); }
 .entry::selection { background: var(--stone); color: var(--text); }
@@ -84,20 +93,19 @@ body[data-docked="beside"] #lmark, body[data-docked="beside"] #lctl { display: n
 .combo.short { height: 26px; }
 .combo.focus { border-color: var(--line2); }
 .combo input {
-  position: absolute; left: 0; top: 0; bottom: 0; right: 12px; width: calc(100% - 12px); border: 0; background: transparent;
-  font: 12px/16px var(--mono); letter-spacing: var(--ls12); color: var(--text); padding: 2px 0 0 9px; caret-color: var(--text);
+  position: absolute; left: 0; top: 0; bottom: 0; right: 18px; width: calc(100% - 18px); border: 0; background: transparent;
+  font: 400 12px/16px var(--mono); letter-spacing: var(--ls12); color: var(--text); padding: 2px 0 0 9px; caret-color: var(--text);
 }
 .combo.readonly input { cursor: default; -webkit-user-select: none; user-select: none; }
 .combo input::selection { background: var(--stone); color: var(--text); }
 .combo.readonly input::selection { background: var(--s1); }
-.combo .arrow { position: absolute; right: 0; top: 0; bottom: 0; width: 12px; border-left: 1px solid var(--line); }
-.combo.focus .arrow { border-left-color: var(--line2); }
-.combo:not(.disabled):hover .arrow { background: var(--s2); }
-.combo .arrow i { position: absolute; left: 2px; top: calc(50% - 2px); width: 7px; height: 4px; background: var(--text3);
-  clip-path: polygon(0 0, 7px 0, 7px 1px, 6px 1px, 6px 2px, 5px 2px, 5px 3px, 4px 3px, 4px 4px, 3px 4px, 3px 3px, 2px 3px, 2px 2px, 1px 2px, 1px 1px, 0 1px); }
-.combo:not(.disabled):hover .arrow i { background: var(--text); }
+/* one hairline chevron, not a grey box (SPEC-one-look 4.1) */
+.combo .arrow { position: absolute; right: 0; top: 0; bottom: 0; width: 18px; }
+.combo .arrow i { position: absolute; left: 5px; top: calc(50% - 5px); width: 6px; height: 6px;
+  border-right: 1px solid var(--text3); border-bottom: 1px solid var(--text3); transform: rotate(45deg); }
+.combo:not(.disabled):hover .arrow i { border-color: var(--text); }
 .combo.disabled input { color: var(--text3); }
-.combo.disabled .arrow i { background: var(--line2); }
+.combo.disabled .arrow i { border-color: var(--line2); }
 
 /* the combobox's drop-down list and the open recent menu */
 .popdown { position: fixed; z-index: 50; border: 1px solid var(--line); background: var(--s2); display: flex; }
@@ -113,19 +121,21 @@ body[data-docked="beside"] #lmark, body[data-docked="beside"] #lctl { display: n
 .lb { flex: 1; min-width: 0; position: relative; overflow: hidden; background: var(--s1); border: 1px solid var(--line); }
 .lb:focus { border-color: var(--line2); }
 .lb .rows { position: absolute; left: 0; right: 0; top: 0; }
-.sb { width: 15px; flex: none; position: relative; background: var(--s1); border: 1px solid var(--line); }
-.sb .up, .sb .down { position: absolute; left: -1px; right: -1px; height: 15px; background: var(--s2); border: 1px solid var(--line); }
-.sb .up { top: -1px; } .sb .down { bottom: -1px; }
-.sb .up i, .sb .down i { position: absolute; left: 2px; width: 9px; height: 5px; background: var(--text3); }
-.sb .up i { top: 4px; clip-path: polygon(4px 0, 5px 0, 5px 1px, 6px 1px, 6px 2px, 7px 2px, 7px 3px, 8px 3px, 8px 4px, 9px 4px, 9px 5px, 0 5px, 0 4px, 1px 4px, 1px 3px, 2px 3px, 2px 2px, 3px 2px, 3px 1px, 4px 1px); }
-.sb .down i { top: 4px; clip-path: polygon(0 0, 9px 0, 9px 1px, 8px 1px, 8px 2px, 7px 2px, 7px 3px, 6px 3px, 6px 4px, 5px 4px, 5px 5px, 4px 5px, 4px 4px, 3px 4px, 3px 3px, 2px 3px, 2px 2px, 1px 2px, 1px 1px, 0 1px); }
-.sb .thumb { position: absolute; left: -1px; right: -1px; background: var(--s2); border: 1px solid var(--line); }
-.sb .thumb:hover, .sb .up:hover, .sb .down:hover { background: var(--stone); }
+/* a thin scrollbar like the terminal's (SPEC-one-look 4.1): no arrow boxes */
+.sb { width: 9px; flex: none; position: relative; margin-left: -9px; z-index: 1; }
+.sb .thumb { position: absolute; left: 2px; right: 2px; background: var(--line); }
+.sb .thumb:hover { background: var(--line2); }
+.sb.none .thumb { display: none; }
 
 /* ttk Checkbutton / Radiobutton (clam) */
 .check { display: flex; align-items: center; height: 23px; padding: 2px 0; font: 13px/17px var(--ui); color: var(--text); white-space: pre; flex: none; }
-.check .ind { width: 11px; height: 11px; flex: none; margin: 0 4px 0 1px; }
+.check .ind { width: 11px; height: 11px; flex: none; margin: 0 5px 0 1px; font: 12px/11px var(--mono); text-align: center; color: var(--text3); }
+.check.on .ind { color: var(--text); }
+.check.radio .ind { width: 9px; height: 9px; margin: 0 6px 0 2px; border: 1px solid var(--line2); border-radius: 50%; }
+.check.radio.on .ind { background: var(--text); border-color: var(--text); }
 .check.disabled { color: var(--text3); }
+.check.disabled .ind { color: var(--line2); }
+.check.radio.disabled.on .ind { background: var(--line2); border-color: var(--line2); }
 .check .txt { padding: 0; border: 1px solid transparent; margin-right: -1px; } /* Tk: 1 px focus pad left, none right */
 .check:focus .txt { border-color: var(--line2); }
 
@@ -133,6 +143,10 @@ body[data-docked="beside"] #lmark, body[data-docked="beside"] #lctl { display: n
 #gate, #emblem { position: fixed; inset: 0; z-index: 100; opacity: 0; pointer-events: none; display: none; }
 #gate.solid, #emblem.solid { background: #030202; pointer-events: auto; }
 #gate canvas, #emblem canvas { position: absolute; left: 0; top: 0; }
+#gate:not(.solid) canvas, #emblem:not(.solid) canvas { filter: grayscale(1); } /* the ghost's ring isn't a second emerald */
+#gate:not(.solid), #emblem:not(.solid) { -webkit-mask-image: var(--ghostmask, none); mask-image: var(--ghostmask, none); }
+/* one emerald per screen (SPEC-one-look 1.3): the hero's rests in linework; the footer's ● ready is the lit one */
+#banner { filter: grayscale(1); }
 #gate .gtxt, #emblem .gtxt { position: absolute; white-space: pre; }
 
 /* small (vision v1 §1): a fold of the same window, below the size the form fits in */
@@ -175,13 +189,14 @@ body[data-size="medium"] #settings { padding: 0 20px; }
 .fsub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #medium .btn { height: 26px; }
 /* the scrollbar sits in the right edge's gutter, so the right edges line up whether it shows or not */
-.fbody { padding-bottom: 0; margin-right: -9px; scrollbar-gutter: stable; }
+.sbody.fbody { padding-bottom: 0; padding-right: 0; margin-right: -9px; scrollbar-gutter: stable; } /* not .sbody's 16 px: the fields end where the bar's buttons do */
 .fgrid { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; row-gap: 8px; align-items: center; }
 .fgrid > .lbl { grid-column: 1; }
 .fgrid > .fwide { grid-column: 2 / 4; }
 .fbtns { display: flex; gap: 6px; margin-left: 12px; }
 .fcell { display: flex; min-width: 0; }
 .fcell > .combo, .fcell > .entry { flex: 1; min-width: 0; }
+.fprof .fbtns { flex: none; }
 #medium .check { font: 14px/19px var(--ui); height: 26px; }
 #medium .combo .entry { height: auto; }
 .fbar { display: flex; justify-content: flex-end; gap: 6px; margin: 12px 0; flex: none; }

@@ -174,11 +174,7 @@ export class Scrollbar {
   root = el("div", "sb");
   thumb = el("div", "thumb");
   constructor(private onScroll: (delta: number, page?: boolean, frac?: number) => void) {
-    const up = el("div", "up"), down = el("div", "down");
-    up.append(el("i")); down.append(el("i"));
-    this.root.append(up, this.thumb, down);
-    up.addEventListener("mousedown", (e) => { e.preventDefault(); this.onScroll(-1); });
-    down.addEventListener("mousedown", (e) => { e.preventDefault(); this.onScroll(1); });
+    this.root.append(this.thumb); // thin, no arrow boxes (SPEC-one-look 4.1), like the terminal's
     this.root.addEventListener("mousedown", (e) => {
       if (e.target !== this.root) return;
       e.preventDefault();
@@ -189,8 +185,7 @@ export class Scrollbar {
       e.preventDefault();
       const y0 = e.clientY, top0 = this.thumb.offsetTop;
       const move = (ev: MouseEvent) => {
-        const trough = this.root.clientHeight - 2 * 14;
-        this.onScroll(0, false, (top0 - 14 + ev.clientY - y0) / trough);
+        this.onScroll(0, false, (top0 + ev.clientY - y0) / this.root.clientHeight);
       };
       const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
       window.addEventListener("mousemove", move);
@@ -199,11 +194,11 @@ export class Scrollbar {
   }
   /** first/last as fractions, like Tk's `set first last` */
   set(first: number, last: number) {
-    const h = this.root.clientHeight; // inside the 1 px border
-    const trough = h - 2 * 14; // between the arrow boxes (their borders overlap ours)
-    const top = 14 + Math.round(first * trough), bot = 14 + Math.round(last * trough);
-    this.thumb.style.top = top - 1 + "px";
-    this.thumb.style.height = Math.max(bot - top + 2, 10) + "px";
+    const h = this.root.clientHeight;
+    const top = Math.round(first * h), bot = Math.round(last * h);
+    this.thumb.style.top = top + "px";
+    this.thumb.style.height = Math.max(bot - top, 10) + "px";
+    this.root.classList.toggle("none", first <= 0 && last >= 1); // nothing to scroll: no thumb
   }
 }
 
@@ -425,33 +420,14 @@ export class Combo {
 }
 
 // ------------------------------------------------------ check / radio boxes ---
-// The clam indicators, pixel for pixel (11x11): a = border, b = indicator background, f = mark.
-const CHECK = [
-  "aaaaaaaaaaa", "abbbbbbbbba", "abffbbbffba", "abfffbfffba", "abbfffffbba", "abbbfffbbba",
-  "abbfffffbba", "abfffbfffba", "abffbbbffba", "abbbbbbbbba", "aaaaaaaaaaa",
-];
-const RADIO = [
-  "....aaa....", "..aabbbaa..", ".abbbbbbba.", ".abbfffbbba", "abbfffffbba", "abbfffffbba",
-  "abbfffffbba", ".abbfffbba.", ".abbbbbbba.", "..abbbbaa..", "...aaaa....",
-];
-
-function indicator(pat: string[], a: string, b: string, f: string): string {
-  let rects = "";
-  pat.forEach((row, y) => [...row].forEach((ch, x) => {
-    const c = ch === "a" ? a : ch === "b" ? b : ch === "f" ? f : "";
-    if (c) rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${c}"/>`;
-  }));
-  return `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" shape-rendering="crispEdges">${rects}</svg>`)}")`;
-}
-
-/** ttk.Checkbutton or ttk.Radiobutton, styled as reid_gui.py's _style() maps them. */
+// SPEC-one-look 1.4: on/off is `✓` / `·` everywhere (never a crossed box); a radio is a filled bone dot.
+/** A checkbox or radio button. */
 export class Check {
   root = el("div", "check");
   ind = el("div", "ind");
   txt = el("span", "txt");
   on = false;
   disabled = false;
-  hover = false;
   onClick: () => void = () => {};
 
   constructor(text: string, private radio = false) {
@@ -462,8 +438,6 @@ export class Check {
     this.root.addEventListener("keydown", (e) => {
       if (e.key === " " && !this.disabled) { e.preventDefault(); this.onClick(); }
     });
-    this.root.addEventListener("mouseenter", () => { this.hover = true; this.paint(); });
-    this.root.addEventListener("mouseleave", () => { this.hover = false; this.paint(); });
     this.paint();
   }
 
@@ -479,12 +453,8 @@ export class Check {
   }
 
   paint() {
-    const d = this.disabled, s = this.on;
-    // indicatorbackground: disabled+selected line2, disabled canvas, selected text, active s2, else s1
-    const b = d && s ? C.line2 : d ? C.canvas : s ? C.text : this.hover ? C.s2 : C.s1;
-    // indicatorforeground: disabled+selected s1, selected canvas, else s1
-    const f = d && s ? C.s1 : s ? C.canvas : C.s1;
-    const a = d ? C.line : C.line2;
-    this.ind.style.background = indicator(this.radio ? RADIO : CHECK, a, b, f);
+    this.root.classList.toggle("on", this.on);
+    this.root.classList.toggle("radio", this.radio);
+    if (!this.radio) this.ind.textContent = this.on ? "✓" : "·";
   }
 }
