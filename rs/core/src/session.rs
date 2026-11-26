@@ -113,6 +113,17 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
             note = "That Codex session isn't there any more, so this continues the last one in this folder.".into();
         }
     }
+    // one process per session (SPEC-unified-interface M1): a second window on it is refused
+    let lock = |id: &str| crate::locks::session(ctx, &crate::locks::record(id, engine, name, cwd, "interactive"));
+    // and a share of the folder: other windows may join, a headless writing turn may not
+    let taken = sid.as_deref().map(lock).transpose().and_then(|l| Ok((l, crate::locks::folder_shared(ctx, cwd)?)));
+    let (mut held, room) = match taken {
+        Ok(l) => l,
+        Err(e) => {
+            launch.remove_temps();
+            return Err(e);
+        }
+    };
     let flag = back_flag_path();
     let _ = std::fs::remove_file(&flag);
     if claude {
@@ -162,8 +173,9 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
             if !claude && sid.is_none() && tick % 5 == 0 {
                 // Codex picks its own id: its thread file appears with the first message
                 sid = engines::codex::thread_of(&launch.env, child.id(), since, &mut skip);
-                if sid.is_some() {
-                    let _ = remember_session(ctx, name, cwd, sid.as_deref(), engine); // kept even if the window is closed
+                if let Some(id) = sid.as_deref() {
+                    held = lock(id).ok(); // a thread Codex just made: nobody else has it
+                    let _ = remember_session(ctx, name, cwd, Some(id), engine); // kept even if the window is closed
                 }
             }
             std::thread::sleep(Duration::from_millis(200));
@@ -180,6 +192,7 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
     crate::win::console_restore(&saved);
     launch.remove_temps();
     let _ = std::fs::remove_file(&flag);
+    drop((held, room));
     let (rc, back) = result?;
     remember_session(ctx, name, cwd, sid.as_deref(), engine).map_err(engines::io)?;
     Ok(Ended { rc, back, sid, note })
@@ -240,8 +253,11 @@ pub fn cmd_statusline(ctx: &Ctx) -> i32 {
     let sep = format!(" {TEXT3}·{R} ");
     let left = parts.join(&sep);
     let cw = get(&data, "context_window").and_then(|v| v.as_object().cloned()).unwrap_or_default();
-    let ctxp = pct(cw.get("used_percentage")).unwrap_or(0);
-    let mut meters = vec![format!("{}context {ctxp}%{R}", level(ctxp))];
+    let ctxp = pct(cw.get("used_percentage")); // None until Claude knows: shown as unknown, never 0%
+    let mut meters = vec![match ctxp {
+        Some(p) => format!("{}context {p}%{R}", level(p)),
+        None => format!("{TEXT3}context unknown{R}"),
+    }];
     let rl = get(&data, "rate_limits").and_then(|v| v.as_object().cloned()).unwrap_or_default();
     let lim: Vec<i64> = ["five_hour", "seven_day"].iter()
         .filter_map(|w| pct(rl.get(*w).and_then(Value::as_object).and_then(|o| o.get("used_percentage")))).collect();

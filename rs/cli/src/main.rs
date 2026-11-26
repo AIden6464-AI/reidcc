@@ -15,6 +15,8 @@ const HELP: &str = r#"reid -- Reidcc, in the terminal.
     reid -c / reid "do X"     anything that isn't a profile goes to the default profile's engine
     reid --resume [profile]   continue the last session (that profile, or the one it had)
     reid -l                   list profiles
+    reid --stream <profile> [--read-only] [--resume ID] [--switch-from P] PROMPT
+                              one headless turn, its events as JSON lines
     reid --dry [profile]      print what would run, don't run it
     reid --dry -v [profile]   ... and the prompt and settings files it adds
     reid --edit / --mem       open reid.json / the memory file
@@ -156,6 +158,7 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
             }
             return Ok(0);
         }
+        "--stream" => return stream(ctx, &cfg, &args[1..]),
         "--edit" => {
             open_file(&ctx.config);
             return Ok(0);
@@ -259,6 +262,64 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
         return Ok(tui::Tui::new(ctx, &py::getcwd(), "Back from the session. r resumes it.").run());
     }
     Ok(end.rc)
+}
+
+const STREAM_USAGE: &str = "reid --stream <profile> [--read-only] [--resume ID] [--switch-from PROFILE [--tests TEXT] [--note TEXT]] [PROMPT]";
+
+/// reid --stream: one headless turn, its events as JSON lines (SPEC-unified-interface, Milestone 1).
+/// --switch-from writes .reid\handoff.md from that profile's work and hands it to this turn.
+fn stream(ctx: &Ctx, cfg: &reidcc::Obj, args: &[String]) -> R<i32> {
+    use reidcc::stream::{Event, Mode, Turn};
+    let Some(name) = args.first().filter(|n| profiles(cfg).contains_key(n.as_str())) else {
+        return reidcc::err(format!("Which profile? {STREAM_USAGE}"));
+    };
+    let (mut mode, mut opt) = (Mode::Write, std::collections::HashMap::new());
+    let mut i = 1;
+    while let Some(a) = args.get(i) {
+        match a.as_str() {
+            "--read-only" => mode = Mode::ReadOnly,
+            "--resume" | "--switch-from" | "--tests" | "--note" => {
+                let Some(v) = args.get(i + 1) else { return reidcc::err(format!("{a} needs a value. {STREAM_USAGE}")) };
+                opt.insert(a.as_str(), v.as_str());
+                i += 1;
+            }
+            "--" => {
+                i += 1;
+                break;
+            }
+            _ => break,
+        }
+        i += 1;
+    }
+    let cwd = py::getcwd();
+    let mut prompt = reidcc::stream::prompt_from(&args[i.min(args.len())..]);
+    if prompt.trim().is_empty() {
+        return reidcc::err(format!("Nothing to ask. {STREAM_USAGE}"));
+    }
+    match opt.get("--switch-from") {
+        Some(src) => {
+            let Some(sp) = profiles(cfg).get(*src).and_then(|v| v.as_object()) else {
+                return reidcc::err(format!("No profile named {src}."));
+            };
+            let s = reidcc::handoff::Switch { folder: &cwd, profile: src, engine: engines::engine_of(sp, src)?,
+                                              tests: opt.get("--tests").copied(), note: opt.get("--note").copied() };
+            let (_, md) = reidcc::handoff::write(&s)?;
+            prompt = reidcc::handoff::prompt(&md, &prompt);
+        }
+        None if opt.contains_key("--tests") || opt.contains_key("--note") => {
+            return reidcc::err(format!("--tests and --note go in a handoff: add --switch-from. {STREAM_USAGE}"));
+        }
+        None => {}
+    }
+    let mut emit = |e: &Event| out!("{}", e.to_json());
+    let turn = Turn { profile: name, folder: &cwd, prompt: &prompt, mode, resume: opt.get("--resume").copied() };
+    match reidcc::stream::run(ctx, cfg, &turn, &mut emit) {
+        Ok(rc) => Ok(rc),
+        Err(e) => {
+            emit(&Event::Error(e));
+            Ok(1)
+        }
+    }
 }
 
 /// One typo apart: a letter changed, added, dropped, or two neighbours swapped. Case alone counts too.

@@ -151,3 +151,39 @@ Claude Code (write · stream) → **Switch ⇄** (`.reid/handoff.md`) → Codex 
   Claude's `-c`). The headless runner is `reid <profile> exec --json …` / `exec resume <id> …`.
   Proof: `rs/tests/codex_resume_flow.py` 9/9 (real Codex, two windows in one folder; it deletes its
   threads afterwards).
+- **Milestone 1 built on dev (2026-11-25), core and CLI only; no UI yet.**
+  - `reid --stream <profile> [--read-only] [--resume ID] [--switch-from P [--tests T] [--note N]] PROMPT`
+    runs one headless turn and prints events as JSON lines (`rs/core/src/stream.rs`). The events are
+    `started`, `text_delta`, `tool_call`, `usage {context_pct, cost_usd}`, `done` and `error`.
+    `error` is one of three kinds:
+    - `engine`: the engine reported the error.
+    - `refused`: a lock or a bad profile stopped the turn before it started.
+    - `unknown`: a nonzero exit with nothing reported; it carries the exit code and the end of stderr.
+  - Contract 2 also names a `diff` event; it isn't built, because Reid's Milestone 1 handoff left it out.
+  - Context: Claude's comes from its last request's tokens against `modelUsage.contextWindow`.
+    Codex exec reports neither context nor cost, so both stay `null`. The statusline shows a missing
+    figure as `context unknown`, never 0%.
+  - **Read-only, checked against the installed binaries:**
+    - Claude: `--permission-mode default --disallowedTools Write Edit NotebookEdit Bash PowerShell
+      EnterWorktree`. Those tools leave the session, including for subagents. Plan mode alone only
+      made the model hold back by choice.
+    - Codex: `-c sandbox_mode="read-only" -c approval_policy="never"`. With `-s read-only` alone,
+      Codex's auto-reviewer approved a patch past the sandbox, because Reid's `approval_policy` is
+      `on-request`. `exec resume` has no `-s`, so `-c` covers new and resumed threads alike.
+    - A profile whose own args set these guards, or turn them off, is refused for read-only.
+  - **Switch** writes `.reid/handoff.md` (`rs/core/src/handoff.rs`) with no model involved. It
+    records the folder, `profile · engine`, `git status` and `git diff --stat HEAD` (both leaving
+    `.reid/` out), plus the tests and note when given. The text goes before the next turn's prompt.
+  - **Locks** (`rs/core/src/locks.rs`) are files held open. The OS releases them when the process
+    dies, so no lock is ever stale.
+    - `sessions/<id>.lock` and `sessions/<id>.json` record pid, hwnd when a window sets
+      `REIDCC_HWND`, mode, folder and engine. They're taken by stream turns and by interactive
+      sessions (`session::run`) once the id is known.
+    - `locks/<folder hash>.lock` is the folder lock, shared or exclusive (Reid's choice, 2026-11-25:
+      "Windows share, headless excludes"). Interactive windows hold it shared, so any number of them
+      can be open in one folder (the Step 0 test needs two). A headless writing turn needs it alone:
+      it's refused while a window or another writing turn is in the folder, and a new window is
+      refused while one runs. Read-only turns take nothing.
+    - The engine runs in a kill-on-close job, so killing `reid.exe` also takes the engine down.
+  - Proof: `rs/tests/milestone1_flow.py` 25/25 (real Claude haiku and Codex; it deletes its sessions
+    afterwards).

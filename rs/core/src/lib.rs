@@ -3,12 +3,15 @@
 //! output is mirrored in `py` and `pyjson`.
 
 pub mod engines;
+pub mod handoff;
+pub mod locks;
 pub mod memory;
 pub mod profile;
 pub mod proxy;
 pub mod py;
 pub mod pyjson;
 pub mod session;
+pub mod stream;
 pub mod term;
 pub mod win;
 
