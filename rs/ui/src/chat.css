@@ -108,3 +108,15 @@ button:focus { outline: none; }
 .toggle .m { color: var(--text); }
 .toggle:hover { color: var(--text); }
 .spacer { flex: 1; }
+/* the tune panel: this chat's model, effort, MCP servers and plugins for the picked profile */
+#tunebox { font: 12px/18px var(--mono); color: var(--text2); margin: 0 0 10px; padding: 10px 12px; background: var(--s1); border: 1px solid var(--line); }
+#tunebox .trow { display: flex; align-items: center; gap: 8px; }
+#tunebox .k { color: var(--text3); }
+#tunebox .hint { margin-left: auto; color: var(--text3); }
+#tunebox select { height: 26px; padding: 0 6px; background: var(--s2); border: 1px solid var(--line); outline: none; color: var(--text); font: 12px var(--mono); }
+#tunebox select:focus-visible { border-color: var(--line2); }
+#tunebox .lists { align-items: flex-start; gap: 24px; margin-top: 10px; }
+#tunebox .lists > div { flex: 1; min-width: 0; }
+#tunebox .checks { max-height: 120px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line2) transparent; margin-top: 4px; }
+#tunebox .checks .toggle { display: block; width: 100%; height: 18px; padding: 0; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tunebox .none { color: var(--text3); }

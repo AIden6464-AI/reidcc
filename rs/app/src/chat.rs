@@ -137,12 +137,34 @@ pub fn chat_info(st: crate::S, chats: State<Chats>, id: u32) -> Result<Info, Str
     Ok(Info { shown: reidcc::show_path(&c.folder), folder: c.folder.clone(), profile: c.profile.clone(), profiles })
 }
 
+/// What the tune panel offers for `profile` (SPEC-unified-interface Milestone 2C): the profile's own
+/// model / effort / mcp_off / plugins, the models and efforts to pick from, its MCP servers and plugins.
+/// Async: Codex's server list runs `codex mcp list`.
+#[tauri::command]
+pub async fn chat_tuning(st: crate::S<'_>, chats: State<'_, Chats>, id: u32, profile: String) -> Result<Value, String> {
+    let folder = chats.get(id)?.folder.clone();
+    let cfg = st.m.lock().unwrap().cfg().unwrap_or_default();
+    Ok(tuning_json(&cfg, &profile, &folder))
+}
+
+/// chat_tuning's answer, also the launcher's tune popover (main.rs profile_tuning).
+pub fn tuning_json(cfg: &reidcc::Obj, profile: &str, folder: &str) -> Value {
+    use reidcc::engines::tuning;
+    let prof = profiles(cfg).get(profile).and_then(Value::as_object).cloned().unwrap_or_default();
+    let mut out = tuning::choices(&prof, folder).to_json();
+    let own: reidcc::Obj = ["model", "effort", "mcp_off", "plugins"].iter()
+        .filter_map(|k| prof.get(*k).map(|v| (k.to_string(), v.clone()))).collect();
+    out["own"] = Value::Object(own);
+    out["models"] = Value::from(tuning::models(cfg, engine(&prof).as_str()));
+    out
+}
+
 /// One turn: `reid --stream <profile> …` in the chat's folder, its events to `chan`. Refusals (locks)
 /// come back as reid's own `error` events.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub fn chat_send(st: crate::S, chats: State<Chats>, id: u32, profile: String, prompt: String, read_only: bool,
-                 resume: Option<String>, switch_from: Option<String>, chan: Channel<Out>) -> Result<(), String> {
+                 resume: Option<String>, switch_from: Option<String>, with: Option<Value>, chan: Channel<Out>) -> Result<(), String> {
     let c = chats.get(id)?;
     let mut turn = c.turn.lock().unwrap();
     if turn.is_some() {
@@ -159,6 +181,9 @@ pub fn chat_send(st: crate::S, chats: State<Chats>, id: u32, profile: String, pr
     }
     if let Some(f) = switch_from {
         args.extend(["--switch-from".into(), f]);
+    }
+    if let Some(with) = with.filter(|w| w.as_object().is_some_and(|o| !o.is_empty())) {
+        args.extend(["--with".into(), with.to_string()]); // this chat's model / effort / MCP / plugins
     }
     args.push("-".into()); // the prompt on stdin: no length limit, nothing in the process list
     *c.before.lock().unwrap() = if read_only { None } else { changes::snapshot(&c.folder) };

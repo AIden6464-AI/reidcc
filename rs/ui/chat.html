@@ -27,10 +27,18 @@
       </div>
       <footer id="composer">
         <div id="note" hidden></div>
+        <div id="tunebox" hidden>
+          <div class="trow"><span class="k">model</span><select id="tmodel"></select>
+            <span class="k">effort</span><select id="teffort"></select>
+            <span class="hint">this chat only · reid.json stays as it is</span></div>
+          <div class="trow lists"><div><span class="k">mcp</span><div id="tmcp" class="checks"></div></div>
+            <div><span class="k">plugins</span><div id="tplugins" class="checks"></div></div></div>
+        </div>
         <textarea id="field" rows="3" spellcheck="false"></textarea>
         <div id="controls">
           <select id="pick"></select>
           <button id="ro" class="toggle"><span class="m">·</span> read-only</button>
+          <button id="tune" class="toggle">tune <span class="m"></span></button>
           <span class="spacer"></span>
           <button id="term" class="btn">open terminal</button>
           <button id="go" class="btn primary">send</button>

@@ -9,6 +9,9 @@ type Ev = { type: string; [k: string]: unknown };
 type Out = { kind: "event"; event: Ev } | { kind: "exit"; rc: number; stopped: boolean; err: string };
 type FileStat = { path: string; added: number | null; removed: number | null };
 type Changed = { from: string; to: string; files: FileStat[] };
+/** a profile's own tuning (from reid.json) or this chat's changes over it: `reid --stream --with` */
+type Tune = { model?: string; effort?: string; mcp_off?: string[]; plugins?: Record<string, boolean> };
+type Tuning = { own: Tune; models: string[]; efforts: string[]; mcp: string[]; plugins: { id: string; on: boolean }[] };
 
 const id = Number(new URLSearchParams(location.search).get("id"));
 const win = getCurrentWindow();
@@ -270,6 +273,74 @@ function sideContext(): void {
                                kv("cost", cost > 0 ? `$${cost.toFixed(3)}` : "—"), kv("turns", String(turns)));
 }
 
+// ------------------------------------------------------------ tuning (2C) ---
+/** what this chat changed per profile; the panel's choices per profile */
+const tunes: Record<string, Tune> = {}, tunings: Record<string, Tuning> = {};
+const tunebox = $("tunebox"), tmodel = $<HTMLSelectElement>("tmodel"), teffort = $<HTMLSelectElement>("teffort");
+const tuneOf = (p: string): Tune => (tunes[p] ??= {});
+function tuneSummary(p: string): string {
+  const t = tunes[p] ?? {};
+  const parts = [t.model, t.effort].filter((v): v is string => !!v);
+  if (t.mcp_off || t.plugins) parts.push("tools changed");
+  return parts.join(" · ");
+}
+function tuneButton(): void {
+  const s = tuneSummary(pickedProfile());
+  $("tune").querySelector(".m")!.textContent = s ? `· ${s}` : "";
+}
+function fill(sel: HTMLSelectElement, values: string[], own: string | undefined, now: string | undefined): void {
+  sel.replaceChildren();
+  const first = el("option", "", own ? `${own} (the profile's)` : "default");
+  first.value = "";
+  sel.append(first);
+  for (const v of values.filter((v) => v !== own)) {
+    const o = el("option", "", v);
+    o.value = v;
+    sel.append(o);
+  }
+  sel.value = now && now !== own ? now : "";
+}
+function checks(box: HTMLElement, items: { name: string; on: boolean }[], flip: (name: string, on: boolean) => void): void {
+  // SPEC-one-look 1.4: on/off is ✓ / · (the read-only toggle's marks), never a browser checkbox
+  box.replaceChildren(...items.map(({ name, on }) => {
+    const b = el("button", "toggle"), mark = el("span", "m");
+    const paint = () => { mark.textContent = on ? "✓" : "·"; b.setAttribute("aria-checked", String(on)); };
+    b.setAttribute("role", "checkbox");
+    b.title = name;
+    b.append(mark, ` ${name}`);
+    b.onclick = () => { on = !on; paint(); flip(name, on); tuneButton(); };
+    paint();
+    return b;
+  }));
+  if (!items.length) box.replaceChildren(el("span", "none", "none found"));
+}
+async function drawTune(): Promise<void> {
+  const p = pickedProfile();
+  const tn = (tunings[p] ??= await invoke<Tuning>("chat_tuning", { id, profile: p }));
+  if (p !== pickedProfile()) return; // picked another meanwhile
+  const t = tuneOf(p);
+  fill(tmodel, tn.models, tn.own.model, t.model);
+  fill(teffort, tn.efforts, tn.own.effort, t.effort);
+  const off = () => t.mcp_off ?? tn.own.mcp_off ?? [];
+  checks($("tmcp"), tn.mcp.map((name) => ({ name, on: !off().includes(name) })), (name, on) => {
+    t.mcp_off = on ? off().filter((n) => n !== name) : [...off().filter((n) => n !== name), name];
+  });
+  checks($("tplugins"), tn.plugins.map(({ id: name, on }) => ({ name, on: t.plugins?.[name] ?? on })), (name, on) => {
+    t.plugins = { ...(tn.own.plugins ?? {}), ...(t.plugins ?? {}), [name]: on };
+  });
+}
+function pickValue(sel: HTMLSelectElement, key: "model" | "effort"): void {
+  const t = tuneOf(pickedProfile());
+  if (sel.value) t[key] = sel.value; else delete t[key];
+  tuneButton();
+}
+tmodel.onchange = () => pickValue(tmodel, "model");
+teffort.onchange = () => pickValue(teffort, "effort");
+$("tune").onclick = () => {
+  tunebox.hidden = !tunebox.hidden;
+  if (!tunebox.hidden) void drawTune();
+};
+
 // ----------------------------------------------------------- the composer ---
 const pickedProfile = () => pick.value || cur;
 const switching = () => pickedProfile() !== cur && turns > 0;
@@ -290,6 +361,7 @@ function primary(): void {
   }
   pick.disabled = running;
   field.placeholder = `Ask ${pickedProfile()}…`;
+  tuneButton();
 }
 
 async function send(): Promise<void> {
@@ -317,7 +389,8 @@ async function send(): Promise<void> {
     void finish(m, turnRo);
   };
   try {
-    await invoke("chat_send", { id, profile, prompt, readOnly: turnRo, resume: sids[profile] ?? null, switchFrom: from, chan });
+    const changes = tunes[profile] && Object.keys(tunes[profile]).length ? tunes[profile] : null;
+    await invoke("chat_send", { id, profile, prompt, readOnly: turnRo, resume: sids[profile] ?? null, switchFrom: from, with: changes, chan });
   } catch (e) {
     void finish({ kind: "exit", rc: 1, stopped: false, err: String(e) }, turnRo);
   }
@@ -345,7 +418,10 @@ async function finish(m: Extract<Out, { kind: "exit" }>, turnRo: boolean): Promi
 
 go.onclick = () => (running ? void invoke("chat_stop", { id }) : void send());
 ro.onclick = () => setReadOnly(!readOnly);
-pick.onchange = () => primary();
+pick.onchange = () => {
+  primary();
+  if (!tunebox.hidden) void drawTune();
+};
 field.oninput = () => primary();
 field.onkeydown = (e) => {
   if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
@@ -382,6 +458,7 @@ $("term").onclick = () => invoke("chat_terminal", { id, profile: pickedProfile()
   type: (s: string) => { field.value = s; primary(); },
   pick: (p: string) => { pick.value = p; primary(); },
   readOnly: (on: boolean) => setReadOnly(on),
+  tunes: () => JSON.parse(JSON.stringify(tunes)),
   click: (sel: string) => (document.querySelector(sel) as HTMLElement | null)?.click(),
   md,
 };

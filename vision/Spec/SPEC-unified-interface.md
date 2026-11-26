@@ -313,4 +313,21 @@ Given after Milestone 1 was built, in answer to the open questions it left. His 
     button. A refused ask stays in the field and a refused switch leaves no divider.
   - **Left out:** multi-line prompts (a pasted line break sends); the sidebar (the bar carries context).
   - **Tests:** `rs/tests/tui_chat_flow.py` runs chat_flow's round trip in a pseudo-terminal, 33/33.
+- **Milestone 2C model, effort, MCP and plugins, built (2026-11-26).** Reid: "I do need to be able to change
+  the model and efforts and there mcp and plugins". A profile can now carry three more keys, and a chat can
+  change them for its own turns.
+  - **Profile keys:** `effort` (Claude low…max, Codex minimal…xhigh), `mcp_off` (server names to leave out),
+    `plugins` (`{id: true|false}` over what's installed). `rs/core/src/engines/tuning.rs` turns them into
+    flags: Claude `--effort`, `--disallowedTools mcp__<server>`, and `enabledPlugins` in its `--settings`;
+    Codex `-c model_reasoning_effort=…`, `-c mcp_servers.<name>.enabled=false`, and a rebuilt
+    `-c plugins={…}` table. Sessions, gates and chat turns all get them.
+  - **Launcher:** `tune` beside the model opens a popover with effort, one check per MCP server and one per
+    plugin (read from Claude's or Codex's own config). Each click saves to the profile. It lives outside the
+    form's apply, so the Python GUI parity is untouched.
+  - **Chat, this chat only:** GUI `tune` in the composer (model, effort, servers, plugins for the picked
+    profile); TUI ctrl+e (↑↓ choose, ←→ change, space switches). The controls show what changed
+    (`low · tools changed`). Each turn passes the changes as `reid --stream … --with <json>` (keys: model,
+    effort, mcp_off, plugins). reid.json stays as it is.
+  - **Tests:** `tuning.rs` unit tests for both engines' flags; chat_flow and tui_chat_flow each run a tuned
+    turn and check `--with` and `claude --effort low`, and that reid.json kept the profile.
     `tui_parity.py` still shows 0 differ.

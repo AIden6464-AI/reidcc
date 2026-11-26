@@ -4,6 +4,7 @@
   2  a Claude write turn streams, edits the repo, and shows what it changed (from git); a second
      turn is stopped mid-stream and its engine goes down with it
   3  switch -> codex, read-only: the .reid/handoff.md divider, context unknown, nothing written
+     2b tune (Milestone 2C): this chat's effort reaches claude (--effort low); reid.json stays as it is
   4  open terminal resumes the Claude session (--resume <id>) in a session window; the composer then
      refuses: Codex writing ("A Reidcc window is open in this folder.", send read-only runs it read-only)
      and Claude ("in terminal", cleared once the terminal lets go)
@@ -165,6 +166,27 @@ def main():
         time.sleep(1.0)
         left = [p.name() for p in ours(bin_)]
         check("stop ends the turn (meta: stopped) and takes its engine down", r["meta"] == "stopped" and not left, (r["meta"], left))
+
+        # ---- 2b: tune: this chat's effort reaches the engine, reid.json stays as it is ----------------
+        c.js("document.querySelector('#tune').click()")
+        end = time.time() + 20
+        while time.time() < end and not c.js("document.querySelectorAll('#teffort option').length"):
+            time.sleep(0.2)
+        c.js("(() => { const s = document.querySelector('#teffort'); s.value = 'low'; s.dispatchEvent(new Event('change')); })()")
+        label = c.js("document.querySelector('#tune').textContent")
+        check("the tune button says what this chat changed", "low" in label, label)
+        c.js("__chat.type('Reply with just OK.')")
+        c.js("__chat.click('#go')")
+        end, argv = time.time() + 60, []
+        while time.time() < end and not any("--effort low" in x for x in argv):
+            argv = [" ".join(p.cmdline()) for p in ours(bin_) if "--with" in p.cmdline() or "--effort" in p.cmdline()]
+            time.sleep(0.1)
+        c.wait_idle()
+        check("the tuned turn runs reid --stream --with and claude --effort low",
+              any('"effort":"low"' in x for x in argv) and any("--effort low" in x for x in argv), argv)
+        saved = json.load(open(cfgp, encoding="utf-8"))["profiles"][CL]
+        check("reid.json keeps the profile as it was", saved == {"model": "haiku"}, saved)
+        c.js("document.querySelector('#tune').click()")
 
         # ---- 3: switch -> codex, read-only -----------------------------------------------------------
         files = lambda: sorted(x for x in os.listdir(work) if x != ".reid")

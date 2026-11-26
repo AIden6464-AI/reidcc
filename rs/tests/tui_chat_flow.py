@@ -4,6 +4,7 @@ chat_flow.py's round trip, in a pseudo-terminal:
   1  c (beside r resume) opens the chat view on the selected profile and the TUI's folder
   2  a Claude write turn streams, edits the repo and shows what it changed (ctrl+d: the diff); a second
      turn is stopped mid-stream and its engine goes down with it
+     2b ctrl+e tune: this chat's effort reaches claude (--effort low); reid.json stays as it is
   3  tab -> codex, ctrl+r read-only: the .reid/handoff.md divider, context unknown, nothing written
   4  ctrl+t resumes the Claude session (--resume <id>) in a console of its own; the composer then
      refuses: Codex writing ("A Reidcc window is open in this folder.", ctrl+r sends it read-only) and
@@ -36,6 +37,7 @@ CLAUDE_PROJECTS = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.ex
 CL, CX = "m2cl", "m2cx"
 COLS, ROWS = 120, 40
 TAB, CTRL_R, CTRL_T, CTRL_D, ESC, ENTER = "\t", "\x12", "\x14", "\x04", "\x1b", "\r"
+CTRL_E, DOWN, RIGHT = "\x05", "\x1b[B", "\x1b[C"
 results = []
 
 
@@ -108,6 +110,18 @@ def cmdlines(bin_, needle):
         try:
             if needle in p.cmdline():
                 out.append(p.cmdline())
+        except psutil.Error:
+            pass
+    return out
+
+
+def engine_argv(bin_, needle):
+    """The engine children (claude / codex) of reid --stream turns whose command line has `needle`."""
+    out = []
+    for p in ours(bin_):
+        try:
+            if "--stream" in p.cmdline():
+                out += [" ".join(k.cmdline()) for k in p.children(recursive=True) if needle in " ".join(k.cmdline())]
         except psutil.Error:
             pass
     return out
@@ -189,6 +203,26 @@ def main():
         left = [p.cmdline() for p in ours(bin_) if p.pid != term.proc.pid]
         check("esc stops the turn (meta: stopped) and takes its engine down",
               any(l.strip() == "stopped" for l in v.lines()) and not left, left)
+
+        # ---- 2b: ctrl+e tune: this chat's effort reaches the engine, reid.json stays as it is ---------
+        v.key(CTRL_E)
+        check("ctrl+e opens the tune panel on the picked profile", any(l.strip().startswith("tune %s" % CL) for l in v.lines()), v.lines()[:4])
+        v.key(DOWN)
+        v.key(RIGHT)
+        v.key(ESC)
+        check("-> on effort picks low; the controls line says so", "· low" in v.controls(), v.controls())
+        v.type("Reply with just OK.")
+        v.key(ENTER, 0)
+        end, withs, tuned = time.time() + 60, [], []
+        while time.time() < end and not tuned:
+            withs = withs or cmdlines(bin_, "--with")
+            tuned = engine_argv(bin_, "--effort low")
+            time.sleep(0.1)
+        v.idle()
+        check("the tuned turn runs reid --stream --with and claude --effort low",
+              any('"effort":"low"' in " ".join(c) for c in withs) and bool(tuned), (withs, tuned))
+        saved = json.load(open(cfgp, encoding="utf-8"))["profiles"][CL]
+        check("reid.json keeps the profile as it was", saved == {"model": "haiku"}, saved)
 
         # ---- 3: switch -> codex, read-only -----------------------------------------------------------
         files = lambda: sorted(x for x in os.listdir(work) if x != ".reid")

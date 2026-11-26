@@ -4,6 +4,7 @@
 
 pub mod claude;
 pub mod codex;
+pub mod tuning;
 
 use crate::{err, profiles, py, Ctx, Env, Obj, R, BASE_MODELS};
 use serde_json::Value;

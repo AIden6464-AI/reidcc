@@ -44,6 +44,11 @@ interface Fields {
   engines: string[]; models: string[]; auths: string[]; personas: string[]; proxies: string[];
   tools_choices: string[]; mcps: string[];
 }
+/** profile_tuning's answer: what the tune popover offers and what the profile has now */
+interface Tuning {
+  efforts: string[]; mcp: string[]; plugins: { id: string; on: boolean }[];
+  own: { effort?: string; mcp_off?: string[]; plugins?: Record<string, boolean> };
+}
 interface Refresh {
   title: string; tags: string; mode_texts: [string, string]; mode_disabled: boolean;
   disabled: Record<string, boolean>; codex: boolean; ready: boolean; status: string; preview: string;
@@ -392,7 +397,8 @@ class App {
     row("name", this.eName, [ef]);
     ef.style.gridColumn = "3 / span 2";
     ef.style.justifySelf = "start";
-    row("model", combo("model", false).root);
+    const tune = button("tune", () => void this.openTune(tune));
+    row("model", combo("model", false).root, [tune]);
     row("sign-in", combo("auth", true).root);
     this.bBrowse = button("browse", () => this.browsePersona());
     this.bOpenPersona = button("open persona", () => this.openPersona());
@@ -505,7 +511,8 @@ class App {
     this.defCheck.onClick = () => { if (!this.defCheck.on) this.action("default"); }; // default moves, it can't be unset
     row("default", this.defCheck.root);
     row("engine", cell("engine"));
-    row("model", cell("model"));
+    const ftune = button("tune", () => void this.openTune(ftune));
+    row("model", cell("model"), [ftune]);
     row("sign-in", cell("auth"));
     row("persona", cell("persona"), [button("browse", () => this.browsePersona()), button("edit", () => this.openPersona())]);
     this.promptCombo = new Combo(true, true);
@@ -914,6 +921,63 @@ class App {
   select(name: string) { return this.call("select", { name, typed: this.eName.value }); }
   rename() { return this.call("rename", { typed: this.eName.value }); }
   action(name: string) { return this.call("action", { name }); }
+
+  tunePop: { close: () => void } | null = null;
+  /** The tune popover (SPEC-unified-interface Milestone 2C): the selected profile's effort, MCP servers and
+   *  plugins. Each click saves, like the form's fields; a chat can still change them for its own turns. */
+  async openTune(anchor: HTMLElement) {
+    if (this.tunePop) { this.tunePop.close(); return; }
+    closePopups();
+    const t = await invoke<Tuning>("profile_tuning");
+    const own = { effort: t.own.effort ?? "", off: [...(t.own.mcp_off ?? [])], plugins: { ...(t.own.plugins ?? {}) } };
+    const save = (changes: Record<string, unknown>) => void this.call("profile_tune", { changes });
+    const pop = el("div", "menu tunepop");
+    const group = (title: string, checks: Check[], empty: string) => {
+      const box = el("div", "tunerow");
+      box.append(...checks.map((c) => c.root));
+      if (!checks.length) box.append(label(empty, "text3", "label"));
+      pop.append(label(title, "text3", "label"), box);
+    };
+    const efforts = ["", ...t.efforts].map((v) => {
+      const c = new Check(v || "default", true);
+      c.set(v === own.effort);
+      c.onClick = () => { efforts.forEach((r) => r.set(r === c)); save({ effort: v }); };
+      return c;
+    });
+    group("effort", efforts, "");
+    group("mcp servers", t.mcp.map((name) => {
+      const c = new Check(name);
+      c.set(!own.off.includes(name));
+      c.onClick = () => {
+        c.set(!c.on);
+        own.off = c.on ? own.off.filter((n) => n !== name) : [...own.off, name];
+        save({ mcp_off: own.off });
+      };
+      return c;
+    }), "none found");
+    group("plugins", t.plugins.map(({ id, on }) => {
+      const c = new Check(id);
+      c.set(on);
+      c.onClick = () => { c.set(!c.on); own.plugins[id] = c.on; save({ plugins: own.plugins }); };
+      return c;
+    }), "none found");
+    const r = anchor.getBoundingClientRect();
+    pop.style.top = r.bottom + 2 + "px";
+    pop.style.right = Math.max(8, window.innerWidth - r.right) + "px";
+    pop.style.maxHeight = Math.max(120, window.innerHeight - r.bottom - 12) + "px";
+    document.body.append(pop);
+    const outside = (e: MouseEvent) => { if (!pop.contains(e.target as Node) && !anchor.contains(e.target as Node)) close(); };
+    const keys = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+    const close = () => {
+      pop.remove();
+      window.removeEventListener("mousedown", outside, true);
+      window.removeEventListener("keydown", keys, true);
+      this.tunePop = null;
+    };
+    window.addEventListener("mousedown", outside, true);
+    window.addEventListener("keydown", keys, true);
+    this.tunePop = { close };
+  }
   openPersona() { return this.call("open_persona", { persona: this.cb.persona.value }); }
 
   async pickFolder() {

@@ -142,7 +142,7 @@ pub fn toml_str(s: &str) -> String {
     pyjson::quote(s, false).replace('\x7f', "\\u007f")
 }
 
-fn toml_key(k: &str) -> String {
+pub(crate) fn toml_key(k: &str) -> String {
     if !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
         k.to_string()
     } else {
@@ -354,7 +354,7 @@ fn base_prompt(ctx: &Ctx, exe: &str, env: &Env, pre: &[String], cwd: Option<&str
 }
 
 /// Codex's own folder for a launch: CODEX_HOME, else ~/.codex.
-fn codex_home(env: &Env) -> String {
+pub(crate) fn codex_home(env: &Env) -> String {
     env.get("CODEX_HOME").filter(|h| !h.is_empty()).cloned().unwrap_or_else(|| py::expanduser("~/.codex"))
 }
 
@@ -474,6 +474,7 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
     for s in if on_by_default(prof, "statusline") { &ui[..] } else { &ui[1..] } {
         argv.extend(["-c".into(), s.clone()]); // before the extra args, so a -c of your own there still wins
     }
+    argv.extend(super::tuning::codex_args(prof, &codex_home(&env)));
     if prompt_on {
         let mut pfile = Some(prompt_path(ctx, name));
         let mut setting = format!("model_instructions_file={}", toml_str(&pfile.as_ref().unwrap().replace('\\', "/")));

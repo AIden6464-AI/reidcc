@@ -5,7 +5,8 @@
 use super::{clen, fit, getkey, rep, Stop, Tui, B, DIM, EMERALD, LINE, RULE, T, VAL};
 use crate::console;
 use reidcc::term::{BRONZE, OXIDE, R, TEXT, TEXT2, TEXT3};
-use reidcc::{changes, load_config, locks, profiles, show_path};
+use reidcc::engines::tuning::{self, Choices};
+use reidcc::{changes, load_config, locks, profiles, show_path, Obj};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
@@ -34,6 +35,7 @@ const TIMER_REDRAW: Duration = Duration::from_secs(1);
 // console::getkey() gives control keys as their characters
 const TAB: &str = "\t";
 const CTRL_D: &str = "\x04";
+const CTRL_E: &str = "\x05";
 const CTRL_O: &str = "\x0f";
 const CTRL_R: &str = "\x12";
 const CTRL_T: &str = "\x14";
@@ -80,8 +82,24 @@ struct Turn {
     undo: (String, usize),
 }
 
+/// A row of the tune panel (ctrl+e): this chat's model, effort, MCP servers and plugins for a profile.
+#[derive(Clone, PartialEq)]
+enum TuneRow {
+    Model,
+    Effort,
+    Mcp(String),
+    Plugin(String),
+}
+
 struct Chat {
     folder: String,
+    /// reid.json, for each profile's own model / effort / MCP / plugins
+    cfg: Obj,
+    /// what this chat changed per profile (SPEC-unified-interface Milestone 2C): `reid --stream --with`
+    tunes: HashMap<String, Obj>,
+    choices: HashMap<String, Choices>,
+    /// the tune panel's selected row while it's open
+    tuning: Option<usize>,
     profiles: Vec<(String, String)>,
     cur: String,
     pick: usize,
@@ -306,6 +324,9 @@ impl Chat {
         if let Some(sid) = self.sids.get(&profile) {
             args.extend(["--resume".into(), sid.clone()]);
         }
+        if let Some(tune) = self.tunes.get(&profile).filter(|tune| !tune.is_empty()) {
+            args.extend(["--with".into(), Value::Object(tune.clone()).to_string()]);
+        }
         if let Some(from) = from {
             args.extend(["--switch-from".into(), from]);
         }
@@ -519,6 +540,134 @@ impl Chat {
         }
     }
 
+    // ------------------------------------------------------------ tuning ---
+    fn own(&self, profile: &str) -> Obj {
+        profiles(&self.cfg).get(profile).and_then(Value::as_object).cloned().unwrap_or_default()
+    }
+
+    /// The profile's value for `key` with this chat's change over it.
+    fn tuned(&self, profile: &str, key: &str) -> Option<Value> {
+        self.tunes.get(profile).and_then(|tune| tune.get(key)).cloned().or_else(|| self.own(profile).get(key).cloned())
+    }
+
+    fn open_tune(&mut self) {
+        let profile = self.picked();
+        if !self.choices.contains_key(&profile) {
+            self.choices.insert(profile.clone(), tuning::choices(&self.own(&profile), &self.folder));
+        }
+        self.tuning = Some(0);
+    }
+
+    fn tune_rows(&self) -> Vec<TuneRow> {
+        let Some(choices) = self.choices.get(&self.picked()) else { return vec![] };
+        let mut rows = vec![TuneRow::Model, TuneRow::Effort];
+        rows.extend(choices.mcp.iter().cloned().map(TuneRow::Mcp));
+        rows.extend(choices.plugins.iter().map(|plugin| TuneRow::Plugin(plugin.id.clone())));
+        rows
+    }
+
+    /// <-/-> on model or effort: the next value ("" is the profile's own); on a server or plugin, flip it.
+    fn tune_change(&mut self, step: i64) {
+        let (Some(row), profile) = (self.tuning, self.picked()) else { return };
+        let Some(which) = self.tune_rows().get(row).cloned() else { return };
+        let mut tune = self.tunes.get(&profile).cloned().unwrap_or_default();
+        match &which {
+            TuneRow::Model | TuneRow::Effort => {
+                let (key, values) = if which == TuneRow::Model {
+                    ("model", tuning::models(&self.cfg, &self.engine(&profile)))
+                } else {
+                    ("effort", self.choices.get(&profile).map(|c| c.efforts.clone()).unwrap_or_default())
+                };
+                // from the profile's own value; landing on it again (or on "default") is no change
+                let own = reidcc::text(&self.own(&profile), key);
+                let mut all = if own.is_empty() { vec![String::new()] } else { vec![] };
+                all.extend(values);
+                if !own.is_empty() && !all.contains(&own) {
+                    all.insert(0, own.clone());
+                }
+                let now = tune.get(key).and_then(Value::as_str).map(String::from).unwrap_or_else(|| own.clone());
+                let at = all.iter().position(|value| *value == now).unwrap_or(0) as i64;
+                let next = all[(at + step).rem_euclid(all.len() as i64) as usize].clone();
+                if next.is_empty() || next == own {
+                    tune.remove(key);
+                } else {
+                    tune.insert(key.into(), Value::String(next));
+                }
+            }
+            TuneRow::Mcp(server) => {
+                let mut off: Vec<Value> = self.tuned(&profile, "mcp_off").and_then(|v| v.as_array().cloned()).unwrap_or_default();
+                match off.iter().position(|name| name.as_str() == Some(server)) {
+                    Some(at) => {
+                        off.remove(at);
+                    }
+                    None => off.push(Value::String(server.clone())),
+                }
+                tune.insert("mcp_off".into(), Value::Array(off));
+            }
+            TuneRow::Plugin(id) => {
+                let on = self.plugin_on(&profile, id);
+                let mut switches = match self.tuned(&profile, "plugins") {
+                    Some(Value::Object(map)) => map,
+                    _ => Obj::new(),
+                };
+                switches.insert(id.clone(), Value::Bool(!on));
+                tune.insert("plugins".into(), Value::Object(switches));
+            }
+        }
+        self.tunes.insert(profile, tune);
+    }
+
+    fn plugin_on(&self, profile: &str, id: &str) -> bool {
+        let chat = self.tunes.get(profile).and_then(|tune| tune.get("plugins")).and_then(|p| p.get(id)).and_then(Value::as_bool);
+        chat.unwrap_or_else(|| self.choices.get(profile).and_then(|c| c.plugins.iter().find(|p| p.id == id)).is_some_and(|p| p.on))
+    }
+
+    fn mcp_on(&self, profile: &str, server: &str) -> bool {
+        !self.tuned(profile, "mcp_off").and_then(|v| v.as_array().cloned()).unwrap_or_default().iter().any(|v| v.as_str() == Some(server))
+    }
+
+    /// `haiku · high · tools changed`: what this chat changed for a profile, for the controls line.
+    fn tune_summary(&self, profile: &str) -> String {
+        let Some(tune) = self.tunes.get(profile) else { return String::new() };
+        let mut parts: Vec<String> = ["model", "effort"].iter().filter_map(|key| tune.get(*key).and_then(Value::as_str).map(String::from)).collect();
+        if tune.contains_key("mcp_off") || tune.contains_key("plugins") {
+            parts.push("tools changed".into());
+        }
+        parts.join(" · ")
+    }
+
+    fn tune_lines(&self) -> Vec<String> {
+        let profile = self.picked();
+        let own = self.own(&profile);
+        let mut out = vec![format!("{B}{TEXT}tune {profile} · {}{R}  {TEXT3}this chat only · reid.json stays as it is{R}", self.engine(&profile)),
+                           String::new()];
+        let tick = |on: bool| if on { format!("{TEXT}✓{R}") } else { format!("{TEXT3}·{R}") };
+        let rows = self.tune_rows();
+        for (i, row) in rows.iter().enumerate() {
+            let mark = if self.tuning == Some(i) { format!("{TEXT}›{R}") } else { " ".into() };
+            let (label, value) = match row {
+                TuneRow::Model | TuneRow::Effort => {
+                    let key = if *row == TuneRow::Model { "model" } else { "effort" };
+                    let chat = self.tunes.get(&profile).and_then(|tune| tune.get(key)).and_then(Value::as_str);
+                    let profile_value = reidcc::text(&own, key);
+                    let value = match chat {
+                        Some(value) => format!("{TEXT}‹ {value} ›{R}"),
+                        None if !profile_value.is_empty() => format!("{TEXT2}‹ {profile_value} ›{R} {TEXT3}the profile's{R}"),
+                        None => format!("{TEXT2}‹ default ›{R}"),
+                    };
+                    (key, value)
+                }
+                TuneRow::Mcp(server) => ("mcp", format!("{} {TEXT2}{server}{R}", tick(self.mcp_on(&profile, server)))),
+                TuneRow::Plugin(id) => ("plugin", format!("{} {TEXT2}{id}{R}", tick(self.plugin_on(&profile, id)))),
+            };
+            out.push(format!("{mark} {TEXT3}{}{R}{value}", super::ljust(label, 8))); // short rows: fit() would count the colours
+        }
+        if rows.len() == 2 {
+            out.push(format!("  {TEXT3}No MCP servers or plugins found for this profile.{R}"));
+        }
+        out
+    }
+
     // ----------------------------------------------------------- drawing ---
     fn lines(&self, width: i64) -> Vec<String> {
         let mut out: Vec<String> = vec![];
@@ -612,14 +761,20 @@ impl Chat {
         let primary = if self.turn.is_some() { format!("{OXIDE}esc stop{R}") }
                       else if self.switching() { format!("{TEXT}↵ switch → {}{R}", self.engine(&profile)) }
                       else { format!("{TEXT}↵ send{R}") };
-        let controls = format!(" {TEXT}{profile} · {}{R}   {TEXT}{}{R} {TEXT2}read-only{R}", self.engine(&profile),
+        let summary = self.tune_summary(&profile);
+        let summary = if summary.is_empty() { String::new() } else { format!(" {TEXT2}· {summary}{R}") };
+        let controls = format!(" {TEXT}{profile} · {}{R}{summary}   {TEXT}{}{R} {TEXT2}read-only{R}", self.engine(&profile),
                                if self.read_only { "✓" } else { "·" });
         composer.push(format!("{controls}{}{primary} ", rep(" ", (width - clen(&controls) - clen(&primary) - 1).max(1))));
         let back = if self.turn.is_some() { "" } else { " · esc back" };
-        composer.push(tui.help(&format!("tab profile · ctrl+r read-only · ctrl+t terminal · ctrl+d diff · ctrl+o handoff · pgup/pgdn scroll{back}")));
+        if self.tuning.is_some() {
+            composer.push(tui.help("↑↓ choose · ←→ change · space switch · ^e or esc done"));
+        } else {
+            composer.push(tui.help(&format!("tab profile · ^e tune · ^r read-only · ^t terminal · ^d diff · ^o handoff · pgup/pgdn{back}")));
+        }
 
         let room = (height - 1 - screen.len() as i64 - composer.len() as i64).max(1);
-        let all = self.lines(body_width);
+        let all = if self.tuning.is_some() { self.tune_lines() } else { self.lines(body_width) };
         let total = all.len() as i64;
         self.scroll = self.scroll.clamp(0, (total - room).max(0));
         let end = total - self.scroll;
@@ -648,7 +803,8 @@ pub(super) fn run(tui: &mut Tui, profile: &str) -> T<()> {
         return Err(Stop::Err(reidcc::ReidError(format!("No profile named {profile}."))));
     };
     let mut chat = Chat {
-        folder: tui.cwd.clone(), cur: profile.into(), pick, profiles: all, sids: HashMap::new(), turns: 0, read_only: false,
+        folder: tui.cwd.clone(), cfg: cfg.clone(), tunes: HashMap::new(), choices: HashMap::new(), tuning: None,
+        cur: profile.into(), pick, profiles: all, sids: HashMap::new(), turns: 0, read_only: false,
         field: String::new(), blocks: vec![], note: Note::None, polled: Instant::now(), turn: None, context: None, cost: 0.0,
         scroll: 0, terminal: None, flash: String::new(),
     };
@@ -672,7 +828,20 @@ pub(super) fn run(tui: &mut Tui, profile: &str) -> T<()> {
         let key = getkey()?;
         dirty = true;
         let page = (tui.size().1 / 2).max(3);
+        if let Some(row) = chat.tuning {
+            let rows = chat.tune_rows().len();
+            match key.as_str() {
+                "esc" | CTRL_E => chat.tuning = None,
+                "up" => chat.tuning = Some(row.saturating_sub(1)),
+                "down" => chat.tuning = Some((row + 1).min(rows.saturating_sub(1))),
+                "left" => chat.tune_change(-1),
+                "right" | " " | "enter" => chat.tune_change(1),
+                _ => {}
+            }
+            continue;
+        }
         match key.as_str() {
+            CTRL_E if chat.turn.is_none() => chat.open_tune(),
             "esc" if chat.turn.is_some() => chat.stop(),
             "esc" => return Ok(()),
             // shortcut: a pasted line break sends, like Enter; a multi-line paste needs the chat window

@@ -40,17 +40,23 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
     };
     let mcp = text(prof, "mcp");
     let mcp_path = if !mcp.is_empty() && mcp != "none" { need(ctx, name, &mcp, "MCP config")? } else { String::new() };
-    let extra_settings = match on(prof, "settings_json") {
+    let mut extra_settings = match on(prof, "settings_json") {
         None => crate::Obj::new(),
         Some(Value::Object(m)) => m.clone(),
         Some(_) => return err(format!("Profile {name}: settings_json has to be an object. Fix it in reid.json.")),
     };
+    if let Some(Value::Object(switches)) = super::tuning::claude_plugins(prof) {
+        let mut enabled = match extra_settings.get("enabledPlugins") { Some(Value::Object(m)) => m.clone(), _ => crate::Obj::new() };
+        enabled.extend(switches);
+        extra_settings.insert("enabledPlugins".into(), Value::Object(enabled));
+    }
     crate::proxy::plan(ctx, prof)?; // validates the proxy field
 
     let model = text(prof, "model");
     if !model.is_empty() {
         argv.extend(["--model".into(), model]);
     }
+    argv.extend(super::tuning::claude_args(prof));
     // Auth: a settings file means API mode (the file carries key + base URL).
     // No settings file means your Pro/Max login, so strip inherited API creds.
     if settings.is_empty() {

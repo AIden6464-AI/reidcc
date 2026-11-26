@@ -115,6 +115,9 @@ pub struct Model {
     pub ops: Vec<Op>,
 }
 
+/// What the tune popover writes into a profile (SPEC-unified-interface Milestone 2C).
+const TUNE_KEYS: [&str; 3] = ["effort", "mcp_off", "plugins"];
+
 fn s(v: &str) -> String {
     v.to_string()
 }
@@ -480,6 +483,30 @@ impl Model {
         } else {
             self.push(say("Saved.", "quiet", &[], Some(1.5)));
         }
+    }
+
+    /// The tune popover: write the selected profile's effort / mcp_off / plugins (only the keys given)
+    /// and save. Outside apply(): the Python GUI has no such fields, so the parity flows never touch them.
+    pub fn tune(&mut self, changes: &Obj) {
+        let Some(cur) = self.current.clone() else { return };
+        let Some(mut cfg) = self.cfg() else { return };
+        let Some(Value::Object(mut p)) = profiles(&cfg).get(&cur).cloned() else { return };
+        for key in TUNE_KEYS {
+            let Some(value) = changes.get(key) else { continue };
+            let value = match value {
+                Value::String(_) if key == "effort" => value.clone(),
+                Value::Array(names) if key == "mcp_off" && names.iter().all(Value::is_string) => value.clone(),
+                Value::Object(switches) if key == "plugins" && switches.values().all(Value::is_boolean) => {
+                    if switches.is_empty() { Value::Null } else { value.clone() }
+                }
+                _ => continue, // not this key's shape: leave the profile as it is
+            };
+            put(&mut p, key, value);
+        }
+        set_profile(&mut cfg, &cur, p);
+        self.save(&cfg);
+        self.refresh(&cfg);
+        self.push(say("Saved.", "quiet", &[], Some(1.5)));
     }
 
     // ------------------------------------------------------------- actions ---

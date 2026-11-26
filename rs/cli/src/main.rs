@@ -17,7 +17,7 @@ const HELP: &str = r#"reid -- Reidcc, in the terminal.
     reid --resume <profile> --id ID   continue that session, in this folder
     reid -l                   list profiles
     reid --chat [profile]     chat with Claude Code and Codex in this folder, in the terminal
-    reid --stream <profile> [--read-only] [--resume ID] [--switch-from P] PROMPT
+    reid --stream <profile> [--read-only] [--resume ID] [--with JSON] [--switch-from P] PROMPT
                               one headless turn, its events as JSON lines
     reid --dry [profile]      print what would run, don't run it
     reid --dry -v [profile]   ... and the prompt and settings files it adds
@@ -278,6 +278,24 @@ const STREAM_USAGE: &str = "reid --stream <profile> [--read-only] [--resume ID] 
 
 /// reid --stream: one headless turn, its events as JSON lines (SPEC-unified-interface, Milestone 1).
 /// --switch-from writes .reid\handoff.md from that profile's work and hands it to this turn.
+/// Keys a chat may change for its turns (SPEC-unified-interface Milestone 2C).
+const WITH_KEYS: [&str; 4] = ["model", "effort", "mcp_off", "plugins"];
+
+/// `cfg` with `--with`'s keys laid over profile `name`.
+fn with_overrides(cfg: &reidcc::Obj, name: &str, json: &str) -> R<reidcc::Obj> {
+    let Ok(serde_json::Value::Object(changes)) = serde_json::from_str::<serde_json::Value>(json) else {
+        return reidcc::err(format!("--with takes a JSON object. {STREAM_USAGE}"));
+    };
+    if let Some(key) = changes.keys().find(|k| !WITH_KEYS.contains(&k.as_str())) {
+        return reidcc::err(format!("--with can't set {key}: only {}.", WITH_KEYS.join(", ")));
+    }
+    let mut cfg = cfg.clone();
+    if let Some(serde_json::Value::Object(prof)) = cfg.get_mut("profiles").and_then(|p| p.get_mut(name)) {
+        prof.extend(changes);
+    }
+    Ok(cfg)
+}
+
 fn stream(ctx: &Ctx, cfg: &reidcc::Obj, args: &[String]) -> R<i32> {
     use reidcc::stream::{Event, Mode, Turn};
     let Some(name) = args.first().filter(|n| profiles(cfg).contains_key(n.as_str())) else {
@@ -288,7 +306,7 @@ fn stream(ctx: &Ctx, cfg: &reidcc::Obj, args: &[String]) -> R<i32> {
     while let Some(a) = args.get(i) {
         match a.as_str() {
             "--read-only" => mode = Mode::ReadOnly,
-            "--resume" | "--switch-from" | "--tests" | "--note" => {
+            "--resume" | "--switch-from" | "--tests" | "--note" | "--with" => {
                 let Some(v) = args.get(i + 1) else { return reidcc::err(format!("{a} needs a value. {STREAM_USAGE}")) };
                 opt.insert(a.as_str(), v.as_str());
                 i += 1;
@@ -301,6 +319,15 @@ fn stream(ctx: &Ctx, cfg: &reidcc::Obj, args: &[String]) -> R<i32> {
         }
         i += 1;
     }
+    // a chat's own model / effort / MCP / plugin changes, laid over the profile for this turn
+    let tuned;
+    let cfg = match opt.get("--with") {
+        Some(json) => {
+            tuned = with_overrides(cfg, name, json)?;
+            &tuned
+        }
+        None => cfg,
+    };
     let cwd = py::getcwd();
     let prompt = reidcc::stream::prompt_from(&args[i.min(args.len())..]);
     if prompt.trim().is_empty() {
