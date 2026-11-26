@@ -611,6 +611,7 @@ ol.sources li { margin-bottom: 8px; }
         <h3>1 · Unblock Codex resume in all 3 places (Step 0)</h3>
         <p><strong>Code reality:</strong> Codex resume is currently refused in the Codex adapter (leading <code>resume</code>/<code>fork</code> args), <code>rs/core</code> (non-Claude profile guard), and GUI launch.</p>
         <p><strong>Fix:</strong> Capture Codex’s <code>thread_id</code> on both interactive and streamed runs, unblock resume across all three layers, and preserve existing <code>reid --resume [profile]</code> CLI behavior.</p>
+        <p><strong>The hard part:</strong> identifying which Codex thread a fresh Reidcc window created. Removing the guards only gets you partway; the ID must come from that window’s own Codex process, never a “most recent thread” lookup.</p>
       </div>
       <div class="col-item focal">
         <h3>2 · Normalized StreamEngine adapter (rs/core)</h3>
@@ -691,7 +692,7 @@ ol.sources li { margin-bottom: 8px; }
           <tr>
             <td class="mono">Step 0</td>
             <td><strong>Unblock Codex resume</strong> (adapter, <code>core</code>, GUI)</td>
-            <td>Reopen a streamed Codex thread in a raw Reidcc window, continue a fresh Reidcc Codex thread from its captured ID, and keep <code>reid --resume [profile]</code> intact.</td>
+            <td>Prove both directions on Windows: open a known headless thread in a Reidcc window; then open a fresh Codex session in Reidcc and have the headless runner continue that exact thread. Run the second test with two Codex windows in the same folder so a “most recent thread” lookup can’t pass by accident. Keep <code>reid --resume [profile]</code> intact.</td>
           </tr>
           <tr>
             <td class="mono">Milestone 1</td>

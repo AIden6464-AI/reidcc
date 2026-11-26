@@ -80,6 +80,9 @@ backgrounds, zero purple/AI gradients, zero drop shadows.
      args), `rs/core` (non-Claude profile guard), and GUI launch.
    - *Requirement:* Capture Codex's `thread_id` on both interactive and streamed runs, unblock resume
      across all three layers, and preserve existing `reid --resume [profile]` CLI behavior.
+   - *The hard part (Reid, 2026-11-25):* "The hard part is identifying which Codex thread a fresh Reidcc
+     window created. Removing the guards only gets you partway." The ID must be tied to that window's own
+     Codex process, never found by a "most recent thread" lookup.
 2. **Normalized `StreamEngine` adapter (`rs/core`):**
    - *Requirement:* Map Claude Code (`-p --output-format stream-json`) and Codex (`exec --json`) into one
      Rust event enum (`started`, `text`, `tool_call`, `diff`, `usage`, `done`, `error`) with an explicit
@@ -114,7 +117,7 @@ Claude Code (write · stream) → **Switch ⇄** (`.reid/handoff.md`) → Codex 
 | Stage | Scope | Acceptance Test |
 |---|---|---|
 | Pre-flight | Stabilize dev baseline (main stays untouched via manual publish workflow) | Fix background/minimized session-exit window jump, test docking in snapped frames, clear quick SPEC-user-trial fixes 1–4. |
-| Step 0 | Unblock Codex resume (adapter, core, GUI) | Reopen a streamed Codex thread in a raw Reidcc window, continue a fresh Reidcc Codex thread from its captured ID, and keep `reid --resume [profile]` intact. |
+| Step 0 | Unblock Codex resume (adapter, core, GUI) | Prove both directions on Windows: (1) open a known headless thread in a Reidcc window; (2) open a fresh Codex session in Reidcc and have the headless runner continue that exact thread. Run (2) with two Codex windows in the same folder, so a "most recent thread" lookup can't pass by accident. Keep `reid --resume [profile]` intact. |
 | Milestone 1 | Direct StreamEngine + Context Switch (`rs/core`) | Run Claude Code edit → trigger Switch (writes `.reid/handoff.md`) → run Codex read-only review in the same folder with OS locks guarding raw terminal takeover. |
 | Milestone 2 | Unified GUI (`rs/app` + `rs/ui`) & TUI (`rs/cli`) | Build the engraved-stone GUI and matching TUI over the proven Milestone 1 backend, refining visual craft into a true 1:1 Reidcc experience. |
 | Deferred | Explicitly out of scope | Central boss AI / conductor LLM, MCP delegation server, second desktop app, OpenCode backend/engine, agy, crons, and messaging gateways. |
