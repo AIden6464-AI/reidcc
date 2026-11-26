@@ -158,7 +158,8 @@ def main():
             side(a, b, os.path.join(OUT, state + ".png"))
             d = ImageChops.difference(a.convert("RGB"), b.convert("RGB")).convert("L").point(lambda v: 255 if v > 40 else 0)
             n = sum(d.histogram()[255:])
-            saved.append("%s (%d px differ by >40)" % (state, n))
+            e = "" if state.startswith(("opening", "dark")) else ", %d emerald" % guihome.emeralds(b)  # 1.3: one per screen
+            saved.append("%s (%d px differ by >40%s)" % (state, n, e))
 
         def both(state, name, login=None):
             py.select(name)

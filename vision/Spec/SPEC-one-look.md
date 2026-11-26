@@ -1,9 +1,19 @@
 # SPEC: one look (the launcher, settings, TUI and session windows as one app)
 
-Status: **BUILDING** (2026-11-24). Built: Part 1.1 (`tokens.css`), 1.2, 1.6, Part 5 (settings), Part 7.1–7.4
-and 7.6 (session window; 7.1 also moves Claude's 24-bit colours into the palette, `rs\app\src\recolor.rs`,
-Reid's pick of the two ways). Not built: 7.5, Parts 1.3–1.5, 2–4, 6, 8. It comes from a UI review of the Rust app
-(screenshots in `rs\tests\gui_shots`, `rs\tests\session_shots`, and the Rust TUI captured at 120×40).
+Status: **BUILT on dev** (2026-11-25), every part, on the open questions' defaults (✓ / ·, borderless
+launcher, hero emerald resting, half-block header). 7.1 also moves Claude's 24-bit colours into the
+palette (`rs\app\src\recolor.rs`, Reid's pick of the two ways). Notes on how it was built:
+- 6.3: the header art is `banner.png` in grey half-blocks (`assets\tui\banner_<cols>.json.gz`, made by
+  `python\build\make_assets.py`). It needs 100 columns and enough rows; otherwise the pills show.
+- 6: at 80 columns the switches row says `safe` with one space between marks, so it doesn't wrap.
+- 7.5: a solo window that fails within 5 s shrinks to its bar plus the lines written (`sess_shrink`).
+  It doesn't shrink when maximized, in a frame, or with Reidcc docked beside it.
+  The all-black `failed.png` was the test's timing: the session fails while the gate still plays, and the
+  window shows at the hand-over (~1.5 s). `session_flow` now waits for it before the shot.
+- 8: `guihome.emeralds()` counts emerald spots; `session_flow` checks the session bar, `gui_shots` prints it.
+
+It comes from a UI review of the Rust app (screenshots in `rs\tests\gui_shots`, `rs\tests\session_shots`,
+and the Rust TUI captured at 120×40).
 
 > "how does the UI of Reidcc feel and fit the theme and what is dumb looking like the "settings page" etc"
 > (Reid, 2026-11-24)

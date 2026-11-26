@@ -165,7 +165,10 @@ def live(t, bin_, seen):
     check("bar: live dot while running", meters.lstrip().startswith("●") or "· ●" in meters, meters)
     check("no duplicate REIDCC banner in a session window", "REIDCC ·" not in text, "")
     os.makedirs(SHOTS, exist_ok=True)
-    guihome.client_shot(h).save(os.path.join(SHOTS, "live.png"))
+    live = guihome.client_shot(h)
+    live.save(os.path.join(SHOTS, "live.png"))
+    n = guihome.emeralds(live.crop((0, 0, live.width, 40)))  # the bar; the terminal is Claude's own
+    check("one emerald on the bar: the live dot (SPEC-one-look 1.3)", n == 1, n)
 
     still = page.js("document.body.classList.contains('moving')")
     l, tp, r, b = frame(h)
@@ -241,6 +244,20 @@ def ends_failed(t, seen, home):
     text = screen(page)
     check("the error is readable", "no-such-flag" in text or "unknown option" in text.lower(), text.strip()[-200:])
     h = find(t.proc.pid, title)
+    tall = 0
+    for _ in range(20):  # SPEC-one-look 7.5: a failed start shrinks to its bar and the message
+        tall = page.js("window.innerHeight")
+        if tall < 400:
+            break
+        time.sleep(0.1)
+    check("a failed start shrinks to its bar and the message", 0 < tall < 400, "%s css px" % tall)
+    # it fails while the gate still plays; the gate shows it at the hand-over (~1.5 s). A shot taken before
+    # that was all black (SPEC-one-look 7.5's failed.png).
+    end = time.time() + 5
+    while time.time() < end and h and not u32.IsWindowVisible(h):
+        time.sleep(0.1)
+    check("the failed window shows after the gate", bool(h) and bool(u32.IsWindowVisible(h)), h)
+    time.sleep(0.5)
     if h:
         guihome.client_shot(h).save(os.path.join(SHOTS, "failed.png"))
     page.js("__term.focus()")
@@ -312,7 +329,8 @@ def codex_tui(t, bin_, seen):
         end = time.time() + 5
         while time.time() < end and (find(t.proc.pid, title) or any(p.is_running() for p in procs)):
             time.sleep(0.1)
-        check("x ends the Codex session", not find(t.proc.pid, title) and not any(p.is_running() for p in procs))
+        left = [p.pid for p in procs if p.is_running()]
+        check("x ends the Codex session", not find(t.proc.pid, title) and not left, "window %s, running %s" % (find(t.proc.pid, title), left))
 
 
 def main():

@@ -1,9 +1,9 @@
-"""TUI parity: reid.exe's TUI must look and act exactly like reid.py's (vision/Spec/SPEC-rust-tui-gui.md, part 1).
+"""TUI parity: reid.exe's TUI must act like reid.py's (vision/Spec/SPEC-rust-tui-gui.md, part 1).
 
-Runs both TUIs in a pseudo-terminal (ConPTY via pywinpty) at 80x24, 100x30 and 160x45, sends the same
-keys to each and compares the screen after every step, cell by cell (character and colours, read with
-pyte). After each sequence the reid.json both wrote must match byte for byte, and so must the editor
-calls, the exit code and reid_state.json (session ids and times masked).
+Runs both TUIs in a pseudo-terminal (ConPTY via pywinpty) at 80x24, 100x30 and 160x45 and sends the same
+keys to each. After each sequence the reid.json both wrote must match byte for byte, and so must the
+editor calls, the exit code, the number of steps that ran and reid_state.json (session ids and times
+masked). Screens aren't compared any more: the TUI's look is SPEC-one-look's, not reid.py's (its Part 8).
 
 Each run gets the same temp Reidcc folder (REIDCC_HOME), reset between runs: personas/, mds/ and json/
 are junctions, proxy/ files are copied, codex/ is fresh. Never touches E:\\reidcc\\reid.json or
@@ -199,19 +199,6 @@ def masked(snap):
     return out
 
 
-def describe(a, b):
-    lines = []
-    for y, (ra, rb) in enumerate(zip(a, b)):
-        if ra != rb:
-            ta, tb = "".join(c[0] for c in ra), "".join(c[0] for c in rb)
-            x = next(i for i in range(len(ra)) if ra[i] != rb[i])
-            lines.append("    row %d col %d\n      py %r\n      rs %r\n      py cell %r\n      rs cell %r"
-                         % (y, x, ta.rstrip(), tb.rstrip(), ra[x], rb[x]))
-            if len(lines) >= 4:
-                break
-    return "\n".join(lines)
-
-
 # -------------------------------------------------------------- sequences ---
 def keys(*names):
     return [K.get(n, n) for n in names]
@@ -396,10 +383,6 @@ def run_seq(which, label, steps, opts, cols, rows, env_base):
 
 def compare(py, rs):
     problems = []
-    for (lp, a), (lr, b) in zip(py["snaps"], rs["snaps"]):
-        if a != b:
-            problems.append("screen differs after %s\n%s" % (lp, describe(a, b)))
-            break
     if len(py["snaps"]) != len(rs["snaps"]):
         problems.append("%d screens vs %d (%s / %s)" % (len(py["snaps"]), len(rs["snaps"]),
                                                        py["snaps"][-1][0], rs["snaps"][-1][0]))

@@ -107,6 +107,32 @@ def client_shot(hwnd):
     return img.crop((x0, y0, x0 + cr.right, y0 + cr.bottom))
 
 
+def emeralds(img):
+    """How many separate emerald spots (#00C463-ish, at least 4 px) a shot shows. SPEC-one-look 1.3:
+    one per screen, meaning ready or live."""
+    img = img.convert("RGB")
+    w, h = img.size
+    px = img.load()
+    on = set()
+    for y in range(h):
+        for x in range(w):
+            r, g, b = px[x, y]
+            if g > 140 and g > r + 90 and g > b + 40:
+                on.add((x, y))
+    spots = 0
+    while on:
+        todo, n = [on.pop()], 0
+        while todo:
+            x, y = todo.pop()
+            n += 1
+            for q in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
+                if q in on:
+                    on.remove(q)
+                    todo.append(q)
+        spots += n >= 4
+    return spots
+
+
 def find_window(pid, title=None, timeout=20):
     """Find the visible launcher or a window with the exact requested title."""
     import ctypes, time

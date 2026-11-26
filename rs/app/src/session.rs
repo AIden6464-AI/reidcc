@@ -290,6 +290,24 @@ pub fn sess_resize(st: S, id: u32, cols: u16, rows: u16) {
     }
 }
 
+/// SPEC-one-look 7.5: a session that fails at once doesn't keep a full-size black window for one line.
+/// A solo window shrinks to `height` (CSS px from the page: its bar plus the lines written); not when
+/// it's maximized or Reidcc sits beside it, and never taller.
+#[tauri::command]
+pub fn sess_shrink(app: AppHandle, id: u32, height: f64) {
+    let Some(host) = app.get_webview(&format!("{PANE}{id}")).map(|v| v.window()) else { return };
+    let solo = host.label().strip_prefix(PREFIX).and_then(|n| n.parse::<u32>().ok()).is_some();
+    if !solo || host.is_maximized().unwrap_or(true) || crate::panel::docked_in(&app).is_some_and(|l| l == host.label()) {
+        return;
+    }
+    let (Ok(scale), Ok(size)) = (host.scale_factor(), host.inner_size()) else { return };
+    let h = (height.max(120.0) * scale).round() as u32;
+    if h < size.height {
+        let _ = host.set_min_size(Some(tauri::LogicalSize::new(640.0, 120.0)));
+        let _ = host.set_size(tauri::PhysicalSize::new(size.width, h));
+    }
+}
+
 /// What the statusline last wrote (context, limit and their detail), if anything.
 #[tauri::command]
 pub fn sess_meters(st: S, id: u32) -> Option<Value> {

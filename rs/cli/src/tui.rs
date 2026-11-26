@@ -1,6 +1,7 @@
 //! The Reidcc TUI: a direct port of `class TUI` in python\reid.py (vision\Spec\SPEC-rust-tui-gui.md,
-//! part 1). Same screens, words, colours, keys and files written; the same ANSI strings and the
-//! same full-screen repaint. Method names follow the Python so the two can be read side by side.
+//! part 1). Same screens, words, keys and files written, and the same full-screen repaint; the look
+//! (colours, tags, header art, ✓ / ·) is SPEC-one-look's now (Part 6), not reid.py's. Method names
+//! follow the Python so the two can be read side by side.
 
 use crate::console::{self, Interrupt};
 use reidcc::engines::{self, codex, is_codex, ENGINES};
@@ -14,12 +15,13 @@ use std::time::{Duration, Instant};
 const LINE: &str = "\x1b[38;2;146;138;130m"; // #928A82, the art's engraved lines
 const EMERALD: &str = "\x1b[38;2;0;196;99m"; // #00C463
 const ACC: &str = TEXT; // labels you act on
-const DIM: &str = TEXT3; // hints, separators, detail
+const DIM: &str = TEXT2; // labels, hints, the key legend (SPEC-one-look 6.1: #9F978E, not #746F69)
+const RULE: &str = TEXT3; // #746F69 is for separators, rules and timestamps only
+const VAL: &str = "\x1b[48;2;14;13;12m"; // a value's ground, #0E0D0C (6.2)
 const WARN: &str = TEXT; // flash messages
 const SEL: &str = "\x1b[48;2;41;39;35m\x1b[38;2;214;208;200m"; // stone-dark row, bone text
 const B: &str = "\x1b[1m";
 
-const CODEX_TAG: &str = "CODEX · GREYED FIELDS ARE CLAUDE'S";
 const CODEX_REPLACE_HINT: &str = "replace drops Codex's own instructions; add is the safe one.";
 const CORE_TOOLS: [&str; 6] = ["Read", "Edit", "Write", "Glob", "Grep", "Bash"];
 const WEB_TOOLS: [&str; 2] = ["WebSearch", "WebFetch"];
@@ -83,7 +85,8 @@ pub fn wrap_text(s: &str, w: i64, max_lines: usize) -> Vec<String> {
     if out.is_empty() { vec![String::new()] } else { out }
 }
 
-/// The GUI banner's story (folder → persona → ●) drawn in linework, sized to the window.
+/// The GUI banner's story (folder → persona → ●) drawn in linework, sized to the window; the ● in bone
+/// (the footer's ● ready is the one emerald).
 pub fn text_banner(w: i64) -> Vec<String> {
     let labels = ["folder", "profile", "●"];
     let bw = 11; // box width
@@ -97,7 +100,7 @@ pub fn text_banner(w: i64) -> Vec<String> {
     for (i, l) in labels.iter().enumerate() {
         let mut inner = center(l, bw - 2);
         if *l == "●" {
-            inner = inner.replace('●', &format!("{EMERALD}●{LINE}"));
+            inner = inner.replace('●', &format!("{TEXT}●{LINE}"));
         } else {
             inner = format!("{TEXT2}{inner}{LINE}");
         }
@@ -278,14 +281,14 @@ impl Tui {
         let (w, _) = self.size();
         let mut title = format!(" {TEXT2}REIDCC{R}");
         if !crumb.is_empty() {
-            title += &format!(" {DIM}·{R} {}", fit(crumb, w - 12));
+            title += &format!(" {RULE}·{R} {}", fit(crumb, w - 12));
         }
         vec![title, format!(" {DIM}folder{R}  {}", fit(&show_path(&self.cwd), w - 10)), String::new()]
     }
 
     fn rule(&self) -> String {
         let (w, _) = self.size();
-        format!(" {DIM}{}{R}", rep("─", w - 2))
+        format!(" {RULE}{}{R}", rep("─", w - 2))
     }
 
     fn help(&self, text: &str) -> String {
@@ -473,7 +476,7 @@ impl Tui {
             let lcwd = last.get("cwd").map(pyjson::py_str).unwrap_or_default();
             let where_ = if py::normcase(&lcwd) == py::normcase(&self.cwd) { String::new() } else { format!(" · {}", show_path(&lcwd)) };
             let lp = last.get("profile").map(pyjson::py_str).unwrap_or_else(|| "None".into());
-            top.push(format!(" {DIM}last{R}     {lp} · {when}{where_}   {DIM}r resumes it{R}"));
+            top.push(format!(" {DIM}last{R}     {lp} {RULE}· {when}{R}{where_}   {DIM}r resumes it{R}"));
         }
         let fl = self.flash();
         top.extend(if fl.is_empty() { vec![String::new()] } else { fl });
@@ -481,16 +484,17 @@ impl Tui {
 
         // right pane: the selected profile, the same rows as the GUI form
         let persona = if on(&p, "persona").is_some() { persona_name(&p) } else { String::new() };
-        let mut tags: Vec<String> = vec![];
+        // the shared tags (SPEC-one-look Part 2): `claude · persona plain · memory`, lowercase
+        let cx = is_codex(&p);
+        let mut tags: Vec<String> = vec![(if cx { "codex" } else { "claude" }).into()];
         if !persona.is_empty() {
-            tags.push(format!("PERSONA · {}", persona.to_uppercase()));
+            tags.push(format!("persona {persona}"));
         }
         if on(&p, "memory").is_some() {
-            tags.push("MEMORY · ON".into());
+            tags.push("memory".into());
         }
         let mcp = text(&p, "mcp");
-        let boxed = |on: bool, label: &str| format!("{}{label}", if on { "☒ " } else { "☐ " });
-        let cx = is_codex(&p);
+        let boxed = |on: bool, label: &str| format!("{}{label}", if on { "✓ " } else { "· " });
         let tool = if cx { "Codex" } else { "Claude Code" };
         if cx && on(&p, "settings").is_none() && codex::login_cached(ctx).is_none() {
             self.check_login();
@@ -518,26 +522,24 @@ impl Tui {
         ];
         let lw: i64 = 22; // profile list width
         let rw = 20.max(w - lw - 5); // right pane width
-        if cx {
-            // same as the GUI: say why the greyed rows are greyed out
-            tags.insert(0, CODEX_TAG.into());
-        }
         let greyed: &[&str] = if cx { &["tools", "mcp"] } else { &[] };
         let mut right = vec![format!("{TEXT}{B}{name}{R}   {DIM}{}{R}", tags.join(" · ")), String::new()];
         for (k, v) in &rows {
             if *k == "switches" {
                 // memory works for both engines; the other three are Claude's
+                // 45 columns; a narrow pane (80 columns) gets `safe` and one space, so the row never wraps
+                let wide = rw - 14 >= 45;
                 let parts = [(boxed(on(&p, "memory").is_some(), "memory"), false),
                              (boxed(on(&p, "no_chrome").is_none(), "chrome"), cx),
                              (boxed(on(&p, "no_connectors").is_none(), "connectors"), cx),
-                             (boxed(on(&p, "safe").is_some(), "safe mode"), cx)];
+                             (boxed(on(&p, "safe").is_some(), if wide { "safe mode" } else { "safe" }), cx)];
                 let v: Vec<String> = parts.iter().map(|(s, g)| format!("{}{s}{R}", if *g { DIM } else { TEXT })).collect();
-                right.push(format!("{DIM}{}{R}{}", ljust(k, 14), v.join("  ")));
+                right.push(format!("{DIM}{}{R}{}", ljust(k, 14), v.join(if wide { "  " } else { " " })));
                 continue;
             }
             let col = if *k == "sign-in" && cx && v.ends_with("not signed in") { OXIDE }
                       else if greyed.contains(k) { DIM } else { TEXT };
-            right.push(format!("{DIM}{}{R}{col}{}{R}", ljust(k, 14), fit(v, rw - 14)));
+            right.push(format!("{DIM}{}{R}{col}{VAL}{}{R}", ljust(k, 14), ljust(&fit(v, rw - 14), rw - 14)));
         }
         right.extend([String::new(), format!("{DIM}command{R}")]);
         if let Some(e) = &error {
@@ -558,19 +560,29 @@ impl Tui {
         let status = if error.is_some() { "not ready".to_string() }
                      else if have.is_empty() { "ready".to_string() }
                      else { format!("ready · {}", have.join(" + ")) };
-        let flow = match &self.update {
-            Some(v) => format!("update {v}: reid --update"),
-            None => "folder → profile → open gate".to_string(),
-        };
-        let gap = 1.max(w - 2 - clen(&flow) - clen(&status) - 3);
-        bottom.push(format!(" {DIM}{flow}{R}{}{}●{R} {TEXT2}{status}{R}", rep(" ", gap), if error.is_some() { OXIDE } else { EMERALD }));
+        // the status bar (SPEC-one-look Part 2): where on the left, the state (and an update) on the right
+        let folder = self.cwd.trim_end_matches(['\\', '/']).rsplit(['\\', '/']).next().filter(|s| !s.is_empty())
+            .unwrap_or(&self.cwd).to_string();
+        let upd = self.update.as_ref().map(|v| format!("update {v}: reid --update   ")).unwrap_or_default();
+        let at = fit(&format!("{folder} · {name} · {}", engine_str(&p)), 1.max(w - 6 - clen(&upd) - clen(&status)));
+        let gap = 1.max(w - 2 - clen(&at) - clen(&upd) - clen(&status) - 3);
+        bottom.push(format!(" {DIM}{at}{R}{}{TEXT}{upd}{R}{}●{R} {TEXT2}{status}{R}", rep(" ", gap), if error.is_some() { OXIDE } else { EMERALD }));
 
         // the list scrolls if the window is short; the banner only shows when everything else fits
         let (nt, nb, nn) = (top.len() as i64, bottom.len() as i64, names.len() as i64);
         let mut body_h = (right.len() as i64).max((nn + 1).min(h - 1 - nt - nb));
         body_h = 3.max(body_h.min(h - 1 - nt - nb));
-        let banner = text_banner(w);
-        if h - 1 - nt - nb - body_h >= banner.len() as i64 + 1 {
+        // the launcher's banner in half-blocks from 100 columns (SPEC-one-look 6.3), else the linework pills
+        let room = h - 1 - nt - nb - body_h - 1;
+        let art = if w >= 100 { self.tui_art("banner", w - 2, room) } else { None };
+        let banner = match art {
+            Some(a) => {
+                let pad = rep(" ", fdiv(w - a.cols, 2));
+                a.frames[0].iter().map(|l| format!("{pad}{l}")).collect()
+            }
+            None => text_banner(w),
+        };
+        if room >= banner.len() as i64 {
             let mut t = banner;
             t.push(String::new());
             t.extend(top);
@@ -580,20 +592,20 @@ impl Tui {
         let room = body_h - 1;
         let idx = self.idx as i64;
         let first = 0.max((idx - fdiv(room, 2)).min(nn - room));
-        let mut left = vec![format!(" {DIM}profiles{R}")];
+        let mut left = vec![format!(" {DIM}{}{R}", ljust("profiles", lw - 1))]; // as wide as the rows, so │ lines up
         let def = cfg.get("default").and_then(Value::as_str);
         let mut i = first;
         while i < nn.min(first + room) {
             let n = &names[i as usize];
-            let default = Some(n.as_str()) == def; // the one emerald: the profile `open gate` uses by default
+            let default = Some(n.as_str()) == def; // in bone: the footer's ● ready is the one emerald (6.5)
             let label = fit(n, lw - 6) + if default { " ●" } else { "" };
             let mut cell = if i == idx {
                 format!(" {SEL}{}{R}", ljust(&format!(" → {label}"), lw - 1))
             } else {
                 format!("    {TEXT2}{label}{R}{}", rep(" ", lw - 4 - clen(&label)))
             };
-            if default {
-                cell = cell.replacen('●', &format!("{EMERALD}●{}", if i == idx { SEL } else { R }), 1);
+            if default && i != idx {
+                cell = cell.replacen('●', &format!("{TEXT}●{TEXT2}"), 1);
             }
             left.push(cell);
             i += 1;
@@ -605,7 +617,7 @@ impl Tui {
         for j in 0..body_h.max(0) as usize {
             let l = left.get(j).cloned().unwrap_or_else(|| rep(" ", lw));
             let r = right.get(j).cloned().unwrap_or_default();
-            body.push(format!("{l} {DIM}│{R}  {r}"));
+            body.push(format!("{l} {RULE}│{R}  {r}"));
         }
         let mut all = top;
         all.extend(body);

@@ -575,7 +575,7 @@ fn main() {
             session::sess_attach, session::sess_write, session::sess_resize, session::sess_meters, session::sess_close,
             session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control, dock::dock_grouped, rig::rig_list, rig::rig_save, rig::rig_delete, rig::rig_open, update::update_foot, update::update_install,
             update::update_check, settings::settings_get, settings::settings_set, settings::settings_plugins, settings::settings_open, settings::settings_change,
-            panel::panel, panel::launcher_control, session::sess_back
+            panel::panel, panel::launcher_control, session::sess_back, session::sess_shrink
         ])
         .run(tauri::generate_context!())
         .expect("Reidcc couldn't start");

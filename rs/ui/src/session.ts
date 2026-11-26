@@ -185,7 +185,16 @@ function ended(rc: number, isBack: boolean) {
   state = `failed · code ${rc >>> 0} · any key closes`;
   failed = true;
   drawMeters();
+  // SPEC-one-look 7.5: failed at once → the window shrinks to its bar plus the lines written
+  const buf = term.buffer.active;
+  const used = buf.baseY + buf.cursorY + 1;
+  if (performance.now() - opened < 5000 && used < term.rows) {
+    const xt = $("xt");
+    const cell = xt.clientHeight / term.rows;
+    invoke("sess_shrink", { id, height: window.innerHeight - xt.clientHeight + Math.ceil((used + 1) * cell) });
+  }
 }
+const opened = performance.now();
 
 // ------------------------------------------------------- window and shimmer ---
 $("close").addEventListener("click", () => close(null));

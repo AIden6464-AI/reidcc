@@ -601,8 +601,12 @@ tui_frames = ([Image.blend(ground, kdoors(k_closed), a) for a in (.25, .5, .75, 
               + [kdoors(f) for f in ignite_plain] + opened)
 TUI_SIZES = (40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 160, 180)   # columns; rows = cols x 0.42
 save_tui("gate", tui_frames, TUI_SIZES)
+# The TUI header (SPEC-one-look Part 6.3): the launcher's banner, resting in grey like the launcher's
+# (one emerald per screen: the footer's ● ready). Dark pixels are left out, so it sits on the terminal.
+BANNER_SIZES = (60, 70, 80, 90, 100, 110, 120, 130, 140)   # art columns; the TUI shows it from 100 terminal columns
+save_tui("banner", [Image.open(os.path.join(OUT, "banner.png")).convert("L").convert("RGB")], BANNER_SIZES, clear_below=14)
 with open(os.path.join(TUI, "tui.json"), "w") as f:
-    json.dump({"gate": list(TUI_SIZES), "bg": list(TUI_BG),
+    json.dump({"gate": list(TUI_SIZES), "banner": list(BANNER_SIZES), "bg": list(TUI_BG),
                "steps": [["fade_in", 4, 0, 180], ["ignite", N_TUI_IGNITE, 180, 180], ["open", N_TUI_OPEN, 360, 480]]}, f)
 sheet = Image.new("RGB", (k_closed.width * 4, k_closed.height * 2))
 for n, idx in enumerate((0, 3, 6, 9, 13, 17, 21, 24)):
