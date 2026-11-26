@@ -277,11 +277,19 @@ def clicks_while_opening(t, bin_, seen):
     second) holding nothing. A click on another row meanwhile must answer at once: it used to wait on the
     launcher's lock, and with the window build behind it the whole app could hang."""
     t.js("__reid.login(null)")  # cached: not signed in
-    press(t, "win_codex")
+    names = t.js("__reid.state().names")
+    t.js("__reid.selectRow(%d)" % names.index("win_codex"))
+    time.sleep(0.4)
     t0 = time.time()
-    r = t.js("""Promise.race([
-        window.__TAURI_INTERNALS__.invoke('select', {name: 'win_live', typed: ''}).then(() => 'answered'),
-        new Promise((ok) => setTimeout(() => ok('stuck'), 5000))])""")
+    # The click goes 50 ms after the press: sent back to back, `select` could reach the app first and the
+    # press would open win_live instead (a session window nothing closes, which codex_tui then picked up).
+    r = t.js("""(async () => {
+        __reid.button('open gate');
+        await new Promise((ok) => setTimeout(ok, 50));
+        return Promise.race([
+            window.__TAURI_INTERNALS__.invoke('select', {name: 'win_live', typed: ''}).then(() => 'answered'),
+            new Promise((ok) => setTimeout(() => ok('stuck'), 5000))]);
+    })()""")
     answered = time.time() - t0
     msg, end = "", time.time() + 15
     while time.time() < end and "signed in" not in (msg or ""):
@@ -289,7 +297,8 @@ def clicks_while_opening(t, bin_, seen):
         time.sleep(0.05)
     refused = time.time() - t0
     # Before the fix open gate held the lock from start to end, so the click could only answer after it.
-    check("a click during open gate's sign-in check answers before it ends", r == "answered" and answered < refused,
+    check("a click during open gate's sign-in check answers before it ends",
+          r == "answered" and answered < refused and "signed in" in (msg or ""),
           "%s after %.2fs; open gate finished after %.2fs: %s" % (r, answered, refused, msg))
 
 
