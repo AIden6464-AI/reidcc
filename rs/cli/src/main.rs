@@ -14,6 +14,7 @@ const HELP: &str = r#"reid -- Reidcc, in the terminal.
     reid <profile> [args]     start a session with that profile; extra args go to its engine
     reid -c / reid "do X"     anything that isn't a profile goes to the default profile's engine
     reid --resume [profile]   continue the last session (that profile, or the one it had)
+    reid --resume <profile> --id ID   continue that session, in this folder
     reid -l                   list profiles
     reid --stream <profile> [--read-only] [--resume ID] [--switch-from P] PROMPT
                               one headless turn, its events as JSON lines
@@ -127,7 +128,14 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
         "--resume" => {
             // reid --resume [profile] [args]: continue the last session
             let cfg = load_config(ctx)?;
-            let (name, cwd, sid, extra) = resume_target(ctx, &cfg, &args[1..]);
+            let (name, mut cwd, mut sid, mut extra) = resume_target(ctx, &cfg, &args[1..]);
+            // --id ID: that session in this folder (the chat window's open terminal), not the last one
+            if let Some(i) = extra.iter().position(|a| a == "--id") {
+                if let Some(id) = extra.get(i + 1).cloned() {
+                    (sid, cwd) = (id, py::getcwd());
+                    extra.drain(i..i + 2);
+                }
+            }
             let end = session::run(ctx, &cfg, &name, &cwd, &extra, Some(&sid))?;
             if let Some(rc) = session::window_end(&end) {
                 return Ok(rc);

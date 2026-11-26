@@ -115,6 +115,7 @@ class App {
   preview!: HTMLDivElement;
   bGo!: HTMLButtonElement;
   bResume!: HTMLButtonElement;
+  bChat!: HTMLButtonElement;
   bFix!: HTMLButtonElement;
 
   constructor() {
@@ -303,14 +304,17 @@ class App {
     this.bGo = button("open gate", () => this.go(false), true);
     this.bResume = button("resume", () => this.go(true));
     this.bResume.style.marginRight = "8px";
+    // the chat window on this folder and profile (SPEC-unified-interface Part 6)
+    this.bChat = button("open chat", () => this.call("chat_open"));
+    this.bChat.style.marginRight = "8px";
     const bConfig = button("open reid.json", () => this.action("open_config"));
     bConfig.style.marginLeft = "8px";
     // DOM order = Tk's creation order (open gate before resume); placed with `order`
     const bMem = button("open memory", () => this.action("open_memory"));
-    for (const [b, o] of [[bMem, 1], [bConfig, 2], [this.bGo, 6], [this.bResume, 5]] as const) b.style.order = String(o);
+    for (const [b, o] of [[bMem, 1], [bConfig, 2], [this.bChat, 5], [this.bResume, 6], [this.bGo, 7]] as const) b.style.order = String(o);
     spacer.style.order = "4";
-    for (const b of [bMem, bConfig, this.bGo, this.bResume]) b.style.height = "auto";
-    act.append(bMem, bConfig, spacer, this.bGo, this.bResume);
+    for (const b of [bMem, bConfig, this.bGo, this.bResume, this.bChat]) b.style.height = "auto";
+    act.append(bMem, bConfig, spacer, this.bGo, this.bResume, this.bChat);
     col.append(h, act);
     this.root.append(m);
   }
@@ -524,7 +528,8 @@ class App {
     const body = el("div", "sbody fbody");
     body.append(grid);
     this.fBar = el("div", "fbar");
-    this.fBar.append(button("open memory", () => this.action("open_memory")), button("open reid.json", () => this.action("open_config")));
+    // short labels: with open chat the bar must fit one line in the 500 px dock (Reid, 2026-11-26)
+    this.fBar.append(button("memory", () => this.action("open_memory")), button("reid.json", () => this.action("open_config")));
     f.append(head, body, this.fBar);
     this.root.append(f);
   }
@@ -554,6 +559,7 @@ class App {
       this.undo.push(() => { ch.text = old; });
     }
     this.put(this.eArgs, c.args);
+    this.put(this.bChat, this.fBar);
     this.put(this.bResume, this.fBar);
     this.put(this.bGo, this.fBar);
   }

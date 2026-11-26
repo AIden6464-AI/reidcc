@@ -2,6 +2,7 @@
 //! files as reid.py (vision\Spec\SPEC-rust-rewrite.md, stage 0). Python behaviour that shows in
 //! output is mirrored in `py` and `pyjson`.
 
+pub mod changes;
 pub mod engines;
 pub mod handoff;
 pub mod locks;

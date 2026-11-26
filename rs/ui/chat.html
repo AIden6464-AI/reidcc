@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Reidcc chat</title>
+    <link rel="stylesheet" href="/src/chat.css" />
+  </head>
+  <body>
+    <div id="frame">
+      <header id="bar" data-tauri-drag-region>
+        <span id="mark">RC</span>
+        <div id="where" data-tauri-drag-region></div>
+        <div id="meters"></div>
+        <div id="ctl">
+          <button id="min" tabindex="-1" aria-label="minimise">&#x2013;</button>
+          <button id="max" tabindex="-1" aria-label="maximise">&#x25A2;</button>
+          <button id="close" tabindex="-1" aria-label="close">&#x00D7;</button>
+        </div>
+      </header>
+      <div id="body">
+        <main id="stream"><div id="col"></div></main>
+        <aside id="side">
+          <section><h3>sessions</h3><div id="sessions"></div></section>
+          <section><h3>context</h3><div id="context"></div></section>
+          <section id="hsec" hidden><h3>.reid/handoff.md</h3><div id="handoff"></div></section>
+        </aside>
+      </div>
+      <footer id="composer">
+        <div id="note" hidden></div>
+        <textarea id="field" rows="3" spellcheck="false"></textarea>
+        <div id="controls">
+          <select id="pick"></select>
+          <button id="ro" class="toggle"><span class="m">·</span> read-only</button>
+          <span class="spacer"></span>
+          <button id="term" class="btn">open terminal</button>
+          <button id="go" class="btn primary">send</button>
+        </div>
+      </footer>
+    </div>
+    <script type="module" src="/src/chat.ts"></script>
+  </body>
+</html>

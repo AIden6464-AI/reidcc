@@ -3,6 +3,7 @@
 
 #![windows_subsystem = "windows"]
 
+mod chat;
 mod dock;
 mod fonts;
 mod gate;
@@ -502,6 +503,7 @@ fn main() {
     tauri::Builder::default()
         .manage(app_state)
         .manage(session::Sessions::default())
+        .manage(chat::Chats::default())
         .manage(dock::Dock::default())
         .manage(panel::Panel::default())
         .manage(update::Updates::default())
@@ -510,6 +512,9 @@ fn main() {
             panel::window_event(w, e); // before dock's: a closing window gives the launcher back first
             dock::window_event(w, e);
             sizes::window_event(w, e);
+            if let (Some(id), tauri::WindowEvent::Destroyed) = (w.label().strip_prefix(chat::PREFIX).and_then(|n| n.parse().ok()), e) {
+                w.app_handle().state::<chat::Chats>().end(id);
+            }
         })
         .register_uri_scheme_protocol("reid", |_ctx, req| {
             // reid://localhost/assets/... : the gate frames and the banner, straight from assets\
@@ -571,7 +576,9 @@ fn main() {
             session::sess_attach, session::sess_write, session::sess_resize, session::sess_meters, session::sess_close,
             session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control, dock::dock_grouped, rig::rig_list, rig::rig_save, rig::rig_delete, rig::rig_open, update::update_foot, update::update_install,
             update::update_check, settings::settings_get, settings::settings_set, settings::settings_plugins, settings::settings_open, settings::settings_change,
-            panel::panel, panel::launcher_control, session::sess_back, session::sess_shrink
+            panel::panel, panel::launcher_control, session::sess_back, session::sess_shrink,
+            chat::chat_open, chat::chat_info, chat::chat_send, chat::chat_stop, chat::chat_changed, chat::chat_file_diff,
+            chat::chat_holder, chat::chat_terminal, chat::chat_focus, chat::chat_handoff
         ])
         .run(tauri::generate_context!())
         .expect("Reidcc couldn't start");

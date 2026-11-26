@@ -200,7 +200,10 @@ def form_checks(t, cfgp, w0, h0):
         Math.round(e.getBoundingClientRect().right)).concat([Math.round(document.querySelector('.fbar').getBoundingClientRect().right)])""")
     check("every right edge lines up (fields, button columns, the bottom bar)", max(rights) - min(rights) <= 1, rights)
     bar = t.js("[...document.querySelector('.fbar').children].map(b => b.textContent)")
-    check("one bottom bar, open gate last", bar == ["open memory", "open reid.json", "resume", "open gate"], bar)
+    check("one bottom bar, open gate last", bar == ["memory", "reid.json", "open chat", "resume", "open gate"], bar)
+    fit = t.js("""(f => [new Set([...f.children].map(b => Math.round(b.getBoundingClientRect().top))).size,
+        Math.round([...f.children][0].getBoundingClientRect().left - f.getBoundingClientRect().left), f.scrollWidth <= f.clientWidth])(document.querySelector('.fbar'))""")
+    check("the bottom bar fits on one line at 500 px", fit[0] == 1 and fit[1] >= 0 and fit[2], fit)
     fonts = t.js("[getComputedStyle(document.querySelector('.fgrid > .lbl')).fontSize, getComputedStyle(document.querySelector('.wordmark')).fontSize]")
     check("labels 14 px, the wordmark 28 px", fonts == ["14px", "28px"], fonts)
     texts = t.js("[...document.querySelectorAll('#medium .fcell .check')].map(c => c.querySelector('.txt').textContent)")

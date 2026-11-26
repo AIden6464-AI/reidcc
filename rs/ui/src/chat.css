@@ -1,0 +1,104 @@
+@import "./tokens.css";
+/* The chat window (vision\Spec\SPEC-unified-interface.md Part 6; the design-pass mock is
+   vision\Spec\unified-interface\mock\chat.html). The frame and bar are the session window's. */
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--canvas); color: var(--text); overflow: hidden; }
+body { font: 14px/21px var(--ui); cursor: default; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: default; }
+button:focus { outline: none; }
+[hidden] { display: none !important; }
+
+#frame { position: fixed; inset: 0; display: flex; flex-direction: column; border: 1px solid var(--line); }
+#bar { flex: none; height: 36px; display: flex; align-items: center; gap: 16px; padding-left: 14px;
+       border-bottom: 1px solid var(--line); white-space: nowrap; font: 12px/16px var(--mono); user-select: none; }
+#mark { font-weight: 600; letter-spacing: 0.06em; color: var(--linework); }
+#where { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text2); }
+#where b { font-weight: 400; color: var(--text); }
+#meters { flex: none; color: var(--text2); font-variant-numeric: tabular-nums; pointer-events: none; }
+#meters .live { color: var(--emerald); }
+#meters .warn { color: var(--bronze); } #meters .hot { color: var(--oxide); }
+#ctl { flex: none; display: flex; height: 100%; }
+#ctl button { width: 44px; height: 100%; color: var(--text3); font: 14px/1 var(--ui);
+              transition: color 120ms var(--ease), background-color 120ms var(--ease); }
+#ctl button:hover { color: var(--text); background: var(--s2); }
+#ctl #close:hover { color: var(--oxide); }
+
+#body { flex: 1 1 auto; min-height: 0; display: flex; }
+
+/* the stream: one column of turns, no bubbles */
+#stream { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 20px 28px 8px;
+          scrollbar-width: thin; scrollbar-color: var(--line2) transparent; user-select: text; }
+#col { max-width: 760px; }
+.empty { color: var(--text3); font: 12px/18px var(--mono); }
+.ask { display: flex; gap: 10px; padding: 9px 12px; background: var(--s1); border-left: 1px solid var(--line2); margin: 0 0 14px; }
+.ask .who { font: 12px/21px var(--mono); color: var(--text3); white-space: nowrap; }
+.ask .q { white-space: pre-wrap; overflow-wrap: anywhere; }
+.reply .text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 10px; }
+.tool { font: 12px/20px var(--mono); color: var(--text3); display: flex; gap: 12px; min-width: 0; }
+.tool b { font-weight: 400; color: var(--text2); flex: none; min-width: 5ch; }
+.tool span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tools { margin: 0 0 10px; }
+.tools:empty { display: none; }
+.fail { font: 12px/18px var(--mono); color: var(--oxide); margin: 0 0 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.meta { font: 11px/16px var(--mono); color: var(--text3); margin: 8px 0 22px; font-variant-numeric: tabular-nums; }
+.caret { display: inline-block; width: 1ch; height: 15px; background: var(--text2); vertical-align: -2px; animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* changed: this turn's git diff, collapsible; a file opens to its diff */
+.changed { background: var(--s2); border: 1px solid var(--line); margin: 4px 0 0; font: 12px/20px var(--mono); }
+.changed .head { display: flex; gap: 14px; padding: 6px 12px; color: var(--text2); width: 100%; text-align: left; }
+.changed .head:hover, .changed .file:hover { color: var(--text); }
+.changed .head .tw { margin-left: auto; color: var(--text3); }
+.changed .file { display: flex; gap: 14px; padding: 2px 12px 2px 28px; color: var(--text); width: 100%; text-align: left; }
+.changed .file .n { margin-left: auto; font-variant-numeric: tabular-nums; }
+.changed.shut .file, .changed.shut .diff { display: none; }
+.plus { color: var(--text); } .minus { color: var(--oxide); }
+.diff { margin: 4px 12px 6px 28px; padding: 6px 10px; background: var(--canvas); border-left: 1px solid var(--line2);
+        white-space: pre; overflow-x: auto; color: var(--text2); user-select: text; }
+.diff .a { color: var(--text); } .diff .d { color: var(--oxide); } .diff .h { color: var(--text3); }
+
+/* the switch divider: a hairline with the handoff in its middle */
+.switch { display: flex; align-items: center; gap: 12px; margin: 6px 0 22px; font: 12px/16px var(--mono); color: var(--linework); }
+.switch::before, .switch::after { content: ""; flex: 1; height: 1px; background: var(--line2); }
+.switch .t3 { color: var(--text3); }
+.link { color: var(--text2); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
+.link:hover { color: var(--text); }
+
+/* the sidebar; it folds away when the window is narrow */
+#side { flex: none; width: 272px; border-left: 1px solid var(--line); padding: 16px 0; font: 12px/18px var(--mono); overflow-y: auto; user-select: none; }
+@media (max-width: 900px) { #side { display: none; } }
+#side h3 { margin: 0 16px 8px; font: 11px/16px var(--mono); color: var(--text3); font-weight: 400; letter-spacing: 0.04em; }
+#side section { margin-bottom: 22px; }
+.row { display: flex; gap: 8px; padding: 5px 16px; color: var(--text2); }
+.row.sel { background: var(--stone); color: var(--text); }
+.row .r, .kv .r.t3 { margin-left: auto; color: var(--text3); }
+.kv { display: flex; padding: 2px 16px; color: var(--text2); }
+.kv .r { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
+.kv .link { margin: 0; }
+
+/* the composer */
+#composer { flex: none; border-top: 1px solid var(--line); padding: 12px 28px 14px; }
+#note { font: 12px/18px var(--mono); color: var(--text2); margin: 0 0 8px; display: flex; gap: 14px; flex-wrap: wrap; }
+#note .lbl { color: var(--bronze); }
+#note .act { color: var(--text); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
+#field { display: block; width: 100%; resize: none; background: var(--s1); border: 1px solid var(--line); outline: none;
+         min-height: 64px; max-height: 40vh; padding: 10px 12px; color: var(--text); font: 14px/21px var(--ui); }
+#field:focus { border-color: var(--line2); }
+#field::placeholder { color: var(--text3); }
+#controls { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.btn { height: 30px; padding: 0 14px; background: var(--s2); color: var(--text); font: 13px var(--ui); white-space: nowrap; border: 1px solid transparent; }
+.btn:hover { background: var(--stone); }
+.btn:focus-visible, .toggle:focus-visible, #pick:focus-visible { border-color: var(--line2); }
+.btn.primary { background: var(--text); color: var(--canvas); }
+.btn.primary:hover { background: var(--linework); }
+.btn.stop { background: var(--s2); color: var(--oxide); }
+.btn.stop:hover { background: var(--stone); }
+.btn:disabled, .btn.primary:disabled { background: var(--canvas); color: var(--text3); border-color: var(--line); }
+#pick { height: 30px; padding: 0 8px; background: var(--s1); border: 1px solid var(--line); outline: none; color: var(--text);
+        font: 12px var(--mono); }
+#pick option { background: var(--s1); color: var(--text); }
+.toggle { height: 30px; padding: 0 8px; font: 12px var(--mono); color: var(--text2); border: 1px solid transparent; }
+.toggle .m { color: var(--text); }
+.toggle:hover { color: var(--text); }
+.spacer { flex: 1; }

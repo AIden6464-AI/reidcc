@@ -229,7 +229,7 @@ Given after Milestone 1 was built, in answer to the open questions it left. His 
   runs with a terminal open. It is looser than sharing, though. A read-only turn also runs beside a
   headless write turn, where a shared lock would refuse it, and a review never blocks a write.
   Default: keep it as built. Say if reviews should wait for a running write instead.
-- **Milestone 2 design pass (proposal, 2026-11-25; Reid hasn't reviewed it).** The mock is
+- **Milestone 2 design pass (proposal, 2026-11-25; Reid approved it and its four defaults on 2026-11-26).** The mock is
   `unified-interface/mock/chat.html`, with the composer states at `chat.html#composer`. Screenshots sit
   next to it (`chat.png`, `composer.png`).
   - **Frame:** the session window's own frame, unchanged.
@@ -281,3 +281,21 @@ Given after Milestone 1 was built, in answer to the open questions it left. His 
        the launcher. Default: one bone button per window.
     3. Should the folder refusal name the window's pid? The core names a writer's pid, not a window's.
        Default: no pid for windows.
+
+- **Milestone 2 chat window, built (2026-11-26).** `rs/ui/chat.html` with `src/chat.ts` and `src/chat.css`
+  holds the page. `rs/app/src/chat.rs` runs each turn as a `reid --stream` child. `rs/core/src/changes.rs`
+  computes the per-turn git diff from scratch-index trees, so the real index is never touched.
+  - **Launcher:** `open chat` sits beside `resume`. In the 500 px form the bar's first two buttons now
+    read `memory` and `reid.json`, which keeps the bar on one line with 10 px spare (sizes_flow checks it).
+  - **Open terminal:** runs `reid --resume <profile> --id <id>` in a session window over the chat. That
+    `--id` is new in the CLI: that session, in this folder.
+  - **Refusals** become the composer note:
+    - `in terminal` with `focus terminal`. It clears once the terminal lets go, polled through
+      `locks::holder`.
+    - `locked · A Reidcc window is open in this folder.` (no PID) with `focus window` and `send read-only`.
+    - A refused switch leaves no divider, and the ask stays in the field.
+  - **Left out for now:**
+    - The bar's `limit` figure: `reid --stream` doesn't report one yet.
+    - Session windows listed in the sidebar: it shows only the chat's own sessions.
+    - The `gui · tui` toggle, which waits for the TUI.
+  - **Tests:** `rs/tests/chat_flow.py` runs the acceptance test above, 24/24.

@@ -112,6 +112,13 @@ impl Sessions {
         self.map.lock().unwrap().get(&id).cloned()
     }
 
+    /// A session window open in `folder` (the chat window's `focus window`).
+    pub fn in_folder(&self, folder: &str) -> Option<u32> {
+        let key = |f: &str| reidcc::py::normcase(f.trim_end_matches(['\\', '/']));
+        self.map.lock().unwrap().iter().filter(|(_, s)| !s.out.lock().unwrap().ended && key(&s.cwd) == key(folder))
+            .map(|(&id, _)| id).max()
+    }
+
     /// A rig's pane: the session's profile and real folder.
     pub fn leaf(&self, id: u32) -> Option<Value> {
         let s = self.get(id)?;

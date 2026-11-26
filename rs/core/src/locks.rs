@@ -87,6 +87,23 @@ pub fn session(ctx: &Ctx, rec: &Value) -> R<Lock> {
     }
 }
 
+/// Who has session `id` open (its record, `{}` if unreadable), or None when nobody does. Opening it to
+/// write is the only test Windows gives; it's let go at once.
+pub fn holder(ctx: &Ctx, id: &str) -> Option<Value> {
+    if !valid_id(id) {
+        return None;
+    }
+    let path = py::join(&ctx.home, &["sessions", &format!("{id}.lock")]);
+    if !py::exists(&path) {
+        return None;
+    }
+    match std::fs::OpenOptions::new().write(true).share_mode(FILE_SHARE_READ).open(&path) {
+        Ok(_) => None,
+        Err(_) => Some(std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_else(|| serde_json::json!({}))),
+    }
+}
+
 /// The folder's lock file and the file naming its writer.
 fn folder_paths(ctx: &Ctx, folder: &str) -> (String, String) {
     let key = py::normcase(py::abspath(folder).trim_end_matches(['\\', '/']));
@@ -150,6 +167,7 @@ mod tests {
         let e = session(&ctx, &rec).err().unwrap().0;
         assert!(e.contains(&format!("pid {}", std::process::id())), "{e}");
         assert!(dir.join("sessions").join("abc-123.json").exists());
+        assert_eq!(holder(&ctx, "abc-123").and_then(|h| h["pid"].as_u64()), Some(std::process::id() as u64));
         let f = folder(&ctx, "C:\\Work\\", None).unwrap();
         assert!(folder(&ctx, "c:\\work", Some("x")).err().unwrap().0.contains("pid"), "same folder, any case or trailing slash");
         assert!(folder_shared(&ctx, "C:\\Work").err().unwrap().0.contains("writing in this folder"));
@@ -158,6 +176,7 @@ mod tests {
         assert!(folder(&ctx, "C:\\Work", None).err().unwrap().0.contains("window is open"), "two windows, no writer");
         drop((w1, w2));
         assert!(!dir.join("sessions").join("abc-123.json").exists());
+        assert_eq!(holder(&ctx, "abc-123"), None, "released");
         assert!(session(&ctx, &rec).is_ok() && folder(&ctx, "C:\\Work", None).is_ok());
         assert!(session(&ctx, &record("..\\x", "claude", "m", "f", "write")).is_err());
         let _ = std::fs::remove_dir_all(dir);
