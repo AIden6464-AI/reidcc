@@ -122,6 +122,34 @@ Claude Code (write · stream) → **Switch ⇄** (`.reid/handoff.md`) → Codex 
 | Milestone 2 | Unified GUI (`rs/app` + `rs/ui`) & TUI (`rs/cli`) | Build the engraved-stone GUI and matching TUI over the proven Milestone 1 backend, refining visual craft into a true 1:1 Reidcc experience. |
 | Deferred | Explicitly out of scope | Central boss AI / conductor LLM, MCP delegation server, second desktop app, OpenCode backend/engine, agy, crons, and messaging gateways. |
 
+## Part 6 — Milestone 2 Decisions (Reid, 2026-11-25)
+
+Given after Milestone 1 was built, in answer to the open questions it left. His words are quoted.
+
+- **Shape:** "GUI first as a new window type spawning reid --stream as a child process, TUI second." The
+  chat window sits beside the existing session windows; it replaces nothing. A turn is a
+  `reid --stream` child, so a crash in a turn can't take Reidcc down, and `stop` kills that child (its
+  kill-on-close job takes the engine with it).
+- **Acceptance test:** "disposable repo → Claude stream + stop → switch → codex read-only with
+  .reid/handoff.md divider and context unknown → open terminal with --resume <id> and composer lock
+  state." Spelled out: open the chat window on a disposable git repo; send a Claude prompt and watch it
+  stream; stop a turn; flip `switch → codex` with `read-only` on and see the `.reid/handoff.md` divider,
+  then the Codex review with `context unknown`; press `open terminal` (`--resume <id>`) and see the
+  composer show the lock cleanly until the terminal closes.
+- **Write turns:** "Keep Claude write turns edit-only (acceptEdits) for Milestone 2 and use open
+  terminal for shell/tests. Defer --permission-prompt-tool." A per-profile opt-in to allow the shell
+  may come later.
+- **Folder lock:** "Keep exclusive folder locks for write turns, allow read-only turns to share the
+  folder lock, and show a clean composer refusal with a focus window / read-only option when blocked."
+- **Tags:** "Match built SPEC-one-look (lowercase tags)." This settles the Part 2 conflict: lowercase.
+- **Diff:** "compute collapsible diff summary from git diff on Done." No engine-specific `diff` event:
+  `git diff --stat` (and the full diff on expand) after each turn, the same for Claude and Codex.
+- **History:** "defer loading old Claude/Codex transcripts to Milestone 2.1." Milestone 2 shows the
+  live turns and the handoff.
+- **Codex writes:** "add one Codex write check to milestone1_flow.py."
+- **Next:** "do the short design pass for the chat window composer and stream against the real
+  launcher before writing UI code."
+
 ## Sources
 
 1. `rs/ui/src/tokens.css` — Exact hex palette, font stacks, and motion curve.
@@ -187,3 +215,69 @@ Claude Code (write · stream) → **Switch ⇄** (`.reid/handoff.md`) → Codex 
     - The engine runs in a kill-on-close job, so killing `reid.exe` also takes the engine down.
   - Proof: `rs/tests/milestone1_flow.py` 25/25 (real Claude haiku and Codex; it deletes its sessions
     afterwards).
+  - **Hardened (`74e8484`):**
+    - The prompt is written on its own thread, so a long one can't deadlock on a full pipe.
+    - The handoff lists a new folder as one line.
+    - `.reid\.gitignore` holds `*`.
+    - A lock's records are removed while it's still held.
+    - A Codex `resume --last` onto a thread open elsewhere is stopped.
+    - Claude `-c` says it can't be locked.
+  - **Tests now:** 29 checks, adding a 22 KB prompt on stdin, `.reid` hidden from git, and a Codex
+    write turn (Part 6).
+- **Read-only turns and the folder lock (Part 6).** Reid's call says read-only turns share the folder
+  lock. As built they take no folder lock at all, which already gives what he asked for: a Codex review
+  runs with a terminal open. It is looser than sharing, though. A read-only turn also runs beside a
+  headless write turn, where a shared lock would refuse it, and a review never blocks a write.
+  Default: keep it as built. Say if reviews should wait for a running write instead.
+- **Milestone 2 design pass (proposal, 2026-11-25; Reid hasn't reviewed it).** The mock is
+  `unified-interface/mock/chat.html`, with the composer states at `chat.html#composer`. Screenshots sit
+  next to it (`chat.png`, `composer.png`).
+  - **Frame:** the session window's own frame, unchanged.
+    - Left of the bar: the RC mark, the folder in bone, then `profile · engine · read-only` in text-2.
+    - Right of the bar: `● 04:12 · context 41% | context unknown · limit 61%`, then `– ☐ ×`.
+    - The emerald dot shows only while a turn runs. An idle window shows `ready` in text-2.
+    - The `gui · tui` toggle waits for the TUI.
+  - **Stream:** one column, at most 760 px wide, with no bubbles.
+    - A prompt is an `--s1` band with a 1 px `--line2` left rule. It starts with
+      `main · claude ›` in text-3 mono, matching the TUI's prompt.
+    - Tool calls are one mono line each: a verb in text-2 (`read`, `edit`, `shell`, `patch`), then the
+      summary in text-3.
+    - Replies are bone sans text.
+    - Each turn ends with a text-3 meta line: `00:38 · context 41% · $0.04 · edit-only`, or `stopped`.
+  - **Changed:** after a write turn ends, a `--s2` block shows `git diff --stat` plus new files,
+    leaving `.reid` out. It's collapsed to one line (`▾ changed · 1 file · +14 −3`), opens to show each
+    file, and each file opens to its full diff.
+    - Added lines and the `+` count are bone. Removed lines and the `−` count are oxide, never emerald.
+    - Read-only turns get no block, and neither does a folder that isn't a git repo.
+  - **Switch divider:** a `--line2` hairline with `switch · main · claude → review · codex · read-only`
+    in linework in its middle, then a `.reid/handoff.md` link that opens the file.
+  - **Sidebar (272 px, collapsible):**
+    - `sessions` lists this folder's sessions: the chat window's own, plus session windows read from
+      `sessions\*.json` (`terminal`). The selected row is the `--stone` bar.
+    - `context` shows each profile's last figure, the limit and the cost.
+    - `.reid/handoff.md` shows from, when written, the changed count and `open`.
+    - Headers are lowercase.
+  - **Composer:**
+    - An `--s1` field with a 1 px `--line2` border on focus.
+    - Under it: the profile picker (`main · claude ▾`), `✓ read-only` (or `·` when off),
+      `open terminal`, then the window's one bone button.
+    - The bone button is `send`. While a turn runs it becomes `stop` in oxide text. When the picker
+      names another profile, it reads `switch → codex`.
+  - **Switch, step by step:** picking another profile and pressing `switch → codex` writes the handoff
+    from the current profile, draws the divider, and sends the typed prompt as the new profile's first
+    turn.
+    - No separate note box: the prompt is the ask. `--tests` stays unused in Milestone 2.
+    - Each profile keeps its own session inside the window (`--resume <id>` per profile). Switching back
+      continues Claude's session, with Codex's handoff in front.
+  - **Refusals** take one line above the field, with a bronze label (busy, not an error) and actions,
+    and `send` takes the disabled look:
+    - `locked · A Reidcc window is open in this folder. · focus window · send read-only`
+    - `in terminal · main · claude is open in a terminal. It comes back here when that closes. · focus terminal`
+    - Engine errors go into the stream as an oxide line.
+  - **Open questions (defaults if Reid doesn't say):**
+    1. Where the chat window opens from. Default: a secondary `open chat` button beside `resume` on
+       the launcher; `open gate` doesn't change.
+    2. `send` as the window's bone primary. One-look keeps bone for `open gate`, but that rule is about
+       the launcher. Default: one bone button per window.
+    3. Should the folder refusal name the window's pid? The core names a writer's pid, not a window's.
+       Default: no pid for windows.

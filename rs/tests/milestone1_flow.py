@@ -222,6 +222,16 @@ def main():
             ok, why = False, "hung: no answer in 180 s"
         check("a %d KB prompt on stdin streams through (no pipe deadlock)" % (len(long) // 1024), len(long) > 16384 and ok, why)
 
+        # ---- 2c: Codex in write mode (workspace-write sandbox) -------------------------------------
+        evs, rc, err = r.stream(["cx", "Create the file codex.txt containing exactly the text: codex wrote this. "
+                                       "Change nothing else, then say done in one line."])
+        cf = os.path.join(r.work, "codex.txt")
+        got = open(cf, encoding="utf-8").read().strip().rstrip(".") if os.path.exists(cf) else None  # models add a full stop
+        check("codex write turn: codex.txt made, done 0", got == "codex wrote this" and of(evs, "done") == [{"type": "done", "exit_code": 0}],
+              (got, rc, evs[-3:], err[-300:]))
+        left = os.listdir(os.path.join(r.home, "locks"))
+        check("... and it let go of the folder", left == [], left)
+
         # ---- 3: locks ----------------------------------------------------------------------------
         a, aev = r.start(["cl", "Write a 2500-word story about a lighthouse keeper. Output only the story, no tools."])
         end = time.time() + 90

@@ -1,0 +1,202 @@
+<!doctype html>
+<!-- Design-pass mock of the Milestone 2 chat window (SPEC-unified-interface Part 6). Static: no
+     behaviour, made to be looked at beside the real launcher. Tokens are the app's own file.
+     chat.html            the window mid-session (Claude turn, switch, Codex review streaming)
+     chat.html#composer   the composer's five states, one per row -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Reidcc chat window (mock)</title>
+<style>
+@import "../../../../rs/ui/src/tokens.css";
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--canvas); color: var(--text); }
+body { font: 14px/21px var(--ui); overflow: hidden; }
+.mono { font-family: var(--mono); }
+.t2 { color: var(--text2); } .t3 { color: var(--text3); } .ox { color: var(--oxide); } .br { color: var(--bronze); }
+
+/* the frame and Telemetry Bar: the session window's, unchanged (session.css) */
+#frame { position: fixed; inset: 0; display: flex; flex-direction: column; border: 1px solid var(--line); }
+#bar { flex: none; height: 36px; display: flex; align-items: center; gap: 16px; padding-left: 14px;
+       border-bottom: 1px solid var(--line); white-space: nowrap; font: 12px/16px var(--mono); }
+#mark { font-weight: 600; letter-spacing: 0.06em; color: var(--linework); }
+#where { flex: 1; } #where b { font-weight: 400; color: var(--text); } #where span { color: var(--text2); }
+#meters { color: var(--text2); font-variant-numeric: tabular-nums; }
+#meters .live { color: var(--emerald); }
+#ctl { display: flex; height: 100%; } #ctl i { width: 44px; display: grid; place-items: center; color: var(--text3); font: 14px var(--ui); font-style: normal; }
+
+#body { flex: 1; min-height: 0; display: flex; }
+
+/* the stream: one column of turns, no bubbles */
+#stream { flex: 1; min-width: 0; overflow: hidden; padding: 20px 28px 0; }
+.col { max-width: 760px; }
+.ask { display: flex; gap: 10px; padding: 9px 12px; background: var(--s1); border-left: 1px solid var(--line2); margin: 0 0 14px; }
+.ask .who { font: 12px/21px var(--mono); color: var(--text3); white-space: nowrap; }
+.reply p { margin: 0 0 10px; color: var(--text); }
+.tool { font: 12px/20px var(--mono); color: var(--text3); display: flex; gap: 12px; }
+.tool b { font-weight: 400; color: var(--text2); width: 5ch; }
+.tools { margin: 0 0 10px; }
+.meta { font: 11px/16px var(--mono); color: var(--text3); margin: 8px 0 22px; font-variant-numeric: tabular-nums; }
+
+/* changed: git diff --stat after the turn, collapsible; the full diff per file on expand */
+.changed { background: var(--s2); border: 1px solid var(--line); margin: 4px 0 0; font: 12px/20px var(--mono); }
+.changed .head { display: flex; gap: 14px; padding: 6px 12px; color: var(--text2); }
+.changed .head .tw { color: var(--text3); }
+.changed .file { display: flex; gap: 14px; padding: 2px 12px 2px 28px; color: var(--text); }
+.changed .file .n { margin-left: auto; font-variant-numeric: tabular-nums; }
+.plus { color: var(--text); } .minus { color: var(--oxide); }
+.diff { margin: 4px 0 6px 28px; padding: 6px 10px; background: var(--canvas); border-left: 1px solid var(--line2); white-space: pre; color: var(--text2); }
+.diff .a { color: var(--text); } .diff .d { color: var(--oxide); } .diff .h { color: var(--text3); }
+
+/* the switch divider: a hairline with the handoff in its middle */
+.switch { display: flex; align-items: center; gap: 12px; margin: 6px 0 22px; font: 12px/16px var(--mono); color: var(--linework); }
+.switch::before, .switch::after { content: ""; flex: 1; height: 1px; background: var(--line2); }
+.switch .t3 { color: var(--text3); }
+.caret { display: inline-block; width: 1ch; height: 15px; background: var(--text2); vertical-align: -2px; animation: blink 1.1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* the sidebar: sessions, context, handoff; collapsible */
+#side { flex: none; width: 272px; border-left: 1px solid var(--line); padding: 16px 0; font: 12px/18px var(--mono); }
+#side h3 { margin: 0 16px 8px; font: 11px/16px var(--mono); color: var(--text3); font-weight: 400; letter-spacing: 0.04em; }
+#side section { margin-bottom: 22px; }
+.row { display: flex; gap: 8px; padding: 5px 16px; color: var(--text2); }
+.row.sel { background: var(--stone); color: var(--text); }
+.row .r { margin-left: auto; color: var(--text3); font-variant-numeric: tabular-nums; }
+.kv { display: flex; padding: 2px 16px; color: var(--text2); } .kv .r { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
+.kv .r.t3 { color: var(--text3); }
+.link { color: var(--text2); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
+
+/* the composer */
+#composer { flex: none; border-top: 1px solid var(--line); padding: 12px 28px 14px; background: var(--canvas); }
+.note { font: 12px/18px var(--mono); color: var(--text2); margin: 0 0 8px; display: flex; gap: 14px; }
+.note .act { color: var(--text); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
+.field { background: var(--s1); border: 1px solid var(--line2); min-height: 64px; padding: 10px 12px; color: var(--text); }
+.field.idle { border-color: var(--line); color: var(--text3); }
+.controls { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.btn { height: 30px; padding: 0 14px; display: inline-flex; align-items: center; background: var(--s2); color: var(--text); font: 13px var(--ui); white-space: nowrap; }
+.btn.primary { background: var(--text); color: var(--canvas); }
+.btn.stop { color: var(--oxide); }
+.btn.off { background: var(--canvas); color: var(--text3); border: 1px solid var(--line); }
+.select { height: 30px; padding: 0 10px; display: inline-flex; align-items: center; gap: 18px; background: var(--s1); border: 1px solid var(--line); font: 12px var(--mono); color: var(--text); }
+.select::after { content: "▾"; color: var(--text3); }
+.toggle { font: 12px var(--mono); color: var(--text2); padding: 0 8px; }
+.toggle .m { color: var(--text); }
+.spacer { flex: 1; }
+
+/* #composer: the states sheet */
+#states { display: none; padding: 18px 28px; }
+#states .lbl { font: 11px/16px var(--mono); color: var(--text3); margin: 0 0 6px; letter-spacing: 0.04em; }
+#states .state { margin-bottom: 22px; }
+body.states #frame { display: none; } body.states #states { display: block; } body.states { overflow: auto; }
+</style>
+</head>
+<body>
+<div id="frame">
+  <div id="bar">
+    <span id="mark">RC</span>
+    <span id="where"><b>reidcc</b> <span>· review · codex · read-only</span></span>
+    <span id="meters"><span class="live">●</span> 04:12 · context unknown · limit 61%</span>
+    <span id="ctl"><i>–</i><i>☐</i><i>×</i></span>
+  </div>
+  <div id="body">
+    <div id="stream"><div class="col">
+      <div class="ask"><span class="who">main · claude ›</span><span>Make the folder lock's error name the window's pid, and add a test for it.</span></div>
+      <div class="reply">
+        <div class="tools">
+          <div class="tool"><b>read</b>rs\core\src\locks.rs</div>
+          <div class="tool"><b>edit</b>rs\core\src\locks.rs</div>
+          <div class="tool"><b>edit</b>rs\core\src\locks.rs</div>
+        </div>
+        <p>The shared lock now writes a sidecar with the window's pid, and the writer's refusal reads it. The test opens two windows and checks the message names one of them.</p>
+        <div class="changed">
+          <div class="head"><span>▾ changed</span><span>1 file</span><span class="plus">+14</span><span class="minus">−3</span><span class="tw spacer"></span><span class="tw">git diff · after the turn</span></div>
+          <div class="file"><span>rs\core\src\locks.rs</span><span class="n"><span class="plus">+14</span> <span class="minus">−3</span></span></div>
+          <div class="diff"><span class="h">@@ -112,6 +112,9 @@ pub fn folder(</span>
+<span class="d">-            None =&gt; err("A Reidcc window is open in this folder."),</span>
+<span class="a">+            None =&gt; match window(&amp;side) {</span>
+<span class="a">+                Some(w) =&gt; err(format!("A Reidcc window is open in this folder{}.", holder_pid(&amp;w))),</span>
+<span class="a">+                None =&gt; err("A Reidcc window is open in this folder."),</span></div>
+        </div>
+        <div class="meta">00:38 · context 41% · $0.04 · edit-only</div>
+      </div>
+
+      <div class="switch"><span>switch</span><span class="t3">main · claude → review · codex · read-only</span><span class="link">.reid/handoff.md</span></div>
+
+      <div class="ask"><span class="who">review · codex ›</span><span>Review the change. Is the sidecar safe if the window crashes?</span></div>
+      <div class="reply">
+        <div class="tools">
+          <div class="tool"><b>shell</b>git diff -- rs/core/src/locks.rs</div>
+          <div class="tool"><b>shell</b>rg -n "fn window" rs/core/src</div>
+        </div>
+        <p>Yes for the lock itself: Windows closes the handle when the process dies. The sidecar can outlive it, but <span class="mono">writer()</span> already checks the pid is alive before naming it<span class="caret"></span></p>
+      </div>
+    </div></div>
+
+    <div id="side">
+      <section>
+        <h3>sessions</h3>
+        <div class="row"><span>main · claude</span><span class="r">write</span></div>
+        <div class="row sel"><span>review · codex</span><span class="r">read-only</span></div>
+        <div class="row"><span>main · claude</span><span class="r">terminal</span></div>
+      </section>
+      <section>
+        <h3>context</h3>
+        <div class="kv"><span>main · claude</span><span class="r">41%</span></div>
+        <div class="kv"><span>review · codex</span><span class="r t3">unknown</span></div>
+        <div class="kv"><span>limit</span><span class="r">61%</span></div>
+        <div class="kv"><span>cost</span><span class="r">$0.04</span></div>
+      </section>
+      <section>
+        <h3>.reid/handoff.md</h3>
+        <div class="kv"><span>from</span><span class="r">main · claude</span></div>
+        <div class="kv"><span>written</span><span class="r">14:02</span></div>
+        <div class="kv"><span>changed</span><span class="r">1 file · <span class="plus">+14</span> <span class="minus">−3</span></span></div>
+        <div class="kv"><span class="link">open</span></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="composer">
+    <div class="field idle">Ask review · codex…</div>
+    <div class="controls">
+      <span class="select">review · codex</span>
+      <span class="toggle"><span class="m">✓</span> read-only</span>
+      <span class="spacer"></span>
+      <span class="btn">open terminal</span>
+      <span class="btn stop">stop</span>
+    </div>
+  </div>
+</div>
+
+<div id="states">
+  <div class="state">
+    <div class="lbl">ready</div>
+    <div class="field">Add a note to the README about read-only turns.</div>
+    <div class="controls"><span class="select">main · claude</span><span class="toggle"><span class="m">·</span> read-only</span><span class="spacer"></span><span class="btn">open terminal</span><span class="btn primary">send</span></div>
+  </div>
+  <div class="state">
+    <div class="lbl">a turn is running</div>
+    <div class="field idle">Ask main · claude…</div>
+    <div class="controls"><span class="select">main · claude</span><span class="toggle"><span class="m">·</span> read-only</span><span class="spacer"></span><span class="btn">open terminal</span><span class="btn stop">stop</span></div>
+  </div>
+  <div class="state">
+    <div class="lbl">another profile picked</div>
+    <div class="field">Review the change. Is the sidecar safe if the window crashes?</div>
+    <div class="controls"><span class="select">review · codex</span><span class="toggle"><span class="m">✓</span> read-only</span><span class="spacer"></span><span class="btn">open terminal</span><span class="btn primary">switch → codex</span></div>
+  </div>
+  <div class="state">
+    <div class="lbl">a write turn is refused</div>
+    <div class="note"><span class="br">locked</span><span>A Reidcc window is open in this folder.</span><span class="act">focus window</span><span class="act">send read-only</span></div>
+    <div class="field">Add a note to the README about read-only turns.</div>
+    <div class="controls"><span class="select">main · claude</span><span class="toggle"><span class="m">·</span> read-only</span><span class="spacer"></span><span class="btn">open terminal</span><span class="btn off">send</span></div>
+  </div>
+  <div class="state">
+    <div class="lbl">this session is open in a terminal</div>
+    <div class="note"><span class="br">in terminal</span><span>main · claude is open in a terminal. It comes back here when that closes.</span><span class="act">focus terminal</span></div>
+    <div class="field idle">Ask main · claude…</div>
+    <div class="controls"><span class="select">main · claude</span><span class="toggle"><span class="m">·</span> read-only</span><span class="spacer"></span><span class="btn off">open terminal</span><span class="btn off">send</span></div>
+  </div>
+</div>
+<script>if (location.hash === "#composer") document.body.classList.add("states");</script>
+</body>
+</html>
