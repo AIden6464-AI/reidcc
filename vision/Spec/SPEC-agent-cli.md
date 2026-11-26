@@ -1,7 +1,8 @@
 # SPEC: the agent CLI that sits on top of agent CLIs
 
 Status: SPEC 2026-11-23. Idea, not scheduled. Nothing here is built. An outside review was added
-2026-11-25 (Part 7); its calls are suggestions, not decisions.
+2026-11-25 (Part 7); its calls are suggestions, not decisions. The command center (a separate app with a
+conductor) is replaced by `SPEC-unified-interface.md` (Reid, 2026-11-25); Part 7's plumbing carries over.
 
 > "Idea   Spec a doc to have Gemini 4 argon and codex gpt 6.2 sol  act like there new users of Reidcc and saw
 > the Reddit post and is installing it and useing what kind of parts the user likes wants or hopefulness for the

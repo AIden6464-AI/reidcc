@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reidcc — Unified GUI &amp; TUI Vision Blueprint (Rev 4)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Utilitarian · Technical Vision Spec (Rev 4: Grounded in Reidcc's Real tokens.css, Palette, Voice & Dual GUI+TUI) · answer-first compact hero · direct stack -> real Reidcc GUI+TUI surface & voice contract -> why no boss AI -> 4 code-verified Rust contracts -> build order & naming · Space Grotesk + Inter + IBM Plex Mono · Crisp Gallery White (#FFFFFF) + Cobalt (#1D4ED8 / #1E40AF) + Emerald (#047857) · 0px radius · answer-first metric strip · real #040404 engraved-stone GUI + TUI SVG schematic · 3 inline SVG diagrams + 3 open tables */
+
+:root {
+  --paper: #FFFFFF;
+  --ink: #111318;
+  --ink2: #2B303A;
+  --mute: #475060;
+  --hair: #D8DCE5;
+  --accent: #1D4ED8;
+  --accent-text: #1E40AF;
+  --accent-2: #047857;
+  --accent-2-text: #065F46;
+  --band: #F4F6F9;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  padding: 68px clamp(24px, 10.4vw, 112px) 92px;
+  background: var(--paper);
+  color: var(--ink);
+}
+
+a {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-thickness: 1px;
+}
+
+a:hover { color: var(--ink); }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  column-gap: 24px;
+}
+
+.col-left { grid-column: 1 / span 4; }
+.col-right { grid-column: 5 / -1; }
+
+.measure { max-width: 66ch; }
+
+/* Hero */
+header.hero {
+  padding-bottom: 40px;
+  border-bottom: 2px solid var(--ink);
+}
+
+h1 {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: clamp(36px, 4.4vw, 52px);
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+  margin: 0 0 18px;
+  max-width: 24ch;
+  text-wrap: balance;
+  color: var(--ink);
+}
+
+.deck {
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--ink2);
+  max-width: 64ch;
+  margin: 0 0 32px;
+}
+
+.metrics-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--hair);
+}
+
+.metric-val {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.metric-val.accent { color: var(--accent-text); }
+.metric-val.live { color: var(--accent-2-text); }
+
+.metric-desc {
+  margin-top: 6px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--mute);
+}
+
+/* Sections */
+.sec { margin-top: 68px; }
+
+h2 {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: clamp(24px, 2.5vw, 30px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  margin: 0 0 16px;
+  color: var(--ink);
+  text-wrap: balance;
+}
+
+h3 {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.3;
+  margin: 0 0 8px;
+  color: var(--ink);
+}
+
+p {
+  margin: 0 0 16px;
+  color: var(--ink2);
+}
+
+p:last-child { margin-bottom: 0; }
+
+code {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 0.9em;
+  color: var(--ink);
+}
+
+/* Open multi-column strips (0 cards) */
+.three-col {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+  margin-top: 28px;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px;
+  margin-top: 24px;
+}
+
+.col-item {
+  border-top: 1px solid var(--hair);
+  padding-top: 16px;
+}
+
+.col-item.focal {
+  border-top: 2px solid var(--accent);
+}
+
+/* Inline color swatch for token table */
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  vertical-align: -1px;
+  margin-right: 7px;
+  border: 1px solid #9CA3AF;
+}
+
+/* Figures & SVGs */
+figure {
+  margin: 32px 0 0;
+  padding: 0;
+}
+
+.fig-title {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+  margin: 0 0 14px;
+}
+
+figure svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+figcaption {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--mute);
+  max-width: 74ch;
+}
+
+/* Open tables (max 3, 0 zebra stripes) */
+.table-wrap {
+  margin-top: 24px;
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+th {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  color: var(--mute);
+  padding: 0 16px 12px 0;
+  border-bottom: 2px solid var(--ink);
+  white-space: nowrap;
+}
+
+td {
+  padding: 14px 16px 14px 0;
+  border-bottom: 1px solid var(--hair);
+  vertical-align: top;
+  color: var(--ink2);
+}
+
+td.mono {
+  font-family: 'IBM Plex Mono', ui-monospace, monospace;
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+td strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Full-bleed band (max 1) */
+.band {
+  margin: 68px calc(-1 * clamp(24px, 10.4vw, 112px)) 0;
+  padding: 52px clamp(24px, 10.4vw, 112px);
+  background: var(--band);
+  border-top: 1px solid var(--hair);
+  border-bottom: 1px solid var(--hair);
+}
+
+/* Pull quote */
+blockquote.pull {
+  margin: 64px 0 0;
+  padding: 24px 0 24px 28px;
+  border-left: 3px solid var(--accent);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: clamp(22px, 2.4vw, 28px);
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  max-width: 44ch;
+}
+
+/* Sources */
+ol.sources {
+  margin: 16px 0 0;
+  padding-left: 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--mute);
+}
+
+ol.sources li { margin-bottom: 8px; }
+
+@media (max-width: 860px) {
+  .metrics-strip, .three-col, .two-col {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+  .col-left, .col-right { grid-column: 1 / -1; }
+  .col-right { margin-top: 16px; }
+}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <h1>Reidcc: One Direct GUI and TUI Over Claude Code and Codex</h1>
+  <p class="deck">Revision 4 of the unified vision blueprint grounded against <code>dev</code> at commit <code>f38e14f</code> (<code>0.2.2 beta</code>)—combining zero boss-AI overhead, deterministic <code>.reid/handoff.md</code> switching, and Reidcc’s real engraved-stone visual and voice system from <code>tokens.css</code>, <code>reidcc-palette.md</code>, <code>SPEC-one-look.md</code>, and <code>reidcc-voice.md</code>.</p>
+  <div class="metrics-strip">
+    <div>
+      <div class="metric-val accent">GUI + TUI</div>
+      <div class="metric-desc">One unified interface across desktop and terminal, sharing live state</div>
+    </div>
+    <div>
+      <div class="metric-val live">0 Boss AIs</div>
+      <div class="metric-desc">Prompts go straight to Claude Code or Codex—no middleman LLM</div>
+    </div>
+    <div>
+      <div class="metric-val">#040404</div>
+      <div class="metric-desc">Engraved stone, bone text, one emerald signal—zero AI-slop looks</div>
+    </div>
+    <div>
+      <div class="metric-val">4 Contracts</div>
+      <div class="metric-desc">3-layer Codex resume, stream parser, OS locks, optional usage</div>
+    </div>
+  </div>
+</header>
+
+<main>
+
+  <!-- PART 1 -->
+  <section class="sec">
+    <div class="grid">
+      <div class="col-left">
+        <h2>One interface, direct to real CLIs, no middleman AI</h2>
+      </div>
+      <div class="col-right measure">
+        <p><strong>What it is:</strong> Instead of juggling two completely different CLI TUIs—or bolting a "boss AI" orchestrator on top of them—Reidcc renders both <strong>Claude Code</strong> and <strong>Codex</strong> inside one unified GUI and TUI. You pick the active profile in the bar, talk straight to that engine, and flip engines mid-task whenever you want.</p>
+        <p><strong>Why drop the central conductor AI:</strong> Forcing a master AI to delegate to worker AIs is like NVIDIA SLI—heavy synchronization overhead, fragile MCP recursion rules, extra token latency, and a middleman playing telephone with your intent. Removing the boss AI deletes an entire tier of complexity while keeping the real win: <strong>one calm interface, one persona, one ACA memory, and instant context switching across native frontier CLIs.</strong></p>
+      </div>
+    </div>
+
+    <figure>
+      <div class="fig-title">Both the GUI and TUI drive Claude Code and Codex directly through one normalized stream layer</div>
+      <svg viewBox="0 0 700 344" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Direct architecture from unified Reidcc GUI and TUI through reidcc-core to Claude Code, Codex, and raw terminal escape hatch">
+        <defs>
+          <marker id="arr-down" viewBox="0 0 10 10" refX="7.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+            <path d="M 2.5 1.5 L 7.5 5 L 2.5 8.5" fill="none" stroke="#111318" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <!-- Layer 1: Unified GUI + TUI -->
+        <rect x="20" y="14" width="660" height="82" rx="4" fill="#EEF3FF" stroke="#1D4ED8" stroke-width="1.5"/>
+        <text x="40" y="42" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="600" fill="#111318">One Unified Interface — GUI (rs/app + rs/ui) &amp; TUI (rs/cli)</text>
+        <text x="40" y="65" font-family="'Inter', sans-serif" font-size="13" fill="#2B303A">Shared Reidcc tokens (#040404 stone + bone + one emerald dot) · Engine picker · 1-click Switch (.reid/handoff.md)</text>
+        <text x="660" y="42" text-anchor="end" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#1E40AF">You drive directly</text>
+
+        <!-- Arrow 1 -> 2 -->
+        <line x1="350" y1="104" x2="350" y2="138" stroke="#111318" stroke-width="1.5" stroke-dasharray="3 4" marker-end="url(#arr-down)"/>
+        <text x="366" y="125" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#475060">Normalized StreamEngine events + OS locks</text>
+
+        <!-- Layer 2: reidcc-core -->
+        <rect x="20" y="146" width="660" height="78" rx="4" fill="#F4F6F9" stroke="#111318" stroke-width="1.25"/>
+        <text x="40" y="174" font-family="'Space Grotesk', sans-serif" font-size="16" font-weight="600" fill="#111318">reidcc-core (Profiles · Persona · ACA · Proxy · .reid/handoff.md)</text>
+        <text x="40" y="197" font-family="'Inter', sans-serif" font-size="13" fill="#2B303A">Shared logins, prompt-cache proxy, git diff handoff packet, OS per-session lockfile, optional raw terminal (--resume)</text>
+
+        <!-- Arrow 2 -> 3 -->
+        <line x1="170" y1="232" x2="170" y2="264" stroke="#111318" stroke-width="1.5" stroke-dasharray="3 4" marker-end="url(#arr-down)"/>
+        <line x1="350" y1="232" x2="350" y2="264" stroke="#111318" stroke-width="1.5" stroke-dasharray="3 4" marker-end="url(#arr-down)"/>
+        <line x1="530" y1="232" x2="530" y2="264" stroke="#111318" stroke-width="1.5" stroke-dasharray="3 4" marker-end="url(#arr-down)"/>
+
+        <!-- Layer 3: Direct CLIs + Escape Hatch -->
+        <rect x="20" y="272" width="206" height="60" rx="4" fill="#FFFFFF" stroke="#111318" stroke-width="1.25"/>
+        <text x="123" y="297" text-anchor="middle" font-family="'Space Grotesk', sans-serif" font-size="15" font-weight="600" fill="#111318">Claude Code</text>
+        <text x="123" y="317" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#475060">stream-json · write</text>
+
+        <rect x="247" y="272" width="206" height="60" rx="4" fill="#FFFFFF" stroke="#111318" stroke-width="1.25"/>
+        <text x="350" y="297" text-anchor="middle" font-family="'Space Grotesk', sans-serif" font-size="15" font-weight="600" fill="#111318">Codex</text>
+        <text x="350" y="317" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#475060">exec --json · write / ro</text>
+
+        <rect x="474" y="272" width="206" height="60" rx="4" fill="#ECFDF5" stroke="#047857" stroke-width="1.25"/>
+        <text x="577" y="297" text-anchor="middle" font-family="'Space Grotesk', sans-serif" font-size="15" font-weight="600" fill="#065F46">Raw Terminal Hatch</text>
+        <text x="577" y="317" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#065F46">Optional --resume PTY</text>
+      </svg>
+      <figcaption>No conductor AI, no MCP server, and no second desktop app: both the desktop GUI and terminal TUI drive Claude Code and Codex directly, with an optional escape hatch to open the raw PTY terminal whenever needed.</figcaption>
+    </figure>
+  </section>
+
+  <!-- PART 2: REAL REIDCC VISUAL & VOICE SYSTEM -->
+  <section class="sec">
+    <div class="measure">
+      <h2>Built strictly on Reidcc’s engraved-stone palette and voice—zero AI looks</h2>
+      <p><strong>What it looks like:</strong> Not generic blue-black SaaS or purple AI gradients. The unified GUI and TUI use your exact <a href="https://github.com/AIden6464-AI/reidcc/blob/dev/rs/ui/src/tokens.css" target="_blank" rel="noopener noreferrer"><code>rs/ui/src/tokens.css</code></a>, <a href="https://github.com/AIden6464-AI/reidcc/blob/dev/vision/reidcc-palette.md" target="_blank" rel="noopener noreferrer"><code>reidcc-palette.md</code></a>, and <a href="https://github.com/AIden6464-AI/reidcc/blob/dev/vision/Spec/SPEC-one-look.md" target="_blank" rel="noopener noreferrer"><code>SPEC-one-look.md</code></a>: near-pure black canvas (<code>#040404</code>), warm obsidian panels (<code>#0E0D0C</code>), stone selected rows (<code>#292723</code>), warm bone text (<code>#D6D0C8</code>), 1 px hairlines (<code>#2A2724</code>), 1 px focus rings (<code>#4A4540</code>), static <code>+</code> corner registration marks, and <strong>at most one emerald element</strong> (<code>#00C463</code>) visible at a time.</p>
+      <p><strong>Prototype status:</strong> The GUI and TUI visuals below are directional prototypes—something like this, not a 1:1 of Reidcc—and the final UI/TUI craft still needs real work against Reidcc’s actual screens.</p>
+      <p><strong>How it speaks (<a href="https://github.com/AIden6464-AI/reidcc/blob/dev/vision/reidcc-voice.md" target="_blank" rel="noopener noreferrer"><code>reidcc-voice.md</code></a>):</strong> Calm control, short declarative facts, numbers over adjectives, zero emoji, zero exclamation marks. UI labels and buttons stay lowercase (<code>open terminal</code>, <code>read-only</code>, <code>switch → codex</code>, <code>send</code>); small system tags use 11 px uppercase mono (<code>PROFILE · MAIN</code>, <code>PERSONA · PLAIN</code>, <code>MEMORY · ON</code>); on/off uses <code>✓</code> and <code>·</code>; vocabulary stays strictly <code>folder</code>, <code>profile</code>, <code>persona</code>, <code>memory</code>, <code>session</code>, <code>context</code>, <code>limit</code>, and <code>changed</code>.</p>
+    </div>
+
+    <figure>
+      <div class="fig-title">GUI and TUI share the exact #040404 stone palette, 36 px telemetry bar, and one-click engine switch</div>
+      <svg viewBox="0 0 700 546" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Real Reidcc GUI and TUI surface wireframe using exact tokens.css colors">
+        <!-- ===== TOP: REAL REIDCC GUI ===== -->
+        <rect x="4" y="4" width="692" height="352" fill="#040404" stroke="#2A2724" stroke-width="1"/>
+        <!-- Corner + marks -->
+        <text x="8" y="13" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#746F69">+</text>
+        <text x="687" y="13" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#746F69">+</text>
+        <text x="8" y="352" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#746F69">+</text>
+        <text x="687" y="352" font-family="'IBM Plex Mono', monospace" font-size="10" fill="#746F69">+</text>
+
+        <!-- 36px Borderless Bar -->
+        <rect x="5" y="5" width="690" height="36" fill="#0E0D0C"/>
+        <line x1="5" y1="41" x2="695" y2="41" stroke="#2A2724" stroke-width="1"/>
+        <rect x="16" y="14" width="22" height="18" fill="none" stroke="#4A4540" stroke-width="1"/>
+        <text x="27" y="27" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#928A82">RC</text>
+        <text x="48" y="27" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#D6D0C8">~/projects/reidcc</text>
+        <text x="180" y="27" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#9F978E">· main · claude · write</text>
+
+        <!-- gui / tui toggle -->
+        <rect x="434" y="13" width="64" height="20" fill="#040404" stroke="#2A2724" stroke-width="1"/>
+        <rect x="435" y="14" width="31" height="18" fill="#292723"/>
+        <text x="450" y="27" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">gui</text>
+        <text x="482" y="27" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">tui</text>
+
+        <!-- Single Emerald Status Dot ringed in --linework -->
+        <circle cx="514" cy="23" r="6" fill="none" stroke="#928A82" stroke-width="1"/>
+        <circle cx="514" cy="23" r="3" fill="#00C463"/>
+        <text x="526" y="27" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">00:19 · context 38% · limit 12%</text>
+
+        <!-- Subbar: system tags -->
+        <line x1="5" y1="72" x2="486" y2="72" stroke="#2A2724" stroke-width="1"/>
+        <text x="18" y="60" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">PROFILE · MAIN   PERSONA · PLAIN   MEMORY · ON</text>
+        <rect x="382" y="48" width="94" height="18" fill="#0E0D0C" stroke="#2A2724" stroke-width="1"/>
+        <text x="429" y="61" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">open terminal</text>
+
+        <!-- Sidebar divider -->
+        <line x1="486" y1="41" x2="486" y2="355" stroke="#2A2724" stroke-width="1"/>
+        <rect x="487" y="42" width="208" height="313" fill="#0E0D0C"/>
+
+        <!-- Main Stream Messages -->
+        <text x="20" y="92" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">main · claude</text>
+        <text x="470" y="92" text-anchor="end" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#746F69">write · 16:39</text>
+        <rect x="20" y="98" width="450" height="58" fill="#0E0D0C" stroke="#2A2724" stroke-width="1"/>
+        <text x="32" y="117" font-family="'Inter', sans-serif" font-size="12" fill="#D6D0C8">Unblocked Codex resume in adapter, core, and GUI launch.</text>
+        <rect x="32" y="128" width="426" height="20" fill="#171513" stroke="#2A2724" stroke-width="1"/>
+        <text x="42" y="142" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">3 files changed · +84 -12 · cargo test 18 passed</text>
+
+        <!-- Context switch divider -->
+        <line x1="20" y1="176" x2="106" y2="176" stroke="#2A2724" stroke-width="1"/>
+        <rect x="106" y="165" width="278" height="22" fill="#0E0D0C" stroke="#4A4540" stroke-width="1"/>
+        <text x="245" y="180" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">switched → review · codex · .reid/handoff.md</text>
+        <line x1="384" y1="176" x2="470" y2="176" stroke="#2A2724" stroke-width="1"/>
+
+        <!-- Codex turn -->
+        <text x="20" y="206" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">review · codex</text>
+        <text x="470" y="206" text-anchor="end" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#746F69">read-only · 16:40</text>
+        <rect x="20" y="212" width="450" height="52" fill="#0E0D0C" stroke="#2A2724" stroke-width="1"/>
+        <text x="32" y="232" font-family="'Inter', sans-serif" font-size="12" fill="#D6D0C8">Reviewed .reid/handoff.md in read-only mode: 2 findings.</text>
+        <text x="32" y="252" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">session.rs:142 returns early before dropping OS lock.</text>
+
+        <!-- Composer (--s1, 1px --line2 focus, bone send button) -->
+        <rect x="20" y="278" width="450" height="64" fill="#0E0D0C" stroke="#4A4540" stroke-width="1"/>
+        <text x="32" y="299" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#746F69">message codex (read-only)...</text>
+        <line x1="20" y1="312" x2="470" y2="312" stroke="#2A2724" stroke-width="1"/>
+        <rect x="30" y="318" width="110" height="18" fill="#171513" stroke="#4A4540" stroke-width="1"/>
+        <text x="85" y="331" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">review · codex ▾</text>
+        <rect x="146" y="318" width="84" height="18" fill="#292723" stroke="#4A4540" stroke-width="1"/>
+        <text x="188" y="331" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">✓ read-only</text>
+        <rect x="236" y="318" width="106" height="18" fill="#0E0D0C" stroke="#2A2724" stroke-width="1"/>
+        <text x="289" y="331" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">switch → claude</text>
+        <rect x="408" y="318" width="52" height="18" fill="#D6D0C8"/>
+        <text x="434" y="331" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="11" font-weight="500" fill="#040404">send</text>
+
+        <!-- Right Sidebar: Sessions + Context + Handoff -->
+        <text x="500" y="61" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">SESSIONS</text>
+        <!-- Selected row in --stone -->
+        <rect x="487" y="70" width="208" height="36" fill="#292723"/>
+        <text x="500" y="86" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">+ main · claude</text>
+        <text x="500" y="100" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">  write · context 38%</text>
+
+        <text x="500" y="124" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">  review · codex</text>
+        <text x="500" y="138" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">  read-only · context unknown</text>
+
+        <line x1="487" y1="152" x2="695" y2="152" stroke="#2A2724" stroke-width="1"/>
+        <text x="500" y="170" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">CONTEXT</text>
+        <text x="500" y="190" font-family="'Inter', sans-serif" font-size="11" fill="#9F978E">persona</text>
+        <text x="682" y="190" text-anchor="end" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">plain</text>
+        <text x="500" y="208" font-family="'Inter', sans-serif" font-size="11" fill="#9F978E">memory</text>
+        <text x="682" y="208" text-anchor="end" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">✓ on</text>
+        <text x="500" y="226" font-family="'Inter', sans-serif" font-size="11" fill="#9F978E">lock</text>
+        <text x="682" y="226" text-anchor="end" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">gui · pid 14820</text>
+
+        <line x1="487" y1="240" x2="695" y2="240" stroke="#2A2724" stroke-width="1"/>
+        <text x="500" y="258" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">.REID/HANDOFF.MD</text>
+        <rect x="500" y="268" width="182" height="72" fill="#040404" stroke="#2A2724" stroke-width="1"/>
+        <text x="510" y="286" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">changed: 3 files (+84 -12)</text>
+        <text x="510" y="304" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">tests: cargo test 18 ok</text>
+        <text x="510" y="322" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">note: check lock release</text>
+
+        <!-- ===== BOTTOM: MATCHING REID TUI ===== -->
+        <rect x="4" y="376" width="692" height="164" fill="#040404" stroke="#4A4540" stroke-width="1"/>
+        <rect x="5" y="377" width="690" height="26" fill="#0E0D0C"/>
+        <line x1="5" y1="403" x2="695" y2="403" stroke="#2A2724" stroke-width="1"/>
+        <text x="18" y="394" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">TUI · reid · ~/projects/reidcc · review · codex · read-only</text>
+        <text x="682" y="394" text-anchor="end" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">memory ✓ · context unknown</text>
+
+        <text x="18" y="424" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#928A82">── switched → review · codex (read-only) · .reid/handoff.md ──</text>
+        <text x="18" y="446" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">review · codex [read-only] · 16:40</text>
+        <text x="18" y="464" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#D6D0C8">Reviewed 3 files from .reid/handoff.md. session.rs:142 drops lock late.</text>
+
+        <line x1="5" y1="484" x2="695" y2="484" stroke="#2A2724" stroke-width="1"/>
+        <rect x="5" y="485" width="690" height="28" fill="#0E0D0C"/>
+        <text x="18" y="503" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#D6D0C8">review·codex&gt; </text>
+        <text x="124" y="503" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#746F69">type message or /switch /ro /terminal /gui</text>
+
+        <line x1="5" y1="513" x2="695" y2="513" stroke="#2A2724" stroke-width="1"/>
+        <text x="18" y="531" font-family="'IBM Plex Mono', monospace" font-size="11" fill="#9F978E">^S switch   ^R read-only   ^O open terminal   ^L sessions   ^T gui view</text>
+      </svg>
+      <figcaption><strong>Prototype note:</strong> Something like this directionally, but not a 1:1 match of Reidcc—that part still needs dedicated design work because these are prototypes. Built as an early directional sketch using <code>rs/ui/src/tokens.css</code> (<code>#040404</code>, <code>#292723</code>, bone text, one emerald dot, static <code>+</code> marks) and a matching TUI state model.</figcaption>
+    </figure>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Token / Rule</th>
+            <th>Exact Value (<code>tokens.css</code>)</th>
+            <th>Role in Unified GUI &amp; TUI</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">--canvas / --s1 / --s2</td>
+            <td class="mono"><span class="swatch" style="background:#040404"></span>#040404 · <span class="swatch" style="background:#0E0D0C"></span>#0E0D0C · <span class="swatch" style="background:#171513"></span>#171513</td>
+            <td>Near-pure black ground (never blue-black), obsidian panels/composer, hover &amp; diff blocks.</td>
+          </tr>
+          <tr>
+            <td class="mono">--stone / --line / --line2</td>
+            <td class="mono"><span class="swatch" style="background:#292723"></span>#292723 · <span class="swatch" style="background:#2A2724"></span>#2A2724 · <span class="swatch" style="background:#4A4540"></span>#4A4540</td>
+            <td>Full-width selected session row, 1 px hairline dividers, 1 px focus ring (no dotted boxes).</td>
+          </tr>
+          <tr>
+            <td class="mono">--text / --text2 / --text3</td>
+            <td class="mono"><span class="swatch" style="background:#D6D0C8"></span>#D6D0C8 · <span class="swatch" style="background:#9F978E"></span>#9F978E · <span class="swatch" style="background:#746F69"></span>#746F69</td>
+            <td>Bone primary text &amp; primary button fill, secondary labels/tags, muted telemetry &amp; corner <code>+</code> marks.</td>
+          </tr>
+          <tr>
+            <td class="mono">--emerald / --bronze / --oxide</td>
+            <td class="mono"><span class="swatch" style="background:#00C463"></span>#00C463 · <span class="swatch" style="background:#C99A45"></span>#C99A45 · <span class="swatch" style="background:#C0584B"></span>#C0584B</td>
+            <td><strong>At most one emerald element</strong> visible at once (live dot); bronze for 75–89% context/working; oxide for 90%+ / errors / <code>-lines</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- PART 3: WHY NO BOSS AI -->
+  <section class="sec">
+    <div class="grid">
+      <div class="col-left">
+        <h2>Why killing the boss AI makes the system 3× simpler</h2>
+      </div>
+      <div class="col-right measure">
+        <p><strong>Continuity without a middleman:</strong> Every engine already loads your <strong>Persona</strong> and <strong>ACA memory</strong> through Reidcc profiles. When you hit <code>switch</code>, Reidcc deterministically builds <code>.reid/handoff.md</code> from git diff, changed files, recent test output, and an optional note—zero extra LLM calls needed.</p>
+        <p><strong>What disappears overnight:</strong> Dropping the central orchestrator removes an entire layer of fragile multi-agent plumbing while keeping 100% of the unified interface value.</p>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Layer</th>
+            <th>Dropped (Boss-AI / SLI Overhead)</th>
+            <th>Kept (Direct One-Interface Reidcc)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>App topology</strong></td>
+            <td>Second Tauri app (<code>rs/command</code>) sitting on top of Reidcc</td>
+            <td><strong>One app (Reidcc)</strong> hosting GUI + TUI + optional raw terminal hatch</td>
+          </tr>
+          <tr>
+            <td><strong>Delegation &amp; MCP</strong></td>
+            <td>Conductor LLM, 4-tool MCP server, recursion blocking, auto-mode caps</td>
+            <td><strong>Direct profile picker</strong> (<code>main · claude</code> ↔ <code>review · codex</code>) + engine-enforced <code>read-only</code></td>
+          </tr>
+          <tr>
+            <td><strong>Context transfer</strong></td>
+            <td>Transcript <code>peek()</code> scraping + LLM-summarized handoffs</td>
+            <td><strong>Deterministic <code>.reid/handoff.md</code></strong> + existing <strong>ACA memory</strong> &amp; <strong>Persona</strong></td>
+          </tr>
+          <tr>
+            <td><strong>Visual language</strong></td>
+            <td>Generic dark SaaS / separate terminal TUIs</td>
+            <td><strong>Exact Reidcc <code>tokens.css</code></strong> engraved-stone GUI &amp; TUI with zero AI looks</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- PART 4 (Full-Bleed Band): 4 RUST CONTRACTS -->
+  <section class="band">
+    <div class="measure">
+      <h2>Four code-verified Rust contracts still required on dev</h2>
+      <p>Even without a boss AI, the source review of <code>dev</code> at <code>f38e14f</code> pinned down four concrete engineering contracts in <code>rs/core</code>, <code>rs/cli</code>, and <code>rs/app</code> that make direct Claude Code ↔ Codex switching rock-solid.</p>
+    </div>
+
+    <div class="two-col">
+      <div class="col-item focal">
+        <h3>1 · Unblock Codex resume in all 3 places (Step 0)</h3>
+        <p><strong>Code reality:</strong> Codex resume is currently refused in the Codex adapter (leading <code>resume</code>/<code>fork</code> args), <code>rs/core</code> (non-Claude profile guard), and GUI launch.</p>
+        <p><strong>Fix:</strong> Capture Codex’s <code>thread_id</code> on both interactive and streamed runs, unblock resume across all three layers, and preserve existing <code>reid --resume [profile]</code> CLI behavior.</p>
+      </div>
+      <div class="col-item focal">
+        <h3>2 · Normalized StreamEngine adapter (rs/core)</h3>
+        <p><strong>Code reality:</strong> Claude Code (<code>-p --output-format stream-json</code>) and Codex (<code>exec --json</code>) emit different JSON events and read-only flags.</p>
+        <p><strong>Fix:</strong> Map both into one small Rust event enum (<code>started</code>, <code>text</code>, <code>tool_call</code>, <code>diff</code>, <code>usage</code>, <code>done</code>, <code>error</code>) with an explicit <code>mode: write | read_only</code> enforced at the CLI level—shared by both GUI and TUI.</p>
+      </div>
+      <div class="col-item">
+        <h3>3 · OS-backed per-session &amp; folder locks</h3>
+        <p><strong>Code reality:</strong> Multiple <code>Reidcc.exe</code> instances—or the unified UI plus an opened raw terminal hatch—can race if they rely only on atomic JSON reads.</p>
+        <p><strong>Fix:</strong> Acquire an OS-backed per-session lockfile before streaming or attaching a raw terminal, track <code>pid</code> independently of optional <code>hwnd</code>, and use a per-folder write lock across sessions.</p>
+      </div>
+      <div class="col-item">
+        <h3>4 · Honest optional usage &amp; error fallback</h3>
+        <p><strong>Code reality:</strong> <code>reidcc-core</code> already parses Claude’s status line, but missing context currently becomes <code>0%</code>.</p>
+        <p><strong>Fix:</strong> Extract the parser in place, make context % and cost <code>Option&lt;T&gt;</code> rendered as <code>unknown</code> when unreported, and include <code>unknown { exit_code, raw }</code> on the error enum.</p>
+      </div>
+    </div>
+
+    <figure>
+      <div class="fig-title">One deterministic switch hands repo context from Claude Code to read-only Codex in place</div>
+      <svg viewBox="0 0 680 184" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Horizontal flow of direct context switching from Claude Code through .reid/handoff.md to read-only Codex and optional raw terminal">
+        <defs>
+          <marker id="arr-flow" viewBox="0 0 10 10" refX="7.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="10" markerHeight="10" orient="auto">
+            <path d="M 2.5 1.5 L 7.5 5 L 2.5 8.5" fill="none" stroke="#111318" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+
+        <rect x="16" y="48" width="144" height="76" rx="4" fill="#EEF3FF" stroke="#1D4ED8" stroke-width="1.5"/>
+        <text x="88" y="80" text-anchor="middle" font-family="'Space Grotesk', sans-serif" font-size="14" font-weight="600" fill="#111318">Claude Code</text>
+        <text x="88" y="102" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#1E40AF">write · stream</text>
+
+        <line x1="168" y1="86" x2="196" y2="86" stroke="#111318" stroke-width="1.4" marker-end="url(#arr-flow)"/>
+
+        <rect x="204" y="48" width="152" height="76" rx="4" fill="#FFFFFF" stroke="#111318" stroke-width="1.5"/>
+        <text x="280" y="80" text-anchor="middle" font-family="'Space Grotesk', sans-serif" font-size="14" font-weight="600" fill="#111318">Switch ⇄</text>
+        <text x="280" y="102" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#475060">.reid/handoff.md</text>
+
+        <line x1="364" y1="86" x2="392" y2="86" stroke="#111318" stroke-width="1.4" marker-end="url(#arr-flow)"/>
+
+        <rect x="400" y="48" width="144" height="76" rx="4" fill="#ECFDF5" stroke="#047857" stroke-width="1.5"/>
+        <text x="472" y="80" text-anchor="middle" font-family="'Space Grotesk', sans-serif" font-size="14" font-weight="600" fill="#065F46">Codex</text>
+        <text x="472" y="102" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#065F46">read-only · stream</text>
+
+        <line x1="552" y1="86" x2="574" y2="86" stroke="#111318" stroke-width="1.4" stroke-dasharray="3 3" marker-end="url(#arr-flow)"/>
+
+        <rect x="582" y="48" width="84" height="76" rx="4" fill="#FFFFFF" stroke="#B8C0CE" stroke-width="1.25" stroke-dasharray="4 3"/>
+        <text x="624" y="80" text-anchor="middle" font-family="'Space Grotesk', sans-serif" font-size="13" font-weight="600" fill="#475060">Raw PTY</text>
+        <text x="624" y="102" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#475060">optional</text>
+
+        <text x="340" y="158" text-anchor="middle" font-family="'IBM Plex Mono', monospace" font-size="12" fill="#475060">Persona + ACA memory stay active across every step · OS lock guards raw PTY takeover</text>
+      </svg>
+      <figcaption>Deterministic handoff keeps you in full control: zero middleman LLM calls, identical behavior across GUI and TUI, and raw terminal takeover only when you choose it.</figcaption>
+    </figure>
+  </section>
+
+  <!-- PART 5: BUILD ORDER & NAMING -->
+  <section class="sec">
+    <div class="measure">
+      <h2>Build order on dev and CLI naming candidates</h2>
+      <p><strong>Naming options matching <code>reidcc-voice.md</code>:</strong> Because the unified GUI + TUI replaces the old "separate command center" concept, keeping <code>reid</code> as the single CLI name is the cleanest zero-friction path. If you want a distinct name for the unified agent CLI/TUI, stone-and-blueprint candidates that match your voice are <code>gate</code>, <code>slate</code>, <code>kiln</code> (already referenced in <code>reidcc-voice.md</code>), or <code>bench</code>.</p>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Stage</th>
+            <th>Scope</th>
+            <th>Acceptance Test</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mono">Pre-flight</td>
+            <td><strong>Stabilize <code>dev</code> baseline</strong> (<code>main</code> untouched)</td>
+            <td>Fix background/minimized session-exit window jump, test docking in snapped frames, clear quick <code>SPEC-user-trial</code> fixes 1–4.</td>
+          </tr>
+          <tr>
+            <td class="mono">Step 0</td>
+            <td><strong>Unblock Codex resume</strong> (adapter, <code>core</code>, GUI)</td>
+            <td>Reopen a streamed Codex thread in a raw Reidcc window, continue a fresh Reidcc Codex thread from its captured ID, and keep <code>reid --resume [profile]</code> intact.</td>
+          </tr>
+          <tr>
+            <td class="mono">Milestone 1</td>
+            <td><strong>Direct <code>StreamEngine</code> + Context Switch</strong> in <code>rs/core</code></td>
+            <td>Run Claude Code edit → trigger Switch (writes <code>.reid/handoff.md</code>) → run Codex <code>read-only</code> review in the same folder with OS locks guarding raw terminal takeover.</td>
+          </tr>
+          <tr>
+            <td class="mono">Milestone 2</td>
+            <td><strong>Unified GUI &amp; TUI</strong> on <code>tokens.css</code></td>
+            <td>Ship the engraved-stone GUI (<code>rs/app</code> + <code>rs/ui</code>) and matching TUI (<code>rs/cli</code>) over the proven Milestone 1 backend, honoring every <code>SPEC-one-look</code> and <code>reidcc-voice</code> rule.</td>
+          </tr>
+          <tr>
+            <td class="mono">Deferred</td>
+            <td><strong>Explicitly out of scope</strong></td>
+            <td>Central boss AI / conductor LLM, MCP delegation server, second desktop app, OpenCode backend/engine, <code>agy</code>, crons, and messaging gateways.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <blockquote class="pull">
+      Folder. Profile. Gate. One quiet stone-and-linework interface directly over Claude Code and Codex—you drive, and switching engines is one deterministic step.
+    </blockquote>
+  </section>
+
+  <!-- SOURCES -->
+  <section class="sec">
+    <h2>Sources</h2>
+    <ol class="sources">
+      <li><a href="https://github.com/AIden6464-AI/reidcc/blob/dev/rs/ui/src/tokens.css" target="_blank" rel="noopener noreferrer">rs/ui/src/tokens.css</a> — Exact hex palette, font stacks, and motion curve shared across Reidcc GUI and TUI.</li>
+      <li><a href="https://github.com/AIden6464-AI/reidcc/blob/dev/vision/reidcc-palette.md" target="_blank" rel="noopener noreferrer">vision/reidcc-palette.md</a> and <a href="https://github.com/AIden6464-AI/reidcc/blob/dev/vision/Spec/SPEC-one-look.md" target="_blank" rel="noopener noreferrer">vision/Spec/SPEC-one-look.md</a> — Engraved-stone aesthetic, single-emerald rule, 36 px borderless bar, 1 px focus rings, and 16-color terminal mapping.</li>
+      <li><a href="https://github.com/AIden6464-AI/reidcc/blob/dev/vision/reidcc-voice.md" target="_blank" rel="noopener noreferrer">vision/reidcc-voice.md</a> — Tagline, calm-control voice rules, lowercase/uppercase formatting, <code>✓</code>/<code>·</code> marks, and exact UI vocabulary.</li>
+      <li><a href="https://github.com/AIden6464-AI/reidcc/tree/dev" target="_blank" rel="noopener noreferrer">AIden6464-AI/reidcc (dev branch)</a>, <a href="https://github.com/AIden6464-AI/reidcc/commits/dev/" target="_blank" rel="noopener noreferrer">commits at f38e14f</a>, and <a href="https://github.com/AIden6464-AI/reidcc/blob/dev/vision/Spec/SPEC-agent-cli.md" target="_blank" rel="noopener noreferrer">SPEC-agent-cli.md</a> — Rust workspace structure, <code>.reid/handoff.md</code> contract, and manual publish workflow.</li>
+    </ol>
+  </section>
+
+</main>
+</body>
+</html>
