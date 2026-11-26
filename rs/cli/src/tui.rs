@@ -231,6 +231,9 @@ impl From<ReidError> for Stop {
 
 type T<X> = Result<X, Stop>;
 
+#[path = "chat.rs"]
+mod chat;
+
 struct Art {
     cols: i64,
     frames: std::rc::Rc<Vec<Vec<String>>>,
@@ -405,6 +408,26 @@ impl Tui {
         }
     }
 
+    /// `reid --chat [profile]`: straight into the chat view (the default profile without one), then out.
+    pub fn run_chat(&mut self, profile: Option<&str>) -> i32 {
+        console::catch_ctrl_c();
+        let name = match profile {
+            Some(p) => Ok(p.to_string()),
+            None => load_config(self.ctx).map(|c| c.get("default").and_then(Value::as_str)
+                .or_else(|| profiles(&c).keys().next().map(String::as_str)).unwrap_or_default().to_string()),
+        };
+        write("[?1049h");
+        let r = name.map_err(Stop::from).and_then(|n| chat::run(self, &n));
+        write(&format!("{R}[?25h[?1049l"));
+        match r {
+            Ok(()) | Err(Stop::Int) => 0,
+            Err(Stop::Err(e)) => {
+                reidcc::errln!("{e}");
+                1
+            }
+        }
+    }
+
     fn main_loop(&mut self) -> T<()> {
         loop {
             let cfg = load_config(self.ctx)?;
@@ -437,6 +460,7 @@ impl Tui {
                         return Ok(());
                     }
                 }
+                "c" => chat::run(self, &name)?,
                 "e" | "right" => self.edit(cfg, name)?,
                 "n" => self.new_profile(&name)?,
                 "x" => self.delete_profile(&cfg, &name)?,
@@ -554,7 +578,7 @@ impl Tui {
             else { "codex: /quit comes back here" }
         } else { "in a session: /reid comes back here" };
         let mut bottom = vec![self.rule(),
-                              self.help("↵ open gate · r resume · e edit · n new · x delete · d default · m memory · q quit"),
+                              self.help("↵ open gate · r resume · c chat · e edit · n new · x delete · d default · m memory · q quit"),
                               self.help(help2),
                               String::new()];
         let status = if error.is_some() { "not ready".to_string() }

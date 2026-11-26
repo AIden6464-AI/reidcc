@@ -16,6 +16,7 @@ const HELP: &str = r#"reid -- Reidcc, in the terminal.
     reid --resume [profile]   continue the last session (that profile, or the one it had)
     reid --resume <profile> --id ID   continue that session, in this folder
     reid -l                   list profiles
+    reid --chat [profile]     chat with Claude Code and Codex in this folder, in the terminal
     reid --stream <profile> [--read-only] [--resume ID] [--switch-from P] PROMPT
                               one headless turn, its events as JSON lines
     reid --dry [profile]      print what would run, don't run it
@@ -113,6 +114,7 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
         "--uninstall" => return Ok(install::uninstall(ctx)),
         "--update" => return Ok(install::update()),
         "--tui" => return Ok(tui::Tui::new(ctx, &py::getcwd(), "").run()),
+        "--chat" if args.len() <= 2 => return Ok(tui::Tui::new(ctx, &py::getcwd(), "").run_chat(args.get(1).map(String::as_str))),
         "--gui" => return Ok(open_gui(reidcc::win::launched_from_terminal())),
         "--version" if args.len() == 1 => {
             out!("Reidcc {}", env!("CARGO_PKG_VERSION"));

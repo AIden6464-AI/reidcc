@@ -298,4 +298,19 @@ Given after Milestone 1 was built, in answer to the open questions it left. His 
     - The bar's `limit` figure: `reid --stream` doesn't report one yet.
     - Session windows listed in the sidebar: it shows only the chat's own sessions.
     - The `gui · tui` toggle, which waits for the TUI.
-  - **Tests:** `rs/tests/chat_flow.py` runs the acceptance test above, 24/24.
+  - **Tests:** `rs/tests/chat_flow.py` runs the acceptance test above, 31/31.
+- **Milestone 2B TUI chat, built (2026-11-26).** `rs/cli/src/chat.rs` is the chat window in text, on the
+  SPEC-one-look 16-colour palette. Each turn is the same `reid --stream` child, and stop kills it (its job
+  takes the engine down).
+  - **Entry:** `c chat` beside `r resume` in the profile list, on the selected profile and the TUI's folder;
+    and `reid --chat [profile]` (the default profile without one). Esc leaves.
+  - **Keys:** ↵ send (or `switch → <engine>` once tab has picked another profile), esc stop, tab profile,
+    ctrl+r read-only (`✓`/`·`), ctrl+t open terminal (`reid --resume <profile> --id <id>` in a console of its
+    own), ctrl+d the last turn's diff, ctrl+o the handoff, pgup/pgdn scroll.
+  - **Replies** follow md.ts: fences (an open one too) on the value ground, `code`, **bold**, link text
+    underlined, headings bold. Engine text loses its control characters, so a reply can't drive the terminal.
+  - **Refusals:** the same `in terminal` and `locked` notes; `ctrl+r sends it read-only` stands in for the
+    button. A refused ask stays in the field and a refused switch leaves no divider.
+  - **Left out:** multi-line prompts (a pasted line break sends); the sidebar (the bar carries context).
+  - **Tests:** `rs/tests/tui_chat_flow.py` runs chat_flow's round trip in a pseudo-terminal, 33/33.
+    `tui_parity.py` still shows 0 differ.

@@ -144,6 +144,7 @@ The flow is `folder → profile → open gate` in both the GUI and the TUI. The 
 reid                    Open the TUI in a terminal, or the GUI when launched as an app
 reid <profile> [args]   Launch a profile in the current folder
 reid --resume           Resume the last session (Claude or Codex)
+reid --chat [profile]   Chat with Claude Code and Codex in this folder, in the terminal
 reid --dry <profile>    Show the exact command and proxy plan without launching
 reid --stream <profile> [--read-only] [--resume ID] [--switch-from PROFILE] PROMPT
                         Run one headless turn and print its events as JSON lines
@@ -239,7 +240,7 @@ Reidcc is being rebuilt in Rust (`rs\`: Tauri 2 + TypeScript + `portable-pty` + 
 | **Vision v1 · headless, rigs** | Proposed | Headless run strips, orchestrator rigs, TUI redesign |
 | **Unified interface · Step 0** | Built on `dev` | Codex resume both ways (`vision\Spec\SPEC-unified-interface.md`) |
 | **Unified interface · Milestone 1** | Built on `dev` (core + CLI) | `reid --stream`: one headless turn on Claude or Codex as JSON-line events (started, text, tool call, usage, done, error); context stays unknown when the engine doesn't report it. **Read-only** uses each CLI's own flags (Claude loses its write tools; Codex runs in a read-only sandbox). **Switch** writes `.reid\handoff.md` (changed files, diff stat, optional tests and note) and passes it to the next engine. **Locks** are held by the OS and freed if a process dies: one window per session; session windows share a folder, a headless write turn needs it alone. Acceptance test 25/25 |
-| **Unified interface · Milestone 2** | GUI built on `dev`; TUI next | **open chat** (beside resume) opens a chat window on the launcher's folder and profile: one composer over Claude Code and Codex, each turn a `reid --stream` child. It streams text and tool lines, `stop` kills the turn, and after a write turn a collapsible **changed** block (from git) opens to each file's diff. Picking another profile turns `send` into `switch → <engine>`, with a `.reid/handoff.md` divider. **open terminal** resumes that session in a session window. Lock refusals show in the composer (`focus window`, `send read-only`). Acceptance test 24/24 |
+| **Unified interface · Milestone 2** | GUI and TUI built on `dev` | **open chat** (beside resume) opens a chat window on the launcher's folder and profile: one composer over Claude Code and Codex, each turn a `reid --stream` child. It streams text and tool lines, `stop` kills the turn, and after a write turn a collapsible **changed** block (from git) opens to each file's diff. Picking another profile turns `send` into `switch → <engine>`, with a `.reid/handoff.md` divider. **open terminal** resumes that session in a session window. Lock refusals show in the composer (`focus window`, `send read-only`). Acceptance test 31/31. In the TUI, `c` (or `reid --chat [profile]`) opens the same chat in text: tab picks the profile, ctrl+r read-only, ctrl+t open terminal, ctrl+d the diff. Acceptance test 33/33 |
 
 <p align="center">
   <img src="docs/session-window.png" alt="Reidcc session window beta" width="900" />
