@@ -26,6 +26,8 @@ const MAX_DIFF_LINES: usize = 200;
 /// The composer shows the end of a long prompt, this many rows.
 const FIELD_ROWS: usize = 3;
 const TOOL_NAME_WIDTH: i64 = 6;
+/// the bar's fixed text around the path: " RC  ", the two spaces after it, and at least one space before the meters
+const BAR_FIXED: i64 = 8;
 /// How often a session held by a terminal is checked for being free again.
 const HOLDER_POLL: Duration = Duration::from_millis(1500);
 /// How long the loop sleeps with no key waiting; the running turn's timer redraws every second.
@@ -749,8 +751,6 @@ impl Chat {
         let (width, height) = tui.size();
         let body_width = width - 4;
         // the bar: where and who on the left, the meters on the right (emerald only while a turn runs)
-        let left = format!(" {LINE}RC{R}  {TEXT}{}{R}  {TEXT2}{} · {}{}{R}", fit(&show_path(&self.folder), (width / 2).max(10)),
-                           self.cur, self.engine(&self.cur), if self.read_only { " · read-only" } else { "" });
         let state = match &self.turn {
             Some(turn) => format!("{EMERALD}● {}{R}", mmss(turn.began.elapsed())),
             None => format!("{TEXT2}ready{R}"),
@@ -759,6 +759,10 @@ impl Chat {
             Some(context) => format!("{state} {TEXT2}· {context}{R} "),
             None => format!("{state} "),
         };
+        let who = format!("{} · {}{}", self.cur, self.engine(&self.cur), if self.read_only { " · read-only" } else { "" });
+        // the path gives way first, so who and the meters stay on the bar's one line
+        let path_room = width - BAR_FIXED - clen(&who) - shown_len(&right);
+        let left = format!(" {LINE}RC{R}  {TEXT}{}{R}  {TEXT2}{who}{R}", fit(&show_path(&self.folder), (width / 2).min(path_room).max(10)));
         let mut screen = vec![format!("{left}{}{right}", rep(" ", (width - shown_len(&left) - shown_len(&right)).max(1))), tui.rule()];
 
         // the composer: note, field, controls, keys
@@ -822,11 +826,12 @@ impl Chat {
     }
 }
 
-/// The chat view on `profile` in the TUI's folder; back to the caller when you leave it (esc).
 /// the width a line takes on screen: its characters without the colour escapes
 fn shown_len(line: &str) -> i64 {
     clen(&strip_sgr(line))
 }
+
+/// The chat view on `profile` in the TUI's folder; back to the caller when you leave it (esc).
 
 pub(super) fn run(tui: &mut Tui, profile: &str) -> T<()> {
     let cfg = load_config(tui.ctx)?;
