@@ -300,27 +300,25 @@ fn stream(ctx: &Ctx, cfg: &reidcc::Obj, args: &[String]) -> R<i32> {
         i += 1;
     }
     let cwd = py::getcwd();
-    let mut prompt = reidcc::stream::prompt_from(&args[i.min(args.len())..]);
+    let prompt = reidcc::stream::prompt_from(&args[i.min(args.len())..]);
     if prompt.trim().is_empty() {
         return reidcc::err(format!("Nothing to ask. {STREAM_USAGE}"));
     }
-    match opt.get("--switch-from") {
+    let switch = match opt.get("--switch-from") {
         Some(src) => {
             let Some(sp) = profiles(cfg).get(*src).and_then(|v| v.as_object()) else {
                 return reidcc::err(format!("No profile named {src}."));
             };
-            let s = reidcc::handoff::Switch { folder: &cwd, profile: src, engine: engines::engine_of(sp, src)?,
-                                              tests: opt.get("--tests").copied(), note: opt.get("--note").copied() };
-            let (_, md) = reidcc::handoff::write(&s)?;
-            prompt = reidcc::handoff::prompt(&md, &prompt);
+            Some(reidcc::handoff::Switch { folder: &cwd, profile: src, engine: engines::engine_of(sp, src)?,
+                                           tests: opt.get("--tests").copied(), note: opt.get("--note").copied() })
         }
         None if opt.contains_key("--tests") || opt.contains_key("--note") => {
             return reidcc::err(format!("--tests and --note go in a handoff: add --switch-from. {STREAM_USAGE}"));
         }
-        None => {}
-    }
+        None => None,
+    };
     let mut emit = |e: &Event| out!("{}", e.to_json());
-    let turn = Turn { profile: name, folder: &cwd, prompt: &prompt, mode, resume: opt.get("--resume").copied() };
+    let turn = Turn { profile: name, folder: &cwd, prompt: &prompt, mode, resume: opt.get("--resume").copied(), switch };
     match reidcc::stream::run(ctx, cfg, &turn, &mut emit) {
         Ok(rc) => Ok(rc),
         Err(e) => {

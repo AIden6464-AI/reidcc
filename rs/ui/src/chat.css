@@ -35,6 +35,12 @@ button:focus { outline: none; }
 .ask .who { font: 12px/21px var(--mono); color: var(--text3); white-space: nowrap; }
 .ask .q { white-space: pre-wrap; overflow-wrap: anywhere; }
 .reply .text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0 0 10px; }
+/* md.ts: code is mono on a step of surface; links are text with their target as a tooltip */
+.text code { font: 12.5px/1 var(--mono); background: var(--s2); padding: 1px 4px; }
+.text pre.code { font: 12.5px/19px var(--mono); background: var(--s1); border-left: 1px solid var(--line2); color: var(--text);
+                 margin: 6px 0; padding: 8px 12px; white-space: pre; overflow-x: auto; }
+.text b { font-weight: 600; }
+.text .mdlink { color: var(--text); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; }
 .tool { font: 12px/20px var(--mono); color: var(--text3); display: flex; gap: 12px; min-width: 0; }
 .tool b { font-weight: 400; color: var(--text2); flex: none; min-width: 5ch; }
 .tool span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -53,7 +59,7 @@ button:focus { outline: none; }
 .changed .file { display: flex; gap: 14px; padding: 2px 12px 2px 28px; color: var(--text); width: 100%; text-align: left; }
 .changed .file .n { margin-left: auto; font-variant-numeric: tabular-nums; }
 .changed.shut .file, .changed.shut .diff { display: none; }
-.plus { color: var(--text); } .minus { color: var(--oxide); }
+.plus { color: var(--text); } .minus { color: var(--oxide); } .zero { color: var(--text3); }
 .diff { margin: 4px 12px 6px 28px; padding: 6px 10px; background: var(--canvas); border-left: 1px solid var(--line2);
         white-space: pre; overflow-x: auto; color: var(--text2); user-select: text; }
 .diff .a { color: var(--text); } .diff .d { color: var(--oxide); } .diff .h { color: var(--text3); }

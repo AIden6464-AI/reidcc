@@ -2,6 +2,7 @@
 // Code and Codex. Each turn is `reid --stream` (rs\app\src\chat.rs); its events land here as they come.
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { md } from "./md";
 
 type Info = { folder: string; shown: string; profile: string; profiles: [string, string][] };
 type Ev = { type: string; [k: string]: unknown };
@@ -66,7 +67,7 @@ function keep(f: () => void): void {
 }
 
 /** the turn being drawn */
-let t: { reply: HTMLElement; tools: HTMLElement; text: HTMLElement | null; caret: HTMLElement; sawText: boolean; ro: boolean; undo: () => void } | null = null;
+let t: { reply: HTMLElement; tools: HTMLElement; text: HTMLElement | null; raw: string; caret: HTMLElement; sawText: boolean; ro: boolean; undo: () => void } | null = null;
 
 function ask(profile: string, q: string, undo: () => void): void {
   col.querySelector(".empty")?.remove();
@@ -77,7 +78,7 @@ function ask(profile: string, q: string, undo: () => void): void {
   const caret = el("span", "caret");
   reply.append(tools, caret);
   keep(() => col.append(a, reply));
-  t = { reply, tools, text: null, caret, sawText: false, ro: readOnly, undo };
+  t = { reply, tools, text: null, raw: "", caret, sawText: false, ro: readOnly, undo };
 }
 
 function onEvent(e: Ev, profile: string): void {
@@ -93,9 +94,11 @@ function onEvent(e: Ev, profile: string): void {
       case "text_delta":
         if (!tt.text) {
           tt.text = el("div", "text");
+          tt.raw = "";
           tt.reply.insertBefore(tt.text, tt.caret);
         }
-        tt.text.textContent += String(e.text ?? "");
+        tt.raw += String(e.text ?? "");
+        tt.text.innerHTML = md(tt.raw); // the whole paragraph again: a fence or ** may close in this delta
         tt.sawText = true;
         break;
       case "tool_call": {
@@ -196,6 +199,9 @@ function meta(stopped: boolean, rc: number): void {
   t.reply.append(el("div", "meta", bits.join(" · ")));
 }
 
+/** +n bone, −n oxide; a zero is neither, so it's muted */
+const count = (sign: string, n: number) => el("span", n === 0 ? "zero" : sign === "+" ? "plus" : "minus", `${sign}${n}`);
+
 async function changedBlock(reply: HTMLElement): Promise<void> {
   const c = await invoke<Changed | null>("chat_changed", { id }).catch(() => null);
   if (!c || !c.files.length) return;
@@ -203,7 +209,7 @@ async function changedBlock(reply: HTMLElement): Promise<void> {
   const add = c.files.reduce((n, f) => n + (f.added ?? 0), 0), del = c.files.reduce((n, f) => n + (f.removed ?? 0), 0);
   const head = el("button", "head");
   head.append(el("span", "", `changed · ${c.files.length} file${c.files.length === 1 ? "" : "s"}`),
-              el("span", "plus", `+${add}`), el("span", "minus", `−${del}`), el("span", "tw", "▸"));
+              count("+", add), count("−", del), el("span", "tw", "▸"));
   head.onclick = () => {
     box.classList.toggle("shut");
     head.lastElementChild!.textContent = box.classList.contains("shut") ? "▸" : "▾";
@@ -212,8 +218,8 @@ async function changedBlock(reply: HTMLElement): Promise<void> {
   for (const f of c.files) {
     const row = el("button", "file");
     const n = el("span", "n");
-    n.append(el("span", "plus", f.added == null ? "bin" : `+${f.added}`), document.createTextNode(" "),
-             el("span", "minus", f.removed == null ? "" : `−${f.removed}`));
+    n.append(f.added == null ? el("span", "zero", "bin") : count("+", f.added), document.createTextNode(" "),
+             f.removed == null ? el("span") : count("−", f.removed));
     row.append(el("span", "", f.path), n);
     let d: HTMLElement | null = null;
     row.onclick = async () => {
@@ -296,9 +302,11 @@ async function send(): Promise<void> {
   began = Date.now();
   context = undefined;
   cost = 0;
-  const prev = cur, div = from ? divider(from, profile) : null;
+  // a refused switch undoes itself: no divider, the sidebar's handoff as it was
+  const prev = cur, side = [$("hsec").hidden, [...$("handoff").childNodes]] as const;
+  const div = from ? divider(from, profile) : null;
   cur = profile;
-  ask(profile, prompt, () => { cur = prev; div?.remove(); });
+  ask(profile, prompt, () => { cur = prev; div?.remove(); $("hsec").hidden = side[0]; $("handoff").replaceChildren(...side[1]); });
   const turnRo = readOnly;
   primary();
   bar();
@@ -375,4 +383,5 @@ $("term").onclick = () => invoke("chat_terminal", { id, profile: pickedProfile()
   pick: (p: string) => { pick.value = p; primary(); },
   readOnly: (on: boolean) => setReadOnly(on),
   click: (sel: string) => (document.querySelector(sel) as HTMLElement | null)?.click(),
+  md,
 };

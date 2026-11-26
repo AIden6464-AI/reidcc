@@ -70,21 +70,88 @@ fn summary(v: &Value) -> String {
     if line.chars().count() > 200 { line.chars().take(199).collect::<String>() + "…" } else { line.to_string() }
 }
 
+/// The command a shell wrapper runs: `"…\pwsh.exe" -NoProfile -Command "git status"` -> `git status`.
+/// Anything that isn't a known shell comes back as it was.
+fn unwrap_shell(cmd: &str) -> String {
+    let cmd = cmd.trim();
+    let (exe, rest) = match cmd.strip_prefix('"') {
+        Some(q) => match q.find('"') { Some(i) => (&q[..i], &q[i + 1..]), None => return cmd.into() },
+        None => cmd.split_once(' ').unwrap_or((cmd, "")),
+    };
+    let name = exe.rsplit(['\\', '/']).next().unwrap_or(exe).to_lowercase();
+    if !["pwsh", "pwsh.exe", "powershell", "powershell.exe", "cmd", "cmd.exe", "bash", "bash.exe", "sh", "zsh"].contains(&name.as_str()) {
+        return cmd.into();
+    }
+    let mut r = rest.trim_start();
+    loop {
+        let (tok, after) = r.split_once(' ').unwrap_or((r, ""));
+        let t = tok.to_lowercase();
+        if ["-command", "-c", "/c", "-lc"].contains(&t.as_str()) {
+            r = after.trim();
+            break;
+        }
+        if !(t.starts_with('-') || t.starts_with('/')) || after.is_empty() {
+            return cmd.into(); // not a form we know: show it whole
+        }
+        r = after.trim_start();
+    }
+    // its quotes; a cut-off or here-string command may have lost the closing one
+    match r.chars().next() {
+        Some(q @ ('"' | '\'')) => {
+            let inner = &r[1..];
+            inner.strip_suffix(q).unwrap_or(inner).to_string()
+        }
+        _ => r.to_string(),
+    }
+}
+
+/// `text` with `folder\` taken off every path in it (either slash, any case): `read src\calc.py`.
+fn relative(text: &str, folder: &str) -> String {
+    let f = folder.trim_end_matches(['\\', '/']);
+    if f.is_empty() {
+        return text.into();
+    }
+    // ASCII-only folding keeps byte offsets equal between `text` and `hay`
+    let norm = |s: &str| s.to_ascii_lowercase().replace('/', "\\");
+    let (hay, needle) = (norm(text), norm(f));
+    let mut out = String::new();
+    let mut i = 0;
+    while let Some(at) = hay[i..].find(&needle).map(|a| a + i) {
+        let end = at + needle.len();
+        // only the whole folder: a slash after it goes too; a name going on (work -> workshop) isn't it
+        match hay.as_bytes().get(end) {
+            Some(b'\\') => { out.push_str(&text[i..at]); i = end + 1; }
+            Some(c) if c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.') => { out.push_str(&text[i..end]); i = end; }
+            _ => { out.push_str(&text[i..at]); out.push('.'); i = end; }
+        }
+    }
+    out.push_str(&text[i..]);
+    out
+}
+
 /// Turns an engine's JSON lines into events.
 pub struct Parser {
     claude: bool,
+    /// the turn's folder: tool lines show paths inside it relative to it
+    folder: String,
     context_tokens: Option<u64>, // Claude: what the last request sent, i.e. what's in the context now
 }
 
 impl Parser {
-    pub fn new(engine: &str) -> Parser {
-        Parser { claude: engine == "claude", context_tokens: None }
+    pub fn new(engine: &str, folder: &str) -> Parser {
+        Parser { claude: engine == "claude", folder: folder.into(), context_tokens: None }
     }
 
     pub fn line(&mut self, line: &str) -> Vec<Event> {
         let Ok(v) = serde_json::from_str::<Value>(line) else { return vec![] }; // banners, warnings
         let s = |v: &Value| v.as_str().unwrap_or_default().to_string();
-        if self.claude { self.claude_line(&v, s) } else { codex_line(&v, s) }
+        let mut evs = if self.claude { self.claude_line(&v, s) } else { codex_line(&v, s) };
+        for e in &mut evs {
+            if let Event::ToolCall { summary, .. } = e {
+                *summary = relative(summary, &self.folder);
+            }
+        }
+        evs
     }
 
     fn claude_line(&mut self, v: &Value, s: impl Fn(&Value) -> String) -> Vec<Event> {
@@ -124,7 +191,7 @@ fn codex_line(v: &Value, s: impl Fn(&Value) -> String) -> Vec<Event> {
     let ev = match (v["type"].as_str().unwrap_or_default(), item["type"].as_str().unwrap_or_default()) {
         ("thread.started", _) => Event::Started { session_id: s(&v["thread_id"]) },
         ("item.completed", "agent_message") => Event::TextDelta { text: s(&item["text"]) },
-        ("item.started", "command_execution") => Event::ToolCall { name: "shell".into(), summary: summary(&item["command"]) },
+        ("item.started", "command_execution") => Event::ToolCall { name: "shell".into(), summary: summary(&Value::String(unwrap_shell(&s(&item["command"])))) },
         ("item.started", "file_change") => Event::ToolCall {
             name: "patch".into(),
             summary: item["changes"].as_array().into_iter().flatten()
@@ -148,6 +215,9 @@ pub struct Turn<'a> {
     pub mode: Mode,
     /// A session id to continue; None starts a new one.
     pub resume: Option<&'a str>,
+    /// Switch: `.reid\handoff.md`, written and put before the prompt once the turn holds its locks
+    /// (a refused switch writes nothing)
+    pub switch: Option<crate::handoff::Switch<'a>>,
 }
 
 /// Run one turn, sending each event to `emit`. Ok(exit code) once the engine ran (its failures come
@@ -194,6 +264,8 @@ fn turn(ctx: &Ctx, prof: &Obj, t: &Turn, engine: &'static str, launch: &mut engi
             argv.extend(CLAUDE_WRITE_TOOLS.map(String::from));
         } else if !own.iter().any(|a| a.starts_with("--permission-mode") || a.contains("dangerously")) {
             argv.extend(["--permission-mode".into(), "acceptEdits".into()]); // -p can't ask, so edits are allowed up front
+            // edit-only (Part 6): shell goes through open terminal, even where the user's settings allow it here
+            argv.extend(["--disallowedTools", "Bash", "PowerShell"].map(String::from));
         }
         match t.resume {
             Some(r) => argv.extend(["--resume".into(), r.into()]),
@@ -236,7 +308,11 @@ fn turn(ctx: &Ctx, prof: &Obj, t: &Turn, engine: &'static str, launch: &mut engi
         }
         None => None,
     };
-    let res = spawn(ctx, t, engine, launch, &mut sid, &mut session_lock, emit);
+    let prompt = match &t.switch {
+        Some(s) => crate::handoff::prompt(&crate::handoff::write(s)?.1, t.prompt),
+        None => t.prompt.to_string(),
+    };
+    let res = spawn(ctx, t, &prompt, engine, launch, &mut sid, &mut session_lock, emit);
     proxy::stop(px.as_mut());
     drop((folder_lock, session_lock));
     let _ = remember_session(ctx, t.profile, t.folder, sid.as_deref(), engine);
@@ -250,7 +326,8 @@ fn own_guards(a: &str, claude: bool) -> bool {
         else { a.contains("sandbox") || a.contains("approval") || ["--yolo", "--full-auto", "-s", "-a"].contains(&a.as_str()) }
 }
 
-fn spawn(ctx: &Ctx, t: &Turn, engine: &'static str, launch: &engines::Launch, sid: &mut Option<String>,
+#[allow(clippy::too_many_arguments)]
+fn spawn(ctx: &Ctx, t: &Turn, prompt: &str, engine: &'static str, launch: &engines::Launch, sid: &mut Option<String>,
          session_lock: &mut Option<locks::Lock>, emit: &mut dyn FnMut(&Event)) -> Result<i32, EngineError> {
     use std::os::windows::io::AsRawHandle;
     use std::os::windows::process::CommandExt;
@@ -273,13 +350,13 @@ fn spawn(ctx: &Ctx, t: &Turn, engine: &'static str, launch: &engines::Launch, si
     // on its own thread, after the readers exist: a pipe holds ~4 KB, and an engine that writes
     // before it has read a long prompt would otherwise wait on us while we wait on it
     if let Some(mut stdin) = child.stdin.take() {
-        let prompt = t.prompt.to_owned();
+        let prompt = prompt.to_owned();
         std::thread::spawn(move || {
             let _ = stdin.write_all(prompt.as_bytes()); // fails only if the engine already quit: its exit says why
             drop(stdin); // EOF: the prompt is complete
         });
     }
-    let mut parser = Parser::new(engine);
+    let mut parser = Parser::new(engine, t.folder);
     let mut failed = false;
     for line in std::io::BufReader::new(child.stdout.take().expect("piped")).split(b'\n').map_while(Result::ok) {
         for ev in parser.line(&String::from_utf8_lossy(&line)) {
@@ -325,8 +402,23 @@ pub fn prompt_from(args: &[String]) -> String {
 mod tests {
     use super::*;
 
+    #[test]
+    fn tool_lines_unwrap_shells_and_drop_the_folder() {
+        assert_eq!(unwrap_shell(r#""C:\\Program Files\\PowerShell\\7\\pwsh.exe" -NoProfile -Command "git status --short""#), "git status --short");
+        assert_eq!(unwrap_shell("pwsh -Command \"@'"), "@'"); // a here-string: no closing quote
+        assert_eq!(unwrap_shell("bash -lc 'ls -la'"), "ls -la");
+        assert_eq!(unwrap_shell("cmd.exe /c dir"), "dir");
+        assert_eq!(unwrap_shell("git diff"), "git diff");
+        assert_eq!(unwrap_shell("pwsh script.ps1"), "pwsh script.ps1");
+        assert_eq!(relative(r"C:\W\work\src\calc.py", r"C:\w\work"), r"src\calc.py");
+        assert_eq!(relative("rg x C:/w/work/src C:/w/workshop", r"C:\w\work\"), "rg x src C:/w/workshop");
+        assert_eq!(relative(r"cd C:\w\work", r"C:\w\work"), "cd .");
+        assert_eq!(relative(r"Set-Location 'C:\w\work'; ls", r"C:\w\work"), "Set-Location '.'; ls");
+        assert_eq!(relative("café C:\\w\\a", "C:\\w"), "café a");
+    }
+
     fn run(engine: &str, lines: &[&str]) -> Vec<Event> {
-        let mut p = Parser::new(engine);
+        let mut p = Parser::new(engine, "C:\\w");
         lines.iter().flat_map(|l| p.line(l)).collect()
     }
 
@@ -345,7 +437,7 @@ mod tests {
         assert_eq!(ev, vec![
             Event::Started { session_id: "s1".into() },
             Event::TextDelta { text: "Hi ".into() },
-            Event::ToolCall { name: "Write".into(), summary: "C:\\w\\hello.txt".into() },
+            Event::ToolCall { name: "Write".into(), summary: "hello.txt".into() },
             Event::Usage { context_pct: Some(15), cost_usd: Some(0.0053) },
         ]);
         // no window size, no figure: unknown, never 0%
@@ -367,8 +459,8 @@ mod tests {
         ]);
         assert_eq!(ev, vec![
             Event::Started { session_id: "019d-abc".into() },
-            Event::ToolCall { name: "shell".into(), summary: "pwsh -Command \"git diff\"".into() },
-            Event::ToolCall { name: "patch".into(), summary: "add C:\\w\\a.txt".into() },
+            Event::ToolCall { name: "shell".into(), summary: "git diff".into() },
+            Event::ToolCall { name: "patch".into(), summary: "add a.txt".into() },
             Event::TextDelta { text: "Looks fine.".into() },
             Event::Usage { context_pct: None, cost_usd: None },
             Event::Error(EngineError::Engine { message: "stream disconnected".into() }),

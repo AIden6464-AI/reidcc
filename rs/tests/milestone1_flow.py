@@ -251,9 +251,13 @@ def main():
         p = subprocess.run([REID, "--resume", "cl"], cwd=r.work, env=r.env, capture_output=True, text=True, encoding="utf-8",
                            timeout=60, stdin=subprocess.DEVNULL)
         check("interactive reid --resume of it is refused", p.returncode == 1 and "open in another window" in p.stderr, (p.returncode, p.stderr[-300:]))
-        evs, rc, _ = r.stream(["cl", "Say hi."], timeout=60)
+        hp = os.path.join(r.work, ".reid", "handoff.md")
+        h0 = open(hp, encoding="utf-8").read() if os.path.exists(hp) else None
+        evs, rc, _ = r.stream(["cl", "--switch-from", "cx", "--note", "NOTE-REFUSED", "Say hi."], timeout=60)
         e = (of(evs, "error") or [{}])[0]
         check("a second writing turn in the folder is refused", rc == 1 and "writing in this folder" in e.get("message", ""), evs)
+        h1 = open(hp, encoding="utf-8").read() if os.path.exists(hp) else None
+        check("a refused switch writes no handoff (locks come first)", h1 == h0 and "NOTE-REFUSED" not in (h1 or ""), (h1 or "")[:200])
 
         p = subprocess.run([REID, "cl"], cwd=r.work, env=r.env, capture_output=True, text=True, encoding="utf-8",
                            timeout=60, stdin=subprocess.DEVNULL)

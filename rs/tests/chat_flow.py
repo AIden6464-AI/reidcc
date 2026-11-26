@@ -126,6 +126,17 @@ def main():
         bar = c.js("document.getElementById('where').textContent")
         check("the chat window is on the launcher's folder and profile", st["cur"] == CL and "work" in bar and "claude" in bar, bar)
         check("its one bone button is send", st["primary"] == "send" and c.js("document.querySelectorAll('.btn.primary').length") == 1)
+        md = lambda text: c.js("__chat.md(%s)" % json.dumps(text))
+        out = md("Option<T> and `Vec<u8>` <script>x</script>")
+        check("markdown: raw HTML is escaped first (Option<T> stays text)",
+              "Option&lt;T&gt;" in out and "<code>Vec&lt;u8&gt;</code>" in out and "<script" not in out, out)
+        out = md("Here:\n```rust\nfn x() -> Option<u8> {")
+        check("markdown: a fence still streaming is already a code block, its ``` hidden",
+              '<pre class="code open">fn x() -&gt; Option&lt;u8&gt; {</pre>' in out and "```" not in out, out)
+        out = md("# Title\n**ok** see [calc.py](C:/w/calc.py:9)\n```\na\n```\nend")
+        check("markdown: heading, bold, link text (target as tooltip), a closed fence",
+              out.startswith("<b>Title</b>") and "<b>ok</b>" in out and '<span class="mdlink" title="C:/w/calc.py:9">calc.py</span>' in out
+              and '<pre class="code">a</pre>end' in out, out)
 
         # ---- 2: Claude write turn, then stop -------------------------------------------------------
         r = c.turn("Create a file named hello.txt containing exactly the text: hi\nThen reply with just DONE.")
@@ -133,6 +144,10 @@ def main():
         on_disk = open(os.path.join(work, "hello.txt"), encoding="utf-8").read().strip() if os.path.exists(os.path.join(work, "hello.txt")) else None
         check("the Claude turn streamed and wrote hello.txt", on_disk == "hi" and "DONE" in r.get("text", "") and bool(sids.get(CL)), r)
         check("its tool calls show as lowercase lines", any(x.startswith("write") for x in r.get("tools", [])), r.get("tools"))
+        check("tool lines show paths relative to the folder", r.get("tools") and not any(
+            w in x.lower() for x in r["tools"] for w in (work.lower(), work.lower().replace("\\", "/"))), r.get("tools"))
+        zero = c.js("[...document.querySelectorAll('.changed .head .zero')].map(e => e.textContent)")
+        check("a zero count is muted, not oxide", zero == ["−0"], zero)
         check("changed (from git) lists hello.txt", r.get("changed") == ["hello.txt"], r.get("changed"))
         check("the meta line: context % and edit-only", "context " in r["meta"] and "%" in r["meta"] and "edit-only" in r["meta"], r["meta"])
 
@@ -163,6 +178,8 @@ def main():
         check(".reid/handoff.md was written", os.path.exists(os.path.join(work, ".reid", "handoff.md")))
         check("codex answered read-only with context unknown",
               bool(r.get("text")) and "context unknown" in r["meta"] and "read-only" in r["meta"] and not r.get("changed"), r)
+        check("codex shell lines show the command, not the PowerShell wrapper",
+              not any("pwsh" in x.lower() and "-command" in x.lower() for x in r.get("tools", [])), r.get("tools"))
         check("the read-only turn wrote nothing", files() == before and open(os.path.join(work, "hello.txt"), encoding="utf-8").read().strip() == "hi", files())
         sids = c.st()["sids"]
         check("the conversation is with codex now; the button is send again", c.st()["cur"] == CX and c.st()["primary"] == "send"
@@ -195,6 +212,8 @@ def main():
         check("send read-only runs it read-only", "read-only" in r.get("meta", "") and c.st()["readOnly"] and not c.st()["note"], r)
         check("README.md is untouched", open(os.path.join(work, "README.md"), encoding="utf-8").read() == "base\n")
 
+        hp = os.path.join(work, ".reid", "handoff.md")
+        h0 = open(hp, encoding="utf-8").read()
         c.js("__chat.pick('%s')" % CL)
         c.js("__chat.readOnly(false)")
         c.js("__chat.type('Say hi.')")
@@ -204,6 +223,9 @@ def main():
         check("claude is refused while its session is in the terminal",
               st["note"].startswith("in terminal") and "focus terminal" in st["note"] and st["cur"] == CX, st)
         check("a refused switch leaves no divider", c.js("document.querySelectorAll('.switch').length") == 1)
+        check("and writes no handoff; the sidebar keeps the real one", open(hp, encoding="utf-8").read() == h0
+              and c.js("document.getElementById('handoff').textContent").startswith("%s → %s" % (CL, CX)),
+              c.js("document.getElementById('handoff').textContent"))
         for p in ours(bin_):
             if p.name().lower() == "reid.exe" and "--id" in p.cmdline():
                 for k in p.children(recursive=True) + [p]:
