@@ -92,7 +92,8 @@ reidcc\
 │  └─ Spec\           proxy, gate (built), tui (proposed), codex-opencode (Codex built, OpenCode proposed),
 │                     codex-signin-persona (built), codex-proxy (proposed), rust-rewrite (stage 0 built),
 │                     rust-tui-gui (1:1 TUI + GUI in Rust, built, awaiting sign-off), app,
-│                     github-repo (installer + updater, built), github-pages (website, built in site\;
+│                     github-repo (installer + updater, built), unified-interface (Step 0 + Milestone 1
+│                     built on dev), github-pages (website, built in site\;
 │                     the mock it was ported from is in Spec\github-pages\mock\)
 ├─ site\             the website: VitePress landing page + docs, deployed by .github\workflows\pages.yml
 ├─ assets\            banner.png, gate frames (gate_*.png) and TUI half-block gate frames (tui\gate_*.json.gz)
@@ -142,8 +143,10 @@ The flow is `folder → profile → open gate` in both the GUI and the TUI. The 
 ```text
 reid                    Open the TUI in a terminal, or the GUI when launched as an app
 reid <profile> [args]   Launch a profile in the current folder
-reid --resume           Resume the last Claude session
+reid --resume           Resume the last session (Claude or Codex)
 reid --dry <profile>    Show the exact command and proxy plan without launching
+reid --stream <profile> [--read-only] [--resume ID] [--switch-from PROFILE] PROMPT
+                        Run one headless turn and print its events as JSON lines
 reid -l                 List all profiles and their summaries
 reid --tui / --gui      Force the TUI or GUI
 reid --edit             Open reid.json
@@ -171,7 +174,8 @@ A profile selects its engine (`claude` or `codex`) on the `name` row. Profiles w
 - **Native launch:** resolves the vendored `codex.exe` directly instead of `.cmd` shims, so paths with spaces, `&`, `%` or `^` work cleanly.
 - **Sign-in:** uses your terminal `codex login` (status checked in the background: `ChatGPT`, `API key`, or `not signed in`) or a `codex\*.toml` provider file (for LM Studio, OpenRouter, or other APIs).
 - **Persona and memory:** uses the same persona files and `reidcc_memory.md` (`add to Codex's prompt` or `replace Codex's prompt`). Generated files live in `codex\prompts\<profile>.md`; nothing is written to `~/.codex`.
-- **Session flow:** Codex statusline (`model · folder · context · 5h · weekly`), `REIDCC · codex · <profile>` tab title, and `/quit` returns to the Reidcc TUI. `resume` is Claude-only for now.
+- **Session flow:** Codex statusline (`model · folder · context · 5h · weekly`), `REIDCC · codex · <profile>` tab title, and `/quit` returns to the Reidcc TUI.
+- **Resume:** works both ways, like Claude. Reidcc finds the Codex thread while the session runs, and `resume` reopens it (`codex resume <id>`, or `--last` when the id isn't known yet).
 - **Proxy *(proposed)*:** per-session `capture`, `slim` and `ultra` add-ons for Codex traffic are specced in `vision\Spec\SPEC-codex-proxy.md`.
 
 ### OpenCode *(proposed)*
@@ -233,6 +237,9 @@ Reidcc is being rebuilt in Rust (`rs\`: Tauri 2 + TypeScript + `portable-pty` + 
 | **Stage 3 · snap and fuse** | Beta built in Rust | Drag session windows together for a shared frame of up to four live panes. Drag the frame header to move them together or a pane header to pull it out. |
 | **Vision v1 · sizes** | Built in Rust | The launcher has three sizes: `main` (`Alt+1`), `medium` (the form, drag it narrow) and `small` (`Alt+2`), plus the `pod` (`Alt+3`, or drag it small): a capsule with one slot per running session. To do: a key for medium, and the pod as a toggle |
 | **Vision v1 · headless, rigs** | Proposed | Headless run strips, orchestrator rigs, TUI redesign |
+| **Unified interface · Step 0** | Built on `dev` | Codex resume both ways (`vision\Spec\SPEC-unified-interface.md`) |
+| **Unified interface · Milestone 1** | Built on `dev` (core + CLI) | `reid --stream`: one headless turn on Claude or Codex as JSON-line events (started, text, tool call, usage, done, error); context stays unknown when the engine doesn't report it. **Read-only** uses each CLI's own flags (Claude loses its write tools; Codex runs in a read-only sandbox). **Switch** writes `.reid\handoff.md` (changed files, diff stat, optional tests and note) and passes it to the next engine. **Locks** are held by the OS and freed if a process dies: one window per session; session windows share a folder, a headless write turn needs it alone. Acceptance test 25/25 |
+| **Unified interface · Milestone 2** | Next | The UI on top of Milestone 1 |
 
 <p align="center">
   <img src="docs/session-window.png" alt="Reidcc session window beta" width="900" />
