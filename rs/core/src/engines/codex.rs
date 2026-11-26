@@ -4,9 +4,11 @@
 use super::{apply_env, claude_only_on, io, is_claude_model, need, Launch};
 use crate::{err, environ, memory, on, on_by_default, py, pyjson, show_path, text, Ctx, Env, Obj, R};
 use serde_json::{Number, Value};
+use std::collections::HashSet;
 use std::io::Read;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 pub const STATUS_LINE: [&str; 5] = ["model-with-reasoning", "current-dir", "context-used", "five-hour-limit", "weekly-limit"];
 pub const LOGIN: &str = "codex login";
@@ -302,7 +304,7 @@ pub fn prompt_path(ctx: &Ctx, name: &str) -> String {
 /// model call). Cached in codex\prompts\.base-<key>.md until Codex, the settings or
 /// ~/.codex/config.toml change. None if it can't be read.
 fn base_prompt(ctx: &Ctx, exe: &str, env: &Env, pre: &[String], cwd: Option<&str>) -> Option<String> {
-    let home = env.get("CODEX_HOME").filter(|h| !h.is_empty()).cloned().unwrap_or_else(|| py::expanduser("~/.codex"));
+    let home = codex_home(env);
     let conf = py::join(&home, &["config.toml"]);
     let meta = std::fs::metadata(exe).ok()?;
     let mtime = py::getmtime(exe)?;
@@ -351,6 +353,52 @@ fn base_prompt(ctx: &Ctx, exe: &str, env: &Env, pre: &[String], cwd: Option<&str
     Some(base)
 }
 
+/// Codex's own folder for a launch: CODEX_HOME, else ~/.codex.
+fn codex_home(env: &Env) -> String {
+    env.get("CODEX_HOME").filter(|h| !h.is_empty()).cloned().unwrap_or_else(|| py::expanduser("~/.codex"))
+}
+
+/// Codex's thread files: sessions\YYYY\MM\DD\rollout-<time>-<thread id>.jsonl.
+fn thread_files(env: &Env) -> Vec<PathBuf> {
+    let mut level = vec![PathBuf::from(py::join(&codex_home(env), &["sessions"]))];
+    for _ in 0..3 {
+        level = level.iter().filter_map(|d| std::fs::read_dir(d).ok()).flatten().flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.path()).collect();
+    }
+    level.iter().filter_map(|d| std::fs::read_dir(d).ok()).flatten().flatten().map(|e| e.path())
+        .filter(|p| p.file_name().is_some_and(|n| { let n = n.to_string_lossy(); n.starts_with("rollout-") && n.ends_with(".jsonl") }))
+        .collect()
+}
+
+pub fn thread_exists(env: &Env, id: &str) -> bool {
+    !id.is_empty() && thread_files(env).iter().any(|p| p.to_string_lossy().ends_with(&format!("-{id}.jsonl")))
+}
+
+/// The thread a running Codex writes: a thread file changed since `since` and held open by `root` or a
+/// process under it, so two windows in one folder each find their own (never "the newest thread").
+/// Subagent threads (guardian…) are skipped. `skip` keeps files already known to be someone else's.
+pub fn thread_of(env: &Env, root: u32, since: SystemTime, skip: &mut HashSet<PathBuf>) -> Option<String> {
+    for p in thread_files(env) {
+        if skip.contains(&p) || std::fs::metadata(&p).and_then(|m| m.modified()).map_or(true, |m| m < since) {
+            continue;
+        }
+        if !crate::win::file_holders(&p.to_string_lossy()).iter().any(|&h| crate::win::descends_from(h, root)) {
+            skip.insert(p); // another session's (or a finished one's): it never becomes ours
+            continue;
+        }
+        let mut first = String::new();
+        let _ = std::io::BufRead::read_line(&mut std::io::BufReader::new(std::fs::File::open(&p).ok()?), &mut first);
+        let meta = pyjson::loads(&first).ok()?;
+        let pl = meta.get("payload")?;
+        if pl.get("source").is_some_and(Value::is_object) {
+            skip.insert(p); // {"subagent": …}: a helper thread, not the session's own
+            continue;
+        }
+        return pl.get("id").and_then(Value::as_str).map(str::to_string);
+    }
+    None
+}
+
 /// Codex's command. `prepare` writes the prompt file (and may read Codex's own prompt, ~1 s the
 /// first time); previews pass false and get the same command without touching anything.
 pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd: Option<&str>, prepare: bool) -> R<Launch> {
@@ -385,9 +433,6 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
         if a == "-C" || a == "--cd" || a.starts_with("--cd=") || (a.starts_with("-C") && a.chars().count() > 2) {
             return err("Leave -C / --cd out of the extra args: Codex opens in the folder you picked.");
         }
-    }
-    if let Some(first) = args.first().filter(|a| *a == "resume" || *a == "fork") {
-        return err(format!("Leave {first} out of the extra args: a Codex profile starts a new session."));
     }
     for k in config_keys(&args) {
         if prompt_on && (k == "model_instructions_file" || k == "developer_instructions") {

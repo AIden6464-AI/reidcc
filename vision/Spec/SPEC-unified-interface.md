@@ -143,5 +143,11 @@ Claude Code (write · stream) → **Switch ⇄** (`.reid/handoff.md`) → Codex 
 - **Tags disagree with what's built.** Part 2 asks for uppercase tags (`PROFILE · MAIN`), but
   SPEC-one-look Part 2, built 2026-11-25 on the launcher, TUI and session bar, made them lowercase
   (`main · claude · persona plain · memory`). One of the two has to give.
-- **Codex resume:** today the TUI's `r` on a Codex profile says "Resume is for Claude profiles for now",
-  matching contract 1's code reality.
+- **Step 0 built on dev (2026-11-25).** The three refusals are gone (adapter, `session::run`, GUI/TUI).
+  A Codex session's id is found while it runs: the thread file Windows' Restart Manager says is held open
+  by that session's own `codex.exe` (`codex::thread_of`), never the newest file; subagent threads are
+  skipped. It goes into `reid_state.json`'s `last` with its engine, as soon as it's found and again when
+  the session ends. Resume hands Codex `resume <id>`, or `resume --last` when there's no Codex id (like
+  Claude's `-c`). The headless runner is `reid <profile> exec --json …` / `exec resume <id> …`.
+  Proof: `rs/tests/codex_resume_flow.py` 9/9 (real Codex, two windows in one folder; it deletes its
+  threads afterwards).

@@ -19,7 +19,8 @@ KNOWN = {"config missing": "a new reid.json leaves out memory_file, its default 
          "-l": "Rust asks Codex for its sign-in once; the Python app prints 'checking…' (user trial fix 4)",
          "--dry c-toml-bad": "TOML error wording is the toml crate's, not tomllib's (same line and column)",
          "--dry c-proxy": "Codex has its own proxy in Rust (SPEC-codex-proxy.md); the Python app still refuses it",
-         "--dry c-three": "Codex has its own proxy in Rust (SPEC-codex-proxy.md); the Python app still refuses it"}
+         "--dry c-three": "Codex has its own proxy in Rust (SPEC-codex-proxy.md); the Python app still refuses it",
+         "--dry c-resume": "Codex resume works in Rust (SPEC-unified-interface Step 0); the Python app still refuses it"}
 MASK = re.compile(r"reid_(prompt|settings)_\d+_[a-z0-9_]{8}")  # the pid is in the name (sweep_temps)
 
 PY_WRAPPER = r'''
@@ -248,7 +249,13 @@ def main():
     # Real launches that end at once (the engine prints its version): the session path and the
     # reid_state.json write. Session ids and times are masked; the rest must match.
     state = os.path.join(home, "reid_state.json")
-    mask_state = lambda b: re.sub(r'"(sid|at)": "[^"]*"', r'"\1": "X"', b.decode("utf-8")) if b else b
+    def mask_state(b):
+        if not b:
+            return b
+        s = re.sub(r'"(sid|at)": "[^"]*"', r'"\1": "X"', b.decode("utf-8"))
+        # Rust's resume record also names the engine, and keeps Codex sessions too (SPEC-unified-interface Step 0)
+        s = re.sub(r'  "last": \{[^}]*"engine": "codex",[^}]*\},\r?\n', "", s)
+        return re.sub(r'"engine": "claude",\r?\n\s*', "", s)
     for args in (["main2", "--version"], ["e-safe-api", "--version"], ["c-plain", "--version"], ["mini", "-v"],
                  ["slim", "--version"], ["e-proxy-drop", "--version"]):
         label = "launch " + " ".join(args)

@@ -386,6 +386,14 @@ def compare(py, rs):
     if len(py["snaps"]) != len(rs["snaps"]):
         problems.append("%d screens vs %d (%s / %s)" % (len(py["snaps"]), len(rs["snaps"]),
                                                        py["snaps"][-1][0], rs["snaps"][-1][0]))
+    if rs["state"]:
+        # Rust's resume record also names the engine, and keeps Codex sessions too (SPEC-unified-interface Step 0)
+        last = rb'  "last": \{[^}]*\},\r?\n'
+        s = re.sub(rb'"engine": "claude",\r?\n\s*', b"", rs["state"])
+        if b'"engine": "codex"' in s:
+            m = re.search(last, py["state"] or b"")
+            s = re.sub(last, (m.group(0) if m else b"").replace(b"\\", b"\\\\"), s)
+        rs = dict(rs, state=s)
     for k in ("cfg", "state", "editor", "exit"):
         if py[k] != rs[k]:
             problems.append("%s differs: py %r / rs %r" % (k, py[k] if k == "exit" else (py[k] or b"")[:200],

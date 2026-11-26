@@ -293,10 +293,6 @@ fn go_now(app: &AppHandle, st: &App, sessions: &session::Sessions, resume: bool,
     let say = |m: &mut Model, text: &str, kind: &str, actions: Vec<(String, String)>, seconds: Option<f64>| {
         m.ops.push(Op::Say { text: text.into(), kind: kind.into(), actions, seconds, focus: None });
     };
-    if resume && engine != "claude" {
-        say(&mut m, "Resume is for Claude profiles for now. open gate starts a new Codex session.", "info", vec![], Some(5.0));
-        return ops(&mut m);
-    }
     if is_codex(&prof) && !reidcc::on(&prof, "settings").is_some() && codex::login_cached(&m.ctx).as_deref() == Some("not signed in") {
         // signed in from a terminal since? (about a second, so without the lock: clicks keep working)
         let home = m.ctx.home.clone();

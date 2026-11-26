@@ -2,7 +2,7 @@
 
 use crate::engines::{self, engine_of};
 use crate::term::{is_tty, write, BRONZE, OXIDE, R, TERM_RESET, TEXT, TEXT2, TEXT3};
-use crate::{err, errln, load_config, out, profile, profiles, proxy, py, pyjson, remember_session, Ctx, Obj, R as Res};
+use crate::{errln, load_config, out, profile, profiles, proxy, py, pyjson, remember_session, Ctx, Obj, R as Res};
 use serde_json::Value;
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
@@ -69,15 +69,13 @@ pub struct Ended {
     pub note: String,
 }
 
-/// Run the profile's engine in this terminal. Resume, the session id and /reid are Claude's;
-/// a Codex session is a plain new one.
+/// Run the profile's engine in this terminal. `resume` is a session id, or "-c" for the last one in
+/// the folder. /reid is Claude's; a Codex session's id is found while it runs (codex::thread_of).
 pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume: Option<&str>) -> Res<Ended> {
     let empty = Obj::new();
     let prof = profiles(cfg).get(name).and_then(Value::as_object).unwrap_or(&empty);
-    let claude = engine_of(prof, name)? == "claude";
-    if resume.is_some() && !claude {
-        return err("Resume is for Claude profiles for now. Open the gate for a new Codex session.");
-    }
+    let engine = engine_of(prof, name)?;
+    let claude = engine == "claude";
     sweep_temps(6);
     let mut launch = engines::build(ctx, cfg, name, extra, Some(cwd), true)?;
     let plan = match proxy::plan(ctx, prof) {
@@ -104,6 +102,15 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
             let id = uuid::Uuid::new_v4().to_string();
             launch.argv.extend(["--session-id".into(), id.clone()]);
             sid = Some(id);
+        }
+    } else if let Some(r) = resume {
+        // right after codex.exe, so the profile's own flags go to the resumed session
+        let known = r != "-c" && engines::codex::thread_exists(&launch.env, r);
+        launch.argv.splice(1..1, ["resume".to_string(), if known { r.into() } else { "--last".into() }]);
+        if known {
+            sid = Some(r.to_string());
+        } else if r != "-c" {
+            note = "That Codex session isn't there any more, so this continues the last one in this folder.".into();
         }
     }
     let flag = back_flag_path();
@@ -139,8 +146,10 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
             errln!("{TEXT3}proxy {} on 127.0.0.1:{} · log {}{R}", proxy::list(prof).join("+"), p.port, crate::show_path(&p.log_path));
             px = Some(p);
         }
+        let since = SystemTime::now() - Duration::from_secs(2); // file times are coarse
         let mut child = Command::new(&launch.argv[0]).args(&launch.argv[1..]).env_clear().envs(&launch.env)
             .current_dir(cwd).spawn().map_err(engines::io)?;
+        let (mut skip, mut tick) = (std::collections::HashSet::new(), 0u32);
         loop {
             if let Some(s) = child.try_wait().map_err(engines::io)? {
                 return Ok((s.code().unwrap_or(1), false));
@@ -148,6 +157,14 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
             if py::exists(&flag) {
                 kill_tree(&mut child);
                 return Ok((child.try_wait().ok().flatten().and_then(|s| s.code()).unwrap_or(1), true));
+            }
+            tick += 1;
+            if !claude && sid.is_none() && tick % 5 == 0 {
+                // Codex picks its own id: its thread file appears with the first message
+                sid = engines::codex::thread_of(&launch.env, child.id(), since, &mut skip);
+                if sid.is_some() {
+                    let _ = remember_session(ctx, name, cwd, sid.as_deref(), engine); // kept even if the window is closed
+                }
             }
             std::thread::sleep(Duration::from_millis(200));
         }
@@ -164,7 +181,7 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
     launch.remove_temps();
     let _ = std::fs::remove_file(&flag);
     let (rc, back) = result?;
-    remember_session(ctx, name, cwd, sid.as_deref(), claude).map_err(engines::io)?;
+    remember_session(ctx, name, cwd, sid.as_deref(), engine).map_err(engines::io)?;
     Ok(Ended { rc, back, sid, note })
 }
 

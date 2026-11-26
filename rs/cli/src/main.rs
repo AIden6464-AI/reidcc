@@ -97,7 +97,8 @@ fn resume_target(ctx: &Ctx, cfg: &reidcc::Obj, rest: &[String]) -> (String, Stri
         _ => (default_profile(cfg).to_string(), rest.to_vec()),
     };
     let cwd = if !s("cwd").is_empty() && py::isdir(&s("cwd")) { s("cwd") } else { py::getcwd() };
-    let sid = if s("sid").is_empty() { "-c".to_string() } else { s("sid") };
+    let codex = profiles(cfg).get(&name).and_then(|v| v.as_object()).is_some_and(is_codex);
+    let sid = reidcc::resume_id(&last, if codex { "codex" } else { "claude" });
     (name, cwd, sid, extra)
 }
 
@@ -179,7 +180,10 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
         let (name, cwd, sid, extra) = resume_target(ctx, &cfg, &args[1..]);
         let mut launch = engines::build(ctx, &cfg, &name, &extra, Some(&cwd), true)?;
         launch.remove_temps();
-        if sid == "-c" || !session::session_exists(&sid) {
+        if profiles(&cfg).get(&name).and_then(|v| v.as_object()).is_some_and(is_codex) {
+            let id = if sid != "-c" && codex::thread_exists(&launch.env, &sid) { sid } else { "--last".into() };
+            launch.argv.splice(1..1, ["resume".to_string(), id]);
+        } else if sid == "-c" || !session::session_exists(&sid) {
             launch.argv.push("-c".into());
         } else {
             launch.argv.extend(["--resume".into(), sid]);

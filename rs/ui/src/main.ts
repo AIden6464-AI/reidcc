@@ -883,7 +883,6 @@ class App {
     for (const k of ["safe", "chrome", "connectors"]) this.checks[k].setDisabled(r.disabled[k]);
     for (const k of ["tools", "mcp"]) this.cb[k].root.title = r.disabled[k] ? "Claude only" : "";
     for (const k of ["safe", "chrome", "connectors"]) this.checks[k].root.title = r.disabled[k] ? "Claude only" : "";
-    this.bResume.classList.toggle("dim", r.codex);
     this.bGo.classList.toggle("off", !r.ready); // SPEC-one-look 1.5: the disabled look while not ready
     this.paintWhere();
     this.statusDot.style.color = r.ready ? C.emerald : C.oxide;

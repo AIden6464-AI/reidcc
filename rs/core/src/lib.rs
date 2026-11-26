@@ -265,10 +265,10 @@ pub fn load_state(ctx: &Ctx) -> Obj {
         .and_then(|v| if let Value::Object(m) = v { Some(m) } else { None }).unwrap_or_default()
 }
 
-/// Folder history always; the resume record (`last`) only for sessions `resume` can reopen.
-pub fn remember_session(ctx: &Ctx, name: &str, cwd: &str, sid: Option<&str>, last: bool) -> std::io::Result<()> {
+/// Folder history and the resume record (`last`, with the engine its id belongs to).
+pub fn remember_session(ctx: &Ctx, name: &str, cwd: &str, sid: Option<&str>, engine: &str) -> std::io::Result<()> {
     let lock = take_lock(&format!("{}.lock", ctx.state), 5.0, 10.0);
-    let res = remember_locked(ctx, name, cwd, sid, last);
+    let res = remember_locked(ctx, name, cwd, sid, engine);
     if let Some(l) = lock {
         let _ = std::fs::remove_file(l);
     }
@@ -298,14 +298,20 @@ pub fn take_lock(path: &str, wait: f64, stale: f64) -> Option<String> {
     }
 }
 
-fn remember_locked(ctx: &Ctx, name: &str, cwd: &str, sid: Option<&str>, last: bool) -> std::io::Result<()> {
+/// The id `resume` hands a profile of `engine`: the last session's if it was the same engine, else
+/// "-c" (the engine's own "last one in this folder"). A record without an engine is Claude's.
+pub fn resume_id(last: &Obj, engine: &str) -> String {
+    let same = last.get("engine").and_then(Value::as_str).unwrap_or("claude") == engine;
+    let sid = text(last, "sid");
+    if same && !sid.is_empty() { sid } else { "-c".into() }
+}
+
+fn remember_locked(ctx: &Ctx, name: &str, cwd: &str, sid: Option<&str>, engine: &str) -> std::io::Result<()> {
     let mut st = load_state(ctx);
-    if last {
-        let (y, mo, d, h, mi, s) = py::now_local();
-        st.insert("last".into(), serde_json::json!({
-            "profile": name, "cwd": cwd, "sid": sid,
-            "at": format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}")}));
-    }
+    let (y, mo, d, h, mi, s) = py::now_local();
+    st.insert("last".into(), serde_json::json!({
+        "profile": name, "cwd": cwd, "sid": sid, "engine": engine,
+        "at": format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}")}));
     let mut dirs = vec![Value::String(cwd.into())];
     if let Some(Value::Array(old)) = st.get("recent_dirs") {
         dirs.extend(old.iter().filter(|d| py::normcase(&pyjson::py_str(d)) != py::normcase(cwd)).cloned());

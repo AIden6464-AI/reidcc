@@ -551,7 +551,7 @@ impl Tui {
 
         let help2 = if cx {
             if on(&p, "persona").is_some() && text(&p, "mode") == "replace" { CODEX_REPLACE_HINT }
-            else { "codex: /quit comes back here · resume is Claude's" }
+            else { "codex: /quit comes back here" }
         } else { "in a session: /reid comes back here" };
         let mut bottom = vec![self.rule(),
                               self.help("↵ open gate · r resume · e edit · n new · x delete · d default · m memory · q quit"),
@@ -708,7 +708,7 @@ impl Tui {
         let rc_s = (rc as u32).to_string(); // Windows exit codes are unsigned, as Python prints them
         if codex {
             // Codex has no /reid: quitting it comes back here
-            self.msg = if rc == 0 { "Back from Codex.".into() } else { format!("Codex ended with code {rc_s}. See the output above.") };
+            self.msg = if rc == 0 { "Back from Codex. r resumes it.".into() } else { format!("Codex ended with code {rc_s}. See the output above.") };
             write("\x1b[?1049h");
             return false;
         }
@@ -742,10 +742,6 @@ impl Tui {
     }
 
     fn resume(&mut self, cfg: &Obj, name: &str) -> T<bool> {
-        if engine_str(&prof(cfg, name)) != "claude" {
-            self.msg = "Resume is for Claude profiles for now. ↵ opens a new Codex session.".into();
-            return Ok(false);
-        }
         let st = load_state(self.ctx);
         let Some(last) = st.get("last").filter(|v| pyjson::truthy(v)) else {
             self.msg = "Nothing to resume yet.".into();
@@ -754,10 +750,10 @@ impl Tui {
         let last = last.as_object().cloned().unwrap_or_default();
         let lcwd = text(&last, "cwd");
         if !lcwd.is_empty() && py::isdir(&lcwd) {
-            self.cwd = lcwd; // claude finds sessions by folder
+            self.cwd = lcwd; // the engines find sessions by folder
         }
-        let sid = text(&last, "sid");
-        self.launch(cfg, name, Some(if sid.is_empty() { "-c" } else { &sid }))
+        let sid = reidcc::resume_id(&last, if is_codex(&prof(cfg, name)) { "codex" } else { "claude" });
+        self.launch(cfg, name, Some(&sid))
     }
 
     fn pick_dir(&mut self) -> T<()> {
