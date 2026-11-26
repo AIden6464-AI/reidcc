@@ -12,19 +12,26 @@ use serde_json::Value;
 use std::fs::File;
 use std::io::Write;
 use std::os::windows::fs::OpenOptionsExt;
+use std::path::{Path, PathBuf};
+use windows_sys::Win32::Storage::FileSystem::FILE_SHARE_READ;
 
-const FILE_SHARE_READ: u32 = 1;
+/// Claude's ids are 36 characters and Codex's about the same; anything far longer isn't one.
+const MAX_SESSION_ID_LEN: usize = 80;
+/// FNV-1a, 64-bit: a lock file name that stays the same across Rust versions (std's hasher may not),
+/// without a crate for ten lines.
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
 pub struct Lock {
     file: Option<File>,
-    paths: Vec<String>, // removed on release: [0] the lock, then the records next to it
+    paths: Vec<PathBuf>, // removed on release: [0] the lock, then the records next to it
 }
 
 impl Drop for Lock {
     fn drop(&mut self) {
         // records go while it's still held, so they can't be the next holder's
-        for p in self.paths.iter().skip(1) {
-            let _ = std::fs::remove_file(p);
+        for record in self.paths.iter().skip(1) {
+            let _ = std::fs::remove_file(record);
         }
         self.file.take();
         if let Some(lock) = self.paths.first() {
@@ -34,38 +41,43 @@ impl Drop for Lock {
 }
 
 /// Hold `path`, with `info` written in it for whoever finds it taken. Err(the holder's info).
-fn take(path: &str, info: &Value) -> Result<Lock, Value> {
-    let _ = std::fs::create_dir_all(py::dirname(path));
+fn take(path: &Path, info: &Value) -> Result<Lock, Value> {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
     // others may read it (to name the holder), nobody else may open it to write
     let opened = std::fs::OpenOptions::new().write(true).create(true).truncate(true)
         .share_mode(FILE_SHARE_READ).open(path);
     match opened {
-        Ok(mut f) => {
-            let _ = f.write_all(info.to_string().as_bytes());
-            let _ = f.flush();
-            Ok(Lock { file: Some(f), paths: vec![path.into()] })
+        Ok(mut file) => {
+            let _ = file.write_all(info.to_string().as_bytes());
+            let _ = file.flush();
+            Ok(Lock { file: Some(file), paths: vec![path.into()] })
         }
-        Err(_) => Err(std::fs::read_to_string(path).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or(Value::Null)),
+        Err(_) => Err(read_json(path).unwrap_or(Value::Null)),
     }
 }
 
+fn read_json(path: &Path) -> Option<Value> {
+    std::fs::read_to_string(path).ok().and_then(|text| serde_json::from_str(&text).ok())
+}
+
 fn holder_pid(info: &Value) -> String {
-    info.get("pid").and_then(Value::as_u64).map(|p| format!(" (pid {p})")).unwrap_or_default()
+    info.get("pid").and_then(Value::as_u64).map(|pid| format!(" (pid {pid})")).unwrap_or_default()
 }
 
 /// Session ids name files, so only the characters Claude's and Codex's ids use.
 pub fn valid_id(id: &str) -> bool {
-    !id.is_empty() && id.len() <= 80 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+    !id.is_empty() && id.len() <= MAX_SESSION_ID_LEN && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 /// The record kept while a session runs (REIDCC_HOME\sessions\<id>.json).
 pub fn record(id: &str, engine: &str, profile: &str, folder: &str, mode: &str) -> Value {
-    let (y, mo, d, h, mi, s) = py::now_local();
     serde_json::json!({
         "id": id, "engine": engine, "profile": profile, "folder": folder, "mode": mode,
         "pid": std::process::id(),
-        "hwnd": std::env::var("REIDCC_HWND").ok().and_then(|h| h.parse::<u64>().ok()),
-        "started": format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}"),
+        "hwnd": std::env::var("REIDCC_HWND").ok().and_then(|hwnd| hwnd.parse::<u64>().ok()),
+        "started": crate::now_iso(),
     })
 }
 
@@ -75,11 +87,11 @@ pub fn session(ctx: &Ctx, rec: &Value) -> R<Lock> {
     if !valid_id(id) {
         return err(format!("{id} isn't a session id."));
     }
-    let dir = py::join(&ctx.home, &["sessions"]);
-    match take(&py::join(&dir, &[&format!("{id}.lock")]), rec) {
+    let dir = Path::new(&ctx.home).join("sessions");
+    match take(&dir.join(format!("{id}.lock")), rec) {
         Ok(mut lock) => {
-            let json = py::join(&dir, &[&format!("{id}.json")]);
-            let _ = crate::save_json(&json, rec);
+            let json = dir.join(format!("{id}.json"));
+            let _ = crate::save_json(&json.to_string_lossy(), rec);
             lock.paths.push(json);
             Ok(lock)
         }
@@ -93,31 +105,29 @@ pub fn holder(ctx: &Ctx, id: &str) -> Option<Value> {
     if !valid_id(id) {
         return None;
     }
-    let path = py::join(&ctx.home, &["sessions", &format!("{id}.lock")]);
-    if !py::exists(&path) {
+    let path = Path::new(&ctx.home).join("sessions").join(format!("{id}.lock"));
+    if !path.exists() {
         return None;
     }
     match std::fs::OpenOptions::new().write(true).share_mode(FILE_SHARE_READ).open(&path) {
         Ok(_) => None,
-        Err(_) => Some(std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str(&t).ok())
-            .unwrap_or_else(|| serde_json::json!({}))),
+        Err(_) => Some(read_json(&path).unwrap_or_else(|| serde_json::json!({}))),
     }
 }
 
 /// The folder's lock file and the file naming its writer.
-fn folder_paths(ctx: &Ctx, folder: &str) -> (String, String) {
+fn folder_paths(ctx: &Ctx, folder: &str) -> (PathBuf, PathBuf) {
+    // ntpath's normcase + abspath: C:\Work, c:\work\ and C:/Work are one folder, so one lock
     let key = py::normcase(py::abspath(folder).trim_end_matches(['\\', '/']));
-    // FNV-1a: a stable file name for the folder (std's hasher may change between Rust versions)
-    let hash = key.bytes().fold(0xcbf29ce484222325u64, |h, b| (h ^ b as u64).wrapping_mul(0x100000001b3));
-    let dir = py::join(&ctx.home, &["locks"]);
+    let hash = key.bytes().fold(FNV_OFFSET_BASIS, |hash, byte| (hash ^ byte as u64).wrapping_mul(FNV_PRIME));
+    let dir = Path::new(&ctx.home).join("locks");
     let _ = std::fs::create_dir_all(&dir);
-    (py::join(&dir, &[&format!("{hash:016x}.lock")]), py::join(&dir, &[&format!("{hash:016x}.json")]))
+    (dir.join(format!("{hash:016x}.lock")), dir.join(format!("{hash:016x}.json")))
 }
 
 /// The folder's writer, if one is running (its lock can't be read while it's held alone).
-fn writer(side: &str) -> Option<Value> {
-    std::fs::read_to_string(side).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok())
-        .filter(|i| i["pid"].as_u64().is_some_and(|p| crate::win::pid_alive(p as u32)))
+fn writer(side: &Path) -> Option<Value> {
+    read_json(side).filter(|info| info["pid"].as_u64().is_some_and(|pid| crate::win::pid_alive(pid as u32)))
 }
 
 /// A headless writing turn holds its folder alone: refused while a window or another writing turn
@@ -125,13 +135,13 @@ fn writer(side: &str) -> Option<Value> {
 pub fn folder(ctx: &Ctx, folder: &str, session: Option<&str>) -> R<Lock> {
     let (path, side) = folder_paths(ctx, folder);
     match std::fs::OpenOptions::new().write(true).create(true).truncate(true).share_mode(0).open(&path) {
-        Ok(f) => {
+        Ok(file) => {
             let info = serde_json::json!({ "folder": folder, "pid": std::process::id(), "session": session });
             let _ = std::fs::write(&side, info.to_string());
-            Ok(Lock { file: Some(f), paths: vec![path, side] })
+            Ok(Lock { file: Some(file), paths: vec![path, side] })
         }
         Err(_) => match writer(&side) {
-            Some(w) => err(format!("Another turn is writing in this folder{}. Wait for it to finish, or run this one read-only.", holder_pid(&w))),
+            Some(info) => err(format!("Another turn is writing in this folder{}. Wait for it to finish, or run this one read-only.", holder_pid(&info))),
             None => err("A Reidcc window is open in this folder. Close it, or run this turn read-only."),
         },
     }
@@ -145,13 +155,13 @@ pub fn folder_shared(ctx: &Ctx, folder: &str) -> R<Lock> {
     use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_ATTRIBUTE_NORMAL, OPEN_ALWAYS};
     let (path, side) = folder_paths(ctx, folder);
     // read access, and others may only read: windows share it, a writer (who needs it alone) can't open it
-    let h = unsafe { CreateFileW(crate::win::wide(&path).as_ptr(), GENERIC_READ, FILE_SHARE_READ, std::ptr::null(),
-                                 OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, std::ptr::null_mut()) };
-    if h == INVALID_HANDLE_VALUE {
-        let pid = writer(&side).map(|w| holder_pid(&w)).unwrap_or_default();
+    let handle = unsafe { CreateFileW(crate::win::wide(&path.to_string_lossy()).as_ptr(), GENERIC_READ, FILE_SHARE_READ,
+                                      std::ptr::null(), OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, std::ptr::null_mut()) };
+    if handle == INVALID_HANDLE_VALUE {
+        let pid = writer(&side).map(|info| holder_pid(&info)).unwrap_or_default();
         return err(format!("A turn is writing in this folder right now{pid}. Open this when it's done."));
     }
-    Ok(Lock { file: Some(unsafe { File::from_raw_handle(h as _) }), paths: vec![path] })
+    Ok(Lock { file: Some(unsafe { File::from_raw_handle(handle as _) }), paths: vec![path] })
 }
 
 #[cfg(test)]

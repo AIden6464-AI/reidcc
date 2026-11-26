@@ -1,7 +1,9 @@
 //! Switch (SPEC-unified-interface, Milestone 1): `.reid\handoff.md`, written by plain code from
 //! git and what you typed, never by a model, then handed to the next engine's turn.
 
-use crate::{py, R};
+use crate::R;
+use std::fmt::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 pub const DIR: &str = ".reid";
@@ -23,39 +25,43 @@ fn git(folder: &str, args: &[&str]) -> Option<String> {
 }
 
 /// The handoff's text.
-pub fn render(s: &Switch) -> String {
-    let (y, mo, d, h, mi, _) = py::now_local();
-    let mut md = format!("# Handoff\n\n- Folder: {}\n- From: {} · {}\n- Written: {y:04}-{mo:02}-{d:02} {h:02}:{mi:02}\n",
-                         s.folder, s.profile, s.engine);
-    let section = |md: &mut String, title: &str, body: &str| md.push_str(&format!("\n## {title}\n\n{body}\n"));
+pub fn render(switch: &Switch) -> String {
+    let written = crate::now_iso()[..16].replacen('T', " ", 1); // to the minute
+    let mut md = format!("# Handoff\n\n- Folder: {}\n- From: {} · {}\n- Written: {written}\n",
+                         switch.folder, switch.profile, switch.engine);
     // git's default lists a new folder once (?? .venv/), not every file in it
-    match git(s.folder, &["status", "--porcelain=v1"]) {
+    match git(switch.folder, &["status", "--porcelain=v1"]) {
         None => section(&mut md, "Changed files", "Not a git repo, so no list of changes."),
-        Some(st) => {
-            section(&mut md, "Changed files", &if st.is_empty() { "None.".into() } else { format!("```\n{st}\n```") });
+        Some(status) => {
+            section(&mut md, "Changed files", &if status.is_empty() { "None.".into() } else { format!("```\n{status}\n```") });
             // staged and unstaged against the last commit; a repo with no commit yet has only the working tree
-            let stat = git(s.folder, &["diff", "--stat", "HEAD"]).or_else(|| git(s.folder, &["diff", "--stat"])).unwrap_or_default();
+            let stat = git(switch.folder, &["diff", "--stat", "HEAD"]).or_else(|| git(switch.folder, &["diff", "--stat"]))
+                .unwrap_or_default();
             section(&mut md, "Diff stat", &if stat.is_empty() { "No changes to tracked files.".into() } else { format!("```\n{stat}\n```") });
         }
     }
-    if let Some(t) = s.tests.map(str::trim).filter(|t| !t.is_empty()) {
-        section(&mut md, "Tests", t);
+    if let Some(tests) = switch.tests.map(str::trim).filter(|tests| !tests.is_empty()) {
+        section(&mut md, "Tests", tests);
     }
-    if let Some(n) = s.note.map(str::trim).filter(|n| !n.is_empty()) {
-        section(&mut md, "Note", n);
+    if let Some(note) = switch.note.map(str::trim).filter(|note| !note.is_empty()) {
+        section(&mut md, "Note", note);
     }
     md
 }
 
+fn section(md: &mut String, title: &str, body: &str) {
+    let _ = writeln!(md, "\n## {title}\n\n{body}"); // writing to a String can't fail
+}
+
 /// Write `<folder>\.reid\handoff.md`; returns its path and text.
-pub fn write(s: &Switch) -> R<(String, String)> {
-    let md = render(s);
-    let path = py::join(s.folder, &[DIR, "handoff.md"]);
-    let dir = py::dirname(&path);
+pub fn write(switch: &Switch) -> R<(String, String)> {
+    let md = render(switch);
+    let dir = Path::new(switch.folder).join(DIR);
+    let path = dir.join("handoff.md");
     // git ignores the whole folder, so `git add -A` never commits a handoff (or the local path in it)
-    std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(py::join(&dir, &[".gitignore"]), "*\n"))
+    std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(dir.join(".gitignore"), "*\n"))
         .and_then(|_| std::fs::write(&path, &md)).map_err(crate::engines::io)?;
-    Ok((path, md))
+    Ok((path.to_string_lossy().into_owned(), md))
 }
 
 /// The next engine's turn: the handoff first, then what you asked.

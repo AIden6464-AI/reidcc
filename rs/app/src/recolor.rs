@@ -21,43 +21,48 @@ const BG: &[u32] = &[
     0x2E1714, 0x5A2A24, 0x0F2A1C, 0x1C4A30, 0x2B2213, 0x54421F,
 ];
 
-/// The nearest palette entry by "redmean" distance (a cheap stand-in for how far apart colours look).
-fn nearest(pal: &[u32], r: u8, g: u8, b: u8) -> (u8, u8, u8) {
-    let d = |c: u32| {
-        let (cr, cg, cb) = ((c >> 16) as i32, ((c >> 8) & 0xFF) as i32, (c & 0xFF) as i32);
-        let rm = (cr + r as i32) / 2;
-        let (dr, dg, db) = (cr - r as i32, cg - g as i32, cb - b as i32);
-        (512 + rm) * dr * dr / 256 + 4 * dg * dg + (767 - rm) * db * db / 256
+/// A CSI longer than this with no final byte isn't cut off by a chunk boundary: pass it through.
+const MAX_SPLIT_CSI_LEN: usize = 64;
+
+/// The nearest palette entry by "redmean" distance (CompuPhase's weighted RGB: a cheap stand-in for
+/// how far apart colours look). Twenty palette entries a colour, so no colour-science crate.
+fn nearest(palette: &[u32], r: u8, g: u8, b: u8) -> (u8, u8, u8) {
+    let distance = |color: u32| {
+        let (pr, pg, pb) = ((color >> 16) as i32, ((color >> 8) & 0xFF) as i32, (color & 0xFF) as i32);
+        let red_mean = (pr + r as i32) / 2;
+        let (dr, dg, db) = (pr - r as i32, pg - g as i32, pb - b as i32);
+        (512 + red_mean) * dr * dr / 256 + 4 * dg * dg + (767 - red_mean) * db * db / 256
     };
-    let c = *pal.iter().min_by_key(|&&c| d(c)).unwrap();
-    ((c >> 16) as u8, (c >> 8) as u8, c as u8)
+    let best = *palette.iter().min_by_key(|&&color| distance(color)).unwrap();
+    ((best >> 16) as u8, (best >> 8) as u8, best as u8)
 }
 
 /// One SGR parameter list (`1;38;2;255;193;7`) with its 24-bit colours swapped.
-fn params(p: &str) -> String {
-    let v: Vec<&str> = p.split(';').collect();
-    let mut out: Vec<String> = Vec::with_capacity(v.len());
+fn params(list: &str) -> String {
+    let parts: Vec<&str> = list.split(';').collect();
+    let mut out: Vec<String> = Vec::with_capacity(parts.len());
     let mut i = 0;
-    while i < v.len() {
+    while i < parts.len() {
         let rgb = || -> Option<(u8, u8, u8)> {
-            Some((v.get(i + 2)?.parse().ok()?, v.get(i + 3)?.parse().ok()?, v.get(i + 4)?.parse().ok()?))
+            Some((parts.get(i + 2)?.parse().ok()?, parts.get(i + 3)?.parse().ok()?, parts.get(i + 4)?.parse().ok()?))
         };
-        if (v[i] == "38" || v[i] == "48") && v.get(i + 1) == Some(&"2") {
+        if (parts[i] == "38" || parts[i] == "48") && parts.get(i + 1) == Some(&"2") {
             if let Some((r, g, b)) = rgb() {
-                let (r, g, b) = nearest(if v[i] == "38" { FG } else { BG }, r, g, b);
-                out.push(format!("{};2;{r};{g};{b}", v[i]));
+                let (r, g, b) = nearest(if parts[i] == "38" { FG } else { BG }, r, g, b);
+                out.push(format!("{};2;{r};{g};{b}", parts[i]));
                 i += 5;
                 continue;
             }
         }
-        out.push(v[i].to_string());
+        out.push(parts[i].to_string());
         i += 1;
     }
     out.join(";")
 }
 
 /// `text` with every SGR colour moved into the palette. A CSI cut off at the end is returned in the
-/// second part, to go in front of the next chunk.
+/// second part, to go in front of the next chunk. Hand-parsed: only `ESC [ digits ; : m` matters
+/// here, and everything else passes through byte for byte, which a full VT parser wouldn't promise.
 pub fn recolor(text: &str) -> (String, String) {
     if !ON.load(std::sync::atomic::Ordering::Relaxed) {
         return (text.to_string(), String::new());
@@ -75,22 +80,22 @@ pub fn recolor(text: &str) -> (String, String) {
             continue;
         }
         let body = &seq[2..];
-        let n = body.find(|c: char| !(c.is_ascii_digit() || c == ';' || c == ':')).unwrap_or(body.len());
-        if n == body.len() {
-            if seq.len() <= 64 {
+        let end = body.find(|c: char| !(c.is_ascii_digit() || c == ';' || c == ':')).unwrap_or(body.len());
+        if end == body.len() {
+            if seq.len() <= MAX_SPLIT_CSI_LEN {
                 return (out, seq.to_string()); // cut off mid-sequence
             }
             out.push_str(seq);
             return (out, String::new());
         }
-        if body.as_bytes()[n] == b'm' {
+        if body.as_bytes()[end] == b'm' {
             out.push_str("\x1b[");
-            out.push_str(&params(&body[..n]));
+            out.push_str(&params(&body[..end]));
             out.push('m');
         } else {
-            out.push_str(&seq[..2 + n + 1]);
+            out.push_str(&seq[..2 + end + 1]);
         }
-        rest = &body[n + 1..];
+        rest = &body[end + 1..];
     }
     out.push_str(rest);
     (out, String::new())

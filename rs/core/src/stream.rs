@@ -8,6 +8,12 @@ use crate::{locks, profiles, proxy, remember_session, session, Ctx, Obj, ReidErr
 use serde_json::{json, Value};
 use std::io::{BufRead, Read, Write};
 use std::process::{Command, Stdio};
+use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
+
+/// A tool line is one line on screen: longer ones end in "…".
+const MAX_SUMMARY_CHARS: usize = 200;
+/// How much of an engine's stderr an unexplained failure carries: its end, where the error is.
+const MAX_STDERR_TAIL_CHARS: usize = 2000;
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Mode {
@@ -61,13 +67,22 @@ impl Event {
 pub const CLAUDE_WRITE_TOOLS: [&str; 6] = ["Write", "Edit", "NotebookEdit", "Bash", "PowerShell", "EnterWorktree"];
 
 /// One line of a tool call: the path, command or query it acts on.
-fn summary(v: &Value) -> String {
-    let s = ["file_path", "command", "pattern", "path", "url", "query", "description"].iter()
-        .find_map(|k| v.get(*k).and_then(Value::as_str).map(String::from))
-        .or_else(|| v.as_str().map(String::from))
-        .unwrap_or_else(|| if v.is_null() { String::new() } else { v.to_string() });
-    let line = s.lines().next().unwrap_or_default();
-    if line.chars().count() > 200 { line.chars().take(199).collect::<String>() + "…" } else { line.to_string() }
+fn summary(input: &Value) -> String {
+    let full = ["file_path", "command", "pattern", "path", "url", "query", "description"].iter()
+        .find_map(|key| input.get(*key).and_then(Value::as_str).map(String::from))
+        .or_else(|| input.as_str().map(String::from))
+        .unwrap_or_else(|| if input.is_null() { String::new() } else { input.to_string() });
+    let line = full.lines().next().unwrap_or_default();
+    let mut chars = line.chars();
+    let head: String = chars.by_ref().take(MAX_SUMMARY_CHARS - 1).collect();
+    let rest = chars.as_str();
+    // one char over would be no shorter with "…" in its place
+    if rest.chars().nth(1).is_some() { head + "…" } else { head + rest }
+}
+
+/// A JSON string field as text; anything else (missing, null) is "".
+fn text_of(value: &Value) -> String {
+    value.as_str().unwrap_or_default().to_string()
 }
 
 /// The command a shell wrapper runs: `"…\pwsh.exe" -NoProfile -Command "git status"` -> `git status`.
@@ -82,38 +97,38 @@ fn unwrap_shell(cmd: &str) -> String {
     if !["pwsh", "pwsh.exe", "powershell", "powershell.exe", "cmd", "cmd.exe", "bash", "bash.exe", "sh", "zsh"].contains(&name.as_str()) {
         return cmd.into();
     }
-    let mut r = rest.trim_start();
+    let mut command = rest.trim_start();
     loop {
-        let (tok, after) = r.split_once(' ').unwrap_or((r, ""));
-        let t = tok.to_lowercase();
-        if ["-command", "-c", "/c", "-lc"].contains(&t.as_str()) {
-            r = after.trim();
+        let (token, after) = command.split_once(' ').unwrap_or((command, ""));
+        let flag = token.to_lowercase();
+        if ["-command", "-c", "/c", "-lc"].contains(&flag.as_str()) {
+            command = after.trim();
             break;
         }
-        if !(t.starts_with('-') || t.starts_with('/')) || after.is_empty() {
+        if !(flag.starts_with('-') || flag.starts_with('/')) || after.is_empty() {
             return cmd.into(); // not a form we know: show it whole
         }
-        r = after.trim_start();
+        command = after.trim_start();
     }
     // its quotes; a cut-off or here-string command may have lost the closing one
-    match r.chars().next() {
-        Some(q @ ('"' | '\'')) => {
-            let inner = &r[1..];
-            inner.strip_suffix(q).unwrap_or(inner).to_string()
+    match command.chars().next() {
+        Some(quote @ ('"' | '\'')) => {
+            let inner = &command[1..];
+            inner.strip_suffix(quote).unwrap_or(inner).to_string()
         }
-        _ => r.to_string(),
+        _ => command.to_string(),
     }
 }
 
 /// `text` with `folder\` taken off every path in it (either slash, any case): `read src\calc.py`.
 fn relative(text: &str, folder: &str) -> String {
-    let f = folder.trim_end_matches(['\\', '/']);
-    if f.is_empty() {
+    let folder = folder.trim_end_matches(['\\', '/']);
+    if folder.is_empty() {
         return text.into();
     }
     // ASCII-only folding keeps byte offsets equal between `text` and `hay`
-    let norm = |s: &str| s.to_ascii_lowercase().replace('/', "\\");
-    let (hay, needle) = (norm(text), norm(f));
+    let fold = |path: &str| path.to_ascii_lowercase().replace('/', "\\");
+    let (hay, needle) = (fold(text), fold(folder));
     let mut out = String::new();
     let mut i = 0;
     while let Some(at) = hay[i..].find(&needle).map(|a| a + i) {
@@ -121,7 +136,7 @@ fn relative(text: &str, folder: &str) -> String {
         // only the whole folder: a slash after it goes too; a name going on (work -> workshop) isn't it
         match hay.as_bytes().get(end) {
             Some(b'\\') => { out.push_str(&text[i..at]); i = end + 1; }
-            Some(c) if c.is_ascii_alphanumeric() || matches!(c, b'_' | b'-' | b'.') => { out.push_str(&text[i..end]); i = end; }
+            Some(next) if next.is_ascii_alphanumeric() || matches!(next, b'_' | b'-' | b'.') => { out.push_str(&text[i..end]); i = end; }
             _ => { out.push_str(&text[i..at]); out.push('.'); i = end; }
         }
     }
@@ -143,40 +158,41 @@ impl Parser {
     }
 
     pub fn line(&mut self, line: &str) -> Vec<Event> {
-        let Ok(v) = serde_json::from_str::<Value>(line) else { return vec![] }; // banners, warnings
-        let s = |v: &Value| v.as_str().unwrap_or_default().to_string();
-        let mut evs = if self.claude { self.claude_line(&v, s) } else { codex_line(&v, s) };
-        for e in &mut evs {
-            if let Event::ToolCall { summary, .. } = e {
+        let Ok(json) = serde_json::from_str::<Value>(line) else { return vec![] }; // banners, warnings
+        let mut events = if self.claude { self.claude_line(&json) } else { codex_line(&json) };
+        for event in &mut events {
+            if let Event::ToolCall { summary, .. } = event {
                 *summary = relative(summary, &self.folder);
             }
         }
-        evs
+        events
     }
 
-    fn claude_line(&mut self, v: &Value, s: impl Fn(&Value) -> String) -> Vec<Event> {
-        match v["type"].as_str().unwrap_or_default() {
-            "system" if v["subtype"] == "init" => vec![Event::Started { session_id: s(&v["session_id"]) }],
-            "stream_event" if v["event"]["delta"]["type"] == "text_delta" => vec![Event::TextDelta { text: s(&v["event"]["delta"]["text"]) }],
+    fn claude_line(&mut self, json: &Value) -> Vec<Event> {
+        match json["type"].as_str().unwrap_or_default() {
+            "system" if json["subtype"] == "init" => vec![Event::Started { session_id: text_of(&json["session_id"]) }],
+            "stream_event" if json["event"]["delta"]["type"] == "text_delta" => {
+                vec![Event::TextDelta { text: text_of(&json["event"]["delta"]["text"]) }]
+            }
             "assistant" => {
-                let u = &v["message"]["usage"];
-                if u.is_object() {
-                    let n = |k: &str| u[k].as_u64().unwrap_or(0);
-                    self.context_tokens = Some(n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens"));
+                let usage = &json["message"]["usage"];
+                if usage.is_object() {
+                    let tokens = |key: &str| usage[key].as_u64().unwrap_or(0);
+                    self.context_tokens = Some(tokens("input_tokens") + tokens("cache_creation_input_tokens") + tokens("cache_read_input_tokens"));
                 }
-                v["message"]["content"].as_array().into_iter().flatten().filter(|b| b["type"] == "tool_use")
-                    .map(|b| Event::ToolCall { name: s(&b["name"]), summary: summary(&b["input"]) }).collect()
+                json["message"]["content"].as_array().into_iter().flatten().filter(|block| block["type"] == "tool_use")
+                    .map(|block| Event::ToolCall { name: text_of(&block["name"]), summary: summary(&block["input"]) }).collect()
             }
             "result" => {
-                let window = v["modelUsage"].as_object().into_iter().flat_map(|m| m.values())
-                    .filter_map(|m| m["contextWindow"].as_u64()).max().filter(|w| *w > 0);
+                let window = json["modelUsage"].as_object().into_iter().flat_map(|models| models.values())
+                    .filter_map(|model| model["contextWindow"].as_u64()).max().filter(|size| *size > 0);
                 let context_pct = self.context_tokens.zip(window)
-                    .map(|(t, w)| ((t as f64 * 100.0 / w as f64).round() as u64).min(100) as u8);
-                let mut out = vec![Event::Usage { context_pct, cost_usd: v["total_cost_usd"].as_f64() }];
-                if v["is_error"].as_bool() == Some(true) {
-                    let message = Some(s(&v["result"])).filter(|m| !m.is_empty())
-                        .or_else(|| v["errors"].as_array().map(|e| e.iter().map(|x| s(x)).collect::<Vec<_>>().join("; ")))
-                        .filter(|m| !m.is_empty()).unwrap_or_else(|| s(&v["subtype"]));
+                    .map(|(used, size)| ((used as f64 * 100.0 / size as f64).round() as u64).min(100) as u8);
+                let mut out = vec![Event::Usage { context_pct, cost_usd: json["total_cost_usd"].as_f64() }];
+                if json["is_error"].as_bool() == Some(true) {
+                    let message = Some(text_of(&json["result"])).filter(|message| !message.is_empty())
+                        .or_else(|| json["errors"].as_array().map(|errors| errors.iter().map(text_of).collect::<Vec<_>>().join("; ")))
+                        .filter(|message| !message.is_empty()).unwrap_or_else(|| text_of(&json["subtype"]));
                     out.push(Event::Error(EngineError::Engine { message }));
                 }
                 out
@@ -186,26 +202,32 @@ impl Parser {
     }
 }
 
-fn codex_line(v: &Value, s: impl Fn(&Value) -> String) -> Vec<Event> {
-    let item = &v["item"];
-    let ev = match (v["type"].as_str().unwrap_or_default(), item["type"].as_str().unwrap_or_default()) {
-        ("thread.started", _) => Event::Started { session_id: s(&v["thread_id"]) },
-        ("item.completed", "agent_message") => Event::TextDelta { text: s(&item["text"]) },
-        ("item.started", "command_execution") => Event::ToolCall { name: "shell".into(), summary: summary(&Value::String(unwrap_shell(&s(&item["command"])))) },
+fn codex_line(json: &Value) -> Vec<Event> {
+    let item = &json["item"];
+    let event = match (json["type"].as_str().unwrap_or_default(), item["type"].as_str().unwrap_or_default()) {
+        ("thread.started", _) => Event::Started { session_id: text_of(&json["thread_id"]) },
+        ("item.completed", "agent_message") => Event::TextDelta { text: text_of(&item["text"]) },
+        ("item.started", "command_execution") => Event::ToolCall {
+            name: "shell".into(),
+            summary: summary(&Value::String(unwrap_shell(&text_of(&item["command"])))),
+        },
         ("item.started", "file_change") => Event::ToolCall {
             name: "patch".into(),
             summary: item["changes"].as_array().into_iter().flatten()
-                .map(|c| format!("{} {}", s(&c["kind"]), s(&c["path"]))).collect::<Vec<_>>().join(", "),
+                .map(|change| format!("{} {}", text_of(&change["kind"]), text_of(&change["path"]))).collect::<Vec<_>>().join(", "),
         },
-        ("item.started", "mcp_tool_call") => Event::ToolCall { name: format!("{}.{}", s(&item["server"]), s(&item["tool"])), summary: summary(&item["arguments"]) },
-        ("item.completed", "web_search") => Event::ToolCall { name: "web_search".into(), summary: s(&item["query"]) },
+        ("item.started", "mcp_tool_call") => Event::ToolCall {
+            name: format!("{}.{}", text_of(&item["server"]), text_of(&item["tool"])),
+            summary: summary(&item["arguments"]),
+        },
+        ("item.completed", "web_search") => Event::ToolCall { name: "web_search".into(), summary: text_of(&item["query"]) },
         // exec --json has no context or cost figures
         ("turn.completed", _) => Event::Usage { context_pct: None, cost_usd: None },
-        ("turn.failed", _) => Event::Error(EngineError::Engine { message: s(&v["error"]["message"]) }),
-        ("error", _) => Event::Error(EngineError::Engine { message: s(&v["message"]) }),
+        ("turn.failed", _) => Event::Error(EngineError::Engine { message: text_of(&json["error"]["message"]) }),
+        ("error", _) => Event::Error(EngineError::Engine { message: text_of(&json["message"]) }),
         _ => return vec![],
     };
-    vec![ev]
+    vec![event]
 }
 
 pub struct Turn<'a> {
@@ -222,21 +244,21 @@ pub struct Turn<'a> {
 
 /// Run one turn, sending each event to `emit`. Ok(exit code) once the engine ran (its failures come
 /// as events); Err when it was refused before starting.
-pub fn run(ctx: &Ctx, cfg: &Obj, t: &Turn, emit: &mut dyn FnMut(&Event)) -> Result<i32, EngineError> {
+pub fn run(ctx: &Ctx, cfg: &Obj, turn: &Turn, emit: &mut dyn FnMut(&Event)) -> Result<i32, EngineError> {
     let empty = Obj::new();
-    let prof = profiles(cfg).get(t.profile).and_then(Value::as_object).unwrap_or(&empty);
-    let engine = engine_of(prof, t.profile)?;
+    let prof = profiles(cfg).get(turn.profile).and_then(Value::as_object).unwrap_or(&empty);
+    let engine = engine_of(prof, turn.profile)?;
     let claude = engine == "claude";
-    if let Some(r) = t.resume.filter(|r| !locks::valid_id(r)) {
-        return refuse(format!("{r} isn't a session id."));
+    if let Some(id) = turn.resume.filter(|id| !locks::valid_id(id)) {
+        return refuse(format!("{id} isn't a session id."));
     }
     // read-only can't trust a profile that turns the engine's own guards off
     let own = crate::args(prof);
-    if let Some(a) = own.iter().find(|a| own_guards(a, claude)).filter(|_| t.mode == Mode::ReadOnly) {
-        return refuse(format!("Read-only can't run {} with {a} in its args. Take it out, or use another profile.", t.profile));
+    if let Some(arg) = own.iter().find(|arg| own_guards(arg, claude)).filter(|_| turn.mode == Mode::ReadOnly) {
+        return refuse(format!("Read-only can't run {} with {arg} in its args. Take it out, or use another profile.", turn.profile));
     }
-    let mut launch = engines::build(ctx, cfg, t.profile, &[], Some(t.folder), true)?;
-    let res = turn(ctx, prof, t, engine, &mut launch, &own, emit);
+    let mut launch = engines::build(ctx, cfg, turn.profile, &[], Some(turn.folder), true)?;
+    let res = launch_turn(ctx, prof, turn, engine, &mut launch, &own, emit);
     launch.remove_temps();
     res
 }
@@ -245,30 +267,31 @@ fn refuse(message: String) -> Result<i32, EngineError> {
     Err(EngineError::Refused { message })
 }
 
-fn turn(ctx: &Ctx, prof: &Obj, t: &Turn, engine: &'static str, launch: &mut engines::Launch, own: &[String],
-        emit: &mut dyn FnMut(&Event)) -> Result<i32, EngineError> {
+/// The engine's argv for this turn, its locks and proxy, the handoff on a switch; then the turn.
+fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch: &mut engines::Launch, own: &[String],
+               emit: &mut dyn FnMut(&Event)) -> Result<i32, EngineError> {
     let claude = engine == "claude";
-    let mut sid = t.resume.map(String::from);
-    if let Some(r) = t.resume {
-        let there = if claude { session::session_exists(r) } else { engines::codex::thread_exists(&launch.env, r) };
+    let mut sid = turn.resume.map(String::from);
+    if let Some(id) = turn.resume {
+        let there = if claude { session::session_exists(id) } else { engines::codex::thread_exists(&launch.env, id) };
         if !there {
-            return refuse(format!("There's no {engine} session {r} to continue."));
+            return refuse(format!("There's no {engine} session {id} to continue."));
         }
     }
     let argv = &mut launch.argv;
-    let mode = if t.mode == Mode::ReadOnly { "read-only" } else { "write" };
+    let mode = if turn.mode == Mode::ReadOnly { "read-only" } else { "write" };
     if claude {
         argv.extend(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"].map(String::from));
-        if t.mode == Mode::ReadOnly {
+        if turn.mode == Mode::ReadOnly {
             argv.extend(["--permission-mode".into(), "default".into(), "--disallowedTools".into()]);
             argv.extend(CLAUDE_WRITE_TOOLS.map(String::from));
-        } else if !own.iter().any(|a| a.starts_with("--permission-mode") || a.contains("dangerously")) {
+        } else if !own.iter().any(|arg| arg.starts_with("--permission-mode") || arg.contains("dangerously")) {
             argv.extend(["--permission-mode".into(), "acceptEdits".into()]); // -p can't ask, so edits are allowed up front
             // edit-only (Part 6): shell goes through open terminal, even where the user's settings allow it here
             argv.extend(["--disallowedTools", "Bash", "PowerShell"].map(String::from));
         }
-        match t.resume {
-            Some(r) => argv.extend(["--resume".into(), r.into()]),
+        match turn.resume {
+            Some(id) => argv.extend(["--resume".into(), id.into()]),
             None => {
                 let id = uuid::Uuid::new_v4().to_string();
                 argv.extend(["--session-id".into(), id.clone()]);
@@ -277,64 +300,63 @@ fn turn(ctx: &Ctx, prof: &Obj, t: &Turn, engine: &'static str, launch: &mut engi
         }
     } else {
         argv.extend(["exec", "--json", "--skip-git-repo-check"].map(String::from));
-        let sandbox = if t.mode == Mode::ReadOnly { Some("read-only") }
-                      else if own.iter().any(|a| own_guards(a, false)) { None } // the profile chose its own
+        let sandbox = if turn.mode == Mode::ReadOnly { Some("read-only") }
+                      else if own.iter().any(|arg| own_guards(arg, false)) { None } // the profile chose its own
                       else { Some("workspace-write") };
-        if let Some(sb) = sandbox {
-            argv.extend(["-c".into(), format!("sandbox_mode=\"{sb}\"")]);
+        if let Some(sandbox) = sandbox {
+            argv.extend(["-c".into(), format!("sandbox_mode=\"{sandbox}\"")]);
         }
-        if t.mode == Mode::ReadOnly {
+        if turn.mode == Mode::ReadOnly {
             // with approvals on, Codex's auto-reviewer can wave a patch past the read-only sandbox
             argv.extend(["-c".into(), "approval_policy=\"never\"".into()]);
         }
-        if let Some(r) = t.resume {
-            argv.extend(["resume".into(), r.into()]);
+        if let Some(id) = turn.resume {
+            argv.extend(["resume".into(), id.into()]);
         }
         argv.push("-".into()); // the prompt comes on stdin
     }
-    launch.env.insert("REID_PROFILE".into(), t.profile.into());
+    launch.env.insert("REID_PROFILE".into(), turn.profile.into());
 
     // the session first: "open in another window" says more than "someone's writing here"
     let mut session_lock = match &sid {
-        Some(id) => Some(locks::session(ctx, &locks::record(id, engine, t.profile, t.folder, mode))?),
+        Some(id) => Some(locks::session(ctx, &locks::record(id, engine, turn.profile, turn.folder, mode))?),
         None => None, // a new Codex thread: locked once Codex names it
     };
-    let folder_lock = if t.mode == Mode::Write { Some(locks::folder(ctx, t.folder, sid.as_deref())?) } else { None };
-    let mut px = match proxy::plan(ctx, prof)? {
+    let folder_lock = if turn.mode == Mode::Write { Some(locks::folder(ctx, turn.folder, sid.as_deref())?) } else { None };
+    let mut running_proxy = match proxy::plan(ctx, prof)? {
         Some(plan) => {
-            let p = proxy::start(ctx, t.profile, &plan)?;
-            launch.env.extend(proxy::env(&p, !claude));
-            Some(p)
+            let started = proxy::start(ctx, turn.profile, &plan)?;
+            launch.env.extend(proxy::env(&started, !claude));
+            Some(started)
         }
         None => None,
     };
-    let prompt = match &t.switch {
-        Some(s) => crate::handoff::prompt(&crate::handoff::write(s)?.1, t.prompt),
-        None => t.prompt.to_string(),
+    let prompt = match &turn.switch {
+        Some(switch) => crate::handoff::prompt(&crate::handoff::write(switch)?.1, turn.prompt),
+        None => turn.prompt.to_string(),
     };
-    let res = spawn(ctx, t, &prompt, engine, launch, &mut sid, &mut session_lock, emit);
-    proxy::stop(px.as_mut());
+    let res = spawn(ctx, turn, &prompt, engine, launch, &mut sid, &mut session_lock, emit);
+    proxy::stop(running_proxy.as_mut());
     drop((folder_lock, session_lock));
-    let _ = remember_session(ctx, t.profile, t.folder, sid.as_deref(), engine);
+    let _ = remember_session(ctx, turn.profile, turn.folder, sid.as_deref(), engine);
     res
 }
 
-/// A profile arg that sets the engine's own permission guards (or turns them off).
-fn own_guards(a: &str, claude: bool) -> bool {
-    let a = a.to_lowercase();
-    a.contains("dangerously") || if claude { a == "bypasspermissions" }
-        else { a.contains("sandbox") || a.contains("approval") || ["--yolo", "--full-auto", "-s", "-a"].contains(&a.as_str()) }
+/// A profile arg that sets the engine's own permission guards (or turns them off). Matched loosely on
+/// purpose: any spelling of a guard flag (`--sandbox`, `-c sandbox_mode=…`) counts.
+fn own_guards(arg: &str, claude: bool) -> bool {
+    let arg = arg.to_lowercase();
+    arg.contains("dangerously") || if claude { arg == "bypasspermissions" }
+        else { arg.contains("sandbox") || arg.contains("approval") || ["--yolo", "--full-auto", "-s", "-a"].contains(&arg.as_str()) }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn spawn(ctx: &Ctx, t: &Turn, prompt: &str, engine: &'static str, launch: &engines::Launch, sid: &mut Option<String>,
+fn spawn(ctx: &Ctx, turn: &Turn, prompt: &str, engine: &'static str, launch: &engines::Launch, sid: &mut Option<String>,
          session_lock: &mut Option<locks::Lock>, emit: &mut dyn FnMut(&Event)) -> Result<i32, EngineError> {
     use std::os::windows::io::AsRawHandle;
     use std::os::windows::process::CommandExt;
-    const CREATE_SUSPENDED: u32 = 0x4;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     let mut child = Command::new(&launch.argv[0]).args(&launch.argv[1..]).env_clear().envs(&launch.env)
-        .current_dir(t.folder).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .current_dir(turn.folder).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
         .creation_flags(CREATE_SUSPENDED | CREATE_NO_WINDOW).spawn().map_err(engines::io)?;
     // the engine and everything it starts die with this process, however it ends: no orphan
     // holding a session the lock says is free
@@ -344,8 +366,8 @@ fn spawn(ctx: &Ctx, t: &Turn, prompt: &str, engine: &'static str, launch: &engin
         let mut buf = Vec::new();
         let _ = stderr.read_to_end(&mut buf);
         let text = String::from_utf8_lossy(&buf).trim().to_string();
-        let skip = text.chars().count().saturating_sub(2000);
-        text.chars().skip(skip).collect::<String>()
+        let start = text.char_indices().rev().nth(MAX_STDERR_TAIL_CHARS - 1).map_or(0, |(at, _)| at);
+        text[start..].to_string()
     });
     // on its own thread, after the readers exist: a pipe holds ~4 KB, and an engine that writes
     // before it has read a long prompt would otherwise wait on us while we wait on it
@@ -356,29 +378,29 @@ fn spawn(ctx: &Ctx, t: &Turn, prompt: &str, engine: &'static str, launch: &engin
             drop(stdin); // EOF: the prompt is complete
         });
     }
-    let mut parser = Parser::new(engine, t.folder);
+    let mut parser = Parser::new(engine, turn.folder);
     let mut failed = false;
     for line in std::io::BufReader::new(child.stdout.take().expect("piped")).split(b'\n').map_while(Result::ok) {
-        for ev in parser.line(&String::from_utf8_lossy(&line)) {
-            match &ev {
+        for event in parser.line(&String::from_utf8_lossy(&line)) {
+            match &event {
                 Event::Started { session_id } => {
                     if sid.is_none() && locks::valid_id(session_id) {
                         *sid = Some(session_id.clone());
                         // a brand-new thread: nobody else can have it, so this can't fail
-                        *session_lock = locks::session(ctx, &locks::record(session_id, engine, t.profile, t.folder,
-                            if t.mode == Mode::ReadOnly { "read-only" } else { "write" })).ok();
+                        *session_lock = locks::session(ctx, &locks::record(session_id, engine, turn.profile, turn.folder,
+                            if turn.mode == Mode::ReadOnly { "read-only" } else { "write" })).ok();
                     }
-                    let _ = remember_session(ctx, t.profile, t.folder, sid.as_deref(), engine); // reid --resume finds it now
+                    let _ = remember_session(ctx, turn.profile, turn.folder, sid.as_deref(), engine); // reid --resume finds it now
                 }
                 Event::Error(_) => failed = true,
                 _ => {}
             }
-            emit(&ev);
+            emit(&event);
         }
     }
     let code = child.wait().map_err(engines::io)?.code().unwrap_or(1);
-    if let Some(j) = job {
-        crate::win::job_kill(j); // anything the engine left running
+    if let Some(job) = job {
+        crate::win::job_kill(job); // anything the engine left running
     }
     let raw = tail.join().unwrap_or_default();
     if code != 0 && !failed {
@@ -391,9 +413,9 @@ fn spawn(ctx: &Ctx, t: &Turn, prompt: &str, engine: &'static str, launch: &engin
 /// A turn's prompt typed as args, or stdin when there are none (or just "-").
 pub fn prompt_from(args: &[String]) -> String {
     if args.is_empty() || args == ["-"] {
-        let mut s = String::new();
-        let _ = std::io::stdin().read_to_string(&mut s);
-        return s;
+        let mut prompt = String::new();
+        let _ = std::io::stdin().read_to_string(&mut prompt);
+        return prompt;
     }
     args.join(" ")
 }

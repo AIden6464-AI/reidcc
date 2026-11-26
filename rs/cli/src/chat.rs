@@ -10,18 +10,37 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::io::{BufRead, Read, Write};
 use std::os::windows::process::CommandExt;
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{channel, Receiver};
 use std::time::{Duration, Instant};
+use windows_sys::Win32::System::Threading::{CREATE_NEW_CONSOLE, CREATE_NO_WINDOW};
 
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-const CREATE_NEW_CONSOLE: u32 = 0x10;
 const CODE: &str = "\x1b[48;2;23;21;19m"; // --s2 under inline code
 const UNDER: &str = "\x1b[4m";
+/// When reid fails before streaming anything, this much of its stderr's end says why.
+const MAX_STDERR_TAIL_CHARS: usize = 600;
+/// Lines of one file's diff shown under ctrl+d.
+const MAX_DIFF_LINES: usize = 200;
+/// The composer shows the end of a long prompt, this many rows.
+const FIELD_ROWS: usize = 3;
+const TOOL_NAME_WIDTH: i64 = 6;
+/// How often a session held by a terminal is checked for being free again.
+const HOLDER_POLL: Duration = Duration::from_millis(1500);
+/// How long the loop sleeps with no key waiting; the running turn's timer redraws every second.
+const KEY_POLL: Duration = Duration::from_millis(30);
+const TIMER_REDRAW: Duration = Duration::from_secs(1);
+
+// console::getkey() gives control keys as their characters
+const TAB: &str = "\t";
+const CTRL_D: &str = "\x04";
+const CTRL_O: &str = "\x0f";
+const CTRL_R: &str = "\x12";
+const CTRL_T: &str = "\x14";
 
 enum Msg {
     Event(Value),
-    /// stdout ended; `err` is the end of reid's stderr
+    /// stdout ended; the text is the end of reid's stderr
     Eof(String),
 }
 
@@ -51,7 +70,7 @@ struct Turn {
     began: Instant,
     profile: String,
     prompt: String,
-    ro: bool,
+    read_only: bool,
     stopped: bool,
     refused: bool,
     saw_text: bool,
@@ -68,7 +87,7 @@ struct Chat {
     pick: usize,
     sids: HashMap<String, String>,
     turns: usize,
-    ro: bool,
+    read_only: bool,
     field: String,
     blocks: Vec<Block>,
     note: Note,
@@ -83,16 +102,16 @@ struct Chat {
 
 impl Drop for Chat {
     fn drop(&mut self) {
-        if let Some(t) = self.turn.as_mut() {
-            let _ = t.child.kill(); // leaving (or Ctrl+C) ends a running turn; a terminal window stays
+        if let Some(turn) = self.turn.as_mut() {
+            let _ = turn.child.kill(); // leaving (or Ctrl+C) ends a running turn; a terminal window stays
         }
     }
 }
 
 /// Engine text for the screen: no control characters (an escape sequence in a reply must not drive
 /// the terminal), tabs as spaces.
-pub(super) fn clean(s: &str) -> String {
-    s.chars().flat_map(|c| match c {
+pub(super) fn clean(text: &str) -> String {
+    text.chars().flat_map(|c| match c {
         '\t' => vec![' '; 4],
         '\n' => vec!['\n'],
         c if c.is_control() => vec![],
@@ -103,10 +122,10 @@ pub(super) fn clean(s: &str) -> String {
 /// One markdown line outside a fence as styled pieces: `code`, **bold**, [text](target) -> text.
 fn inline(line: &str) -> Vec<(String, String)> {
     let mut out = vec![];
-    if let Some(h) = line.trim_start().strip_prefix('#') {
-        let h = h.trim_start_matches('#');
-        if h.starts_with(' ') {
-            return inline(h.trim()).into_iter().map(|(st, t)| (format!("{B}{st}"), t)).collect();
+    if let Some(heading) = line.trim_start().strip_prefix('#') {
+        let heading = heading.trim_start_matches('#');
+        if heading.starts_with(' ') {
+            return inline(heading.trim()).into_iter().map(|(style, text)| (format!("{B}{style}"), text)).collect();
         }
     }
     let parts: Vec<&str> = line.split('`').collect();
@@ -117,14 +136,14 @@ fn inline(line: &str) -> Vec<(String, String)> {
             continue;
         }
         let part = if i % 2 == 1 { format!("`{part}") } else { part.to_string() }; // the unclosed one
-        let bold: Vec<&str> = part.split("**").collect();
-        let paired = bold.len() % 2 == 1;
-        for (j, b) in bold.iter().enumerate() {
-            if j % 2 == 1 && (paired || j < bold.len() - 1) {
-                out.push((format!("{B}{TEXT}"), b.to_string()));
+        let pieces: Vec<&str> = part.split("**").collect();
+        let paired = pieces.len() % 2 == 1;
+        for (j, piece) in pieces.iter().enumerate() {
+            if j % 2 == 1 && (paired || j < pieces.len() - 1) {
+                out.push((format!("{B}{TEXT}"), piece.to_string()));
             } else {
-                let b = if j % 2 == 1 { format!("**{b}") } else { b.to_string() };
-                links(&b, &mut out);
+                let piece = if j % 2 == 1 { format!("**{piece}") } else { piece.to_string() };
+                links(&piece, &mut out);
             }
         }
     }
@@ -132,78 +151,79 @@ fn inline(line: &str) -> Vec<(String, String)> {
 }
 
 /// `[text](target)` shows its text, underlined; anything else is plain.
-fn links(s: &str, out: &mut Vec<(String, String)>) {
-    let mut rest = s;
-    while let Some(a) = rest.find('[') {
-        let found = rest[a..].find("](").map(|m| a + m).and_then(|m| {
-            let close = rest[m + 2..].find(')').map(|c| m + 2 + c)?;
-            let target = &rest[m + 2..close];
-            (!target.is_empty() && !target.contains(char::is_whitespace) && !rest[a + 1..m].contains('[')).then_some((m, close))
+fn links(text: &str, out: &mut Vec<(String, String)>) {
+    let mut rest = text;
+    while let Some(open) = rest.find('[') {
+        let found = rest[open..].find("](").map(|at| open + at).and_then(|mid| {
+            let close = rest[mid + 2..].find(')').map(|at| mid + 2 + at)?;
+            let target = &rest[mid + 2..close];
+            (!target.is_empty() && !target.contains(char::is_whitespace) && !rest[open + 1..mid].contains('['))
+                .then_some((mid, close))
         });
         match found {
-            Some((m, close)) => {
-                out.push((TEXT.into(), rest[..a].into()));
-                out.push((format!("{UNDER}{TEXT}"), rest[a + 1..m].into()));
+            Some((mid, close)) => {
+                out.push((TEXT.into(), rest[..open].into()));
+                out.push((format!("{UNDER}{TEXT}"), rest[open + 1..mid].into()));
                 rest = &rest[close + 1..];
             }
             None => {
-                out.push((TEXT.into(), rest[..=a].into()));
-                rest = &rest[a + 1..];
+                out.push((TEXT.into(), rest[..=open].into()));
+                rest = &rest[open + 1..];
             }
         }
     }
     out.push((TEXT.into(), rest.into()));
 }
 
-/// Styled pieces wrapped at `w` columns; a line's leading spaces (a list's indent) stay on its first row.
-fn wrap(pieces: &[(String, String)], w: i64) -> Vec<String> {
-    let w = w.max(8);
-    let (mut lines, mut cur, mut cw, mut first) = (vec![], String::new(), 0i64, true);
+/// Styled pieces wrapped at `width` columns; a line's leading spaces (a list's indent) stay on its first row.
+fn wrap(pieces: &[(String, String)], width: i64) -> Vec<String> {
+    let width = width.max(8);
+    let (mut lines, mut row, mut row_width, mut first) = (vec![], String::new(), 0i64, true);
     for (style, text) in pieces {
+        // runs of spaces and runs of everything else
         let mut tokens: Vec<String> = vec![];
         for c in text.chars() {
             match tokens.last_mut() {
-                Some(t) if (c == ' ') == t.starts_with(' ') => t.push(c),
+                Some(token) if (c == ' ') == token.starts_with(' ') => token.push(c),
                 _ => tokens.push(c.to_string()),
             }
         }
-        for tok in tokens {
-            let tw = clen(&tok);
-            if tok.starts_with(' ') {
-                if cw == 0 && !first {
+        for mut token in tokens {
+            let token_width = clen(&token);
+            if token.starts_with(' ') {
+                if row_width == 0 && !first {
                     continue;
                 }
-                if cw + tw > w {
-                    lines.push(std::mem::take(&mut cur));
-                    (cw, first) = (0, false);
+                if row_width + token_width > width {
+                    lines.push(std::mem::take(&mut row));
+                    (row_width, first) = (0, false);
                     continue;
                 }
-            } else if cw + tw > w && cw > 0 {
-                lines.push(std::mem::take(&mut cur));
-                (cw, first) = (0, false);
+            } else if row_width + token_width > width && row_width > 0 {
+                lines.push(std::mem::take(&mut row));
+                (row_width, first) = (0, false);
             }
-            let mut tok = tok;
-            while clen(&tok) > w {
+            while clen(&token) > width {
                 // a word longer than the line: cut it
-                let head: String = tok.chars().take((w - cw).max(1) as usize).collect();
-                tok = tok.chars().skip(head.chars().count()).collect();
-                cur += &format!("{style}{head}{R}");
-                lines.push(std::mem::take(&mut cur));
-                (cw, first) = (0, false);
+                let head: String = token.chars().take((width - row_width).max(1) as usize).collect();
+                token = token.chars().skip(head.chars().count()).collect();
+                row += &format!("{style}{head}{R}");
+                lines.push(std::mem::take(&mut row));
+                (row_width, first) = (0, false);
             }
-            cw += clen(&tok);
-            cur += &format!("{style}{tok}{R}");
+            row_width += clen(&token);
+            row += &format!("{style}{token}{R}");
         }
     }
-    if !cur.is_empty() || lines.is_empty() {
-        lines.push(cur);
+    if !row.is_empty() || lines.is_empty() {
+        lines.push(row);
     }
     lines
 }
 
 /// A reply as screen lines (the chat window's md.ts rules). A fence still open (the text is
 /// streaming) is code to the end.
-pub(super) fn md_lines(text: &str, w: i64) -> Vec<String> {
+pub(super) fn md_lines(text: &str, width: i64) -> Vec<String> {
     let mut out = vec![];
     let mut code = false;
     for line in clean(text).split('\n') {
@@ -212,32 +232,39 @@ pub(super) fn md_lines(text: &str, w: i64) -> Vec<String> {
             continue;
         }
         if code {
-            out.push(format!("{VAL}{TEXT} {} {R}", super::ljust(&fit(line, w - 2), w - 2)));
+            out.push(format!("{VAL}{TEXT} {} {R}", super::ljust(&fit(line, width - 2), width - 2)));
         } else if line.trim().is_empty() {
             out.push(String::new());
         } else {
-            out.extend(wrap(&inline(line), w));
+            out.extend(wrap(&inline(line), width));
         }
     }
     out
 }
 
-fn count(sign: char, n: Option<u64>) -> String {
-    match n {
+/// `+3` in bone, `−3` in oxide; a zero is muted, and a binary file has no count.
+fn count(sign: char, lines: Option<u64>) -> String {
+    match lines {
         None => format!("{TEXT3}bin{R}"),
         Some(0) => format!("{TEXT3}{sign}0{R}"),
-        Some(n) => format!("{}{sign}{n}{R}", if sign == '+' { TEXT } else { OXIDE }),
+        Some(lines) => format!("{}{sign}{lines}{R}", if sign == '+' { TEXT } else { OXIDE }),
     }
 }
 
-fn mmss(d: Duration) -> String {
-    let s = d.as_secs();
-    format!("{:02}:{:02}", s / 60, s % 60)
+fn mmss(elapsed: Duration) -> String {
+    let secs = elapsed.as_secs();
+    format!("{:02}:{:02}", secs / 60, secs % 60)
+}
+
+/// A string field of a `reid --stream` event, cleaned for the screen.
+fn field_of(event: &Value, key: &str) -> String {
+    clean(event[key].as_str().unwrap_or_default())
 }
 
 impl Chat {
-    fn engine(&self, p: &str) -> String {
-        self.profiles.iter().find(|(n, _)| n == p).map(|(_, e)| e.clone()).unwrap_or_else(|| "claude".into())
+    fn engine(&self, profile: &str) -> String {
+        self.profiles.iter().find(|(name, _)| name == profile).map(|(_, engine)| engine.clone())
+            .unwrap_or_else(|| "claude".into())
     }
 
     fn picked(&self) -> String {
@@ -250,7 +277,7 @@ impl Chat {
 
     fn ctx_text(&self) -> String {
         match self.context {
-            Some(c) => format!("context {c}%"),
+            Some(pct) => format!("context {pct}%"),
             None => "context unknown".into(),
         }
     }
@@ -266,161 +293,166 @@ impl Chat {
         self.note = Note::None;
         self.flash.clear();
         let undo = (self.cur.clone(), self.blocks.len());
-        if let Some(f) = &from {
-            self.blocks.push(Block::Switch { from: self.engine(f), to: self.engine(&profile) });
+        if let Some(from) = &from {
+            self.blocks.push(Block::Switch { from: self.engine(from), to: self.engine(&profile) });
         }
         self.cur = profile.clone();
         self.blocks.push(Block::Ask { who: format!("{profile} · {}", self.engine(&profile)), text: prompt.clone() });
         (self.context, self.cost, self.scroll) = (None, 0.0, 0);
         let mut args = vec!["--stream".to_string(), profile.clone()];
-        if self.ro {
+        if self.read_only {
             args.push("--read-only".into());
         }
-        if let Some(s) = self.sids.get(&profile) {
-            args.extend(["--resume".into(), s.clone()]);
+        if let Some(sid) = self.sids.get(&profile) {
+            args.extend(["--resume".into(), sid.clone()]);
         }
-        if let Some(f) = from {
-            args.extend(["--switch-from".into(), f]);
+        if let Some(from) = from {
+            args.extend(["--switch-from".into(), from]);
         }
         args.push("-".into()); // the prompt on stdin: no length limit, nothing in the process list
-        let before = if self.ro { None } else { changes::snapshot(&self.folder) };
+        let before = if self.read_only { None } else { changes::snapshot(&self.folder) };
         let spawned = std::env::current_exe().and_then(|exe| Command::new(exe).args(&args).current_dir(&self.folder)
             .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).creation_flags(CREATE_NO_WINDOW).spawn());
         let mut child = match spawned {
-            Ok(c) => c,
-            Err(e) => {
-                self.blocks.push(Block::Fail(format!("Couldn't start reid ({e}).")));
+            Ok(child) => child,
+            Err(error) => {
+                self.blocks.push(Block::Fail(format!("Couldn't start reid ({error}).")));
                 return;
             }
         };
         let (mut stdin, stdout, mut stderr) = (child.stdin.take().unwrap(), child.stdout.take().unwrap(), child.stderr.take().unwrap());
-        let p = prompt.clone();
+        let input = prompt.clone();
         std::thread::spawn(move || {
-            let _ = stdin.write_all(p.as_bytes());
+            let _ = stdin.write_all(input.as_bytes());
         }); // dropped there: EOF
         let tail = std::thread::spawn(move || {
-            let mut s = String::new();
-            let _ = stderr.read_to_string(&mut s);
-            let s = s.trim().to_string();
-            s.chars().skip(s.chars().count().saturating_sub(600)).collect::<String>()
+            let mut text = String::new();
+            let _ = stderr.read_to_string(&mut text);
+            let text = text.trim();
+            let start = text.char_indices().rev().nth(MAX_STDERR_TAIL_CHARS - 1).map_or(0, |(at, _)| at);
+            text[start..].to_string()
         });
         let (tx, rx) = channel();
         std::thread::spawn(move || {
             for line in std::io::BufReader::new(stdout).lines().map_while(Result::ok) {
-                if let Ok(v) = serde_json::from_str::<Value>(&line) {
-                    let _ = tx.send(Msg::Event(v));
+                if let Ok(event) = serde_json::from_str::<Value>(&line) {
+                    let _ = tx.send(Msg::Event(event));
                 }
             }
             let _ = tx.send(Msg::Eof(tail.join().unwrap_or_default()));
         });
-        self.turn = Some(Turn { child, rx, began: Instant::now(), profile, prompt, ro: self.ro, stopped: false, refused: false,
-                                saw_text: false, before, undo });
+        self.turn = Some(Turn { child, rx, began: Instant::now(), profile, prompt, read_only: self.read_only, stopped: false,
+                                refused: false, saw_text: false, before, undo });
     }
 
     fn stop(&mut self) {
-        if let Some(t) = self.turn.as_mut() {
-            t.stopped = true;
-            let _ = t.child.kill();
+        if let Some(turn) = self.turn.as_mut() {
+            turn.stopped = true;
+            let _ = turn.child.kill();
         }
     }
 
     /// The running turn's news; true when something changed.
     fn pump(&mut self) -> bool {
-        let Some(t) = self.turn.as_ref() else { return false };
-        let msgs: Vec<Msg> = t.rx.try_iter().collect();
-        let any = !msgs.is_empty();
-        for m in msgs {
-            match m {
-                Msg::Event(e) => self.event(&e),
-                Msg::Eof(err) => self.finish(err),
+        let Some(turn) = self.turn.as_ref() else { return false };
+        let messages: Vec<Msg> = turn.rx.try_iter().collect();
+        let any = !messages.is_empty();
+        for message in messages {
+            match message {
+                Msg::Event(event) => self.event(&event),
+                Msg::Eof(stderr_tail) => self.finish(stderr_tail),
             }
         }
         any
     }
 
-    fn event(&mut self, e: &Value) {
-        let s = |k: &str| clean(e[k].as_str().unwrap_or_default());
-        let Some(t) = self.turn.as_mut() else { return };
-        match e["type"].as_str().unwrap_or_default() {
+    fn event(&mut self, event: &Value) {
+        let Some(turn) = self.turn.as_mut() else { return };
+        match event["type"].as_str().unwrap_or_default() {
             "started" => {
-                self.sids.insert(t.profile.clone(), s("session_id"));
-                if self.field.trim() == t.prompt {
+                self.sids.insert(turn.profile.clone(), field_of(event, "session_id"));
+                if self.field.trim() == turn.prompt {
                     self.field.clear(); // it's on its way; what you typed since stays
                 }
             }
             "text_delta" => {
-                t.saw_text = true;
+                turn.saw_text = true;
+                let text = field_of(event, "text");
                 match self.blocks.last_mut() {
-                    Some(Block::Text(x)) => x.push_str(&s("text")),
-                    _ => self.blocks.push(Block::Text(s("text"))),
+                    Some(Block::Text(reply)) => reply.push_str(&text),
+                    _ => self.blocks.push(Block::Text(text)),
                 }
             }
-            "tool_call" => self.blocks.push(Block::Tool { name: s("name").to_lowercase(), summary: s("summary") }),
+            "tool_call" => self.blocks.push(Block::Tool {
+                name: field_of(event, "name").to_lowercase(),
+                summary: field_of(event, "summary"),
+            }),
             "usage" => {
-                self.context = e["context_pct"].as_u64().map(|c| c as u8);
-                if let Some(c) = e["cost_usd"].as_f64() {
-                    self.cost = c;
+                self.context = event["context_pct"].as_u64().map(|pct| pct as u8);
+                if let Some(cost) = event["cost_usd"].as_f64() {
+                    self.cost = cost;
                 }
             }
-            "error" if e["kind"] == "refused" => {
-                let msg = s("message");
-                t.refused = true;
+            "error" if event["kind"] == "refused" => {
+                let message = field_of(event, "message");
+                turn.refused = true;
                 // nothing ran: the ask stays in the field, and a refused switch isn't one
-                let (prev, len) = t.undo.clone();
-                let profile = t.profile.clone();
+                let (prev, len) = turn.undo.clone();
+                let profile = turn.profile.clone();
                 self.blocks.truncate(len);
                 self.cur = prev;
-                self.note = if msg.contains("open in another window") {
+                self.note = if message.contains("open in another window") {
                     Note::InTerminal(self.sids.get(&profile).cloned().unwrap_or_default())
-                } else if msg.contains("window is open in this folder") {
+                } else if message.contains("window is open in this folder") {
                     Note::Locked("A Reidcc window is open in this folder.".into())
-                } else if msg.to_lowercase().contains("turn is writing") {
+                } else if message.to_lowercase().contains("turn is writing") {
                     Note::Locked("Another turn is writing in this folder.".into())
                 } else {
-                    Note::Refused(msg)
+                    Note::Refused(message)
                 };
                 self.polled = Instant::now();
             }
             "error" => {
-                let profile = t.profile.clone();
-                let msg = if e["kind"] == "unknown" {
-                    format!("{} ended ({}).{}", self.engine(&profile), e["exit_code"], Some(s("raw")).filter(|r| !r.is_empty())
-                        .map(|r| format!("\n{r}")).unwrap_or_default())
+                let profile = turn.profile.clone();
+                let message = if event["kind"] == "unknown" {
+                    let raw = field_of(event, "raw");
+                    let raw = if raw.is_empty() { raw } else { format!("\n{raw}") };
+                    format!("{} ended ({}).{raw}", self.engine(&profile), event["exit_code"])
                 } else {
-                    s("message")
+                    field_of(event, "message")
                 };
-                self.blocks.push(Block::Fail(msg));
+                self.blocks.push(Block::Fail(message));
             }
             _ => {}
         }
     }
 
-    fn finish(&mut self, err: String) {
-        let Some(mut t) = self.turn.take() else { return };
-        let rc = t.child.wait().ok().and_then(|s| s.code()).unwrap_or(1);
-        if t.refused {
+    fn finish(&mut self, stderr_tail: String) {
+        let Some(mut turn) = self.turn.take() else { return };
+        let exit_code = turn.child.wait().ok().and_then(|status| status.code()).unwrap_or(1);
+        if turn.refused {
             return;
         }
-        let failed = self.blocks[t.undo.1..].iter().any(|b| matches!(b, Block::Fail(_)));
-        if !err.is_empty() && !t.stopped && !t.saw_text && !failed {
-            self.blocks.push(Block::Fail(clean(&err))); // reid itself failed: nothing streamed, its stderr says why
+        let failed = self.blocks[turn.undo.1..].iter().any(|block| matches!(block, Block::Fail(_)));
+        if !stderr_tail.is_empty() && !turn.stopped && !turn.saw_text && !failed {
+            self.blocks.push(Block::Fail(clean(&stderr_tail))); // reid itself failed: nothing streamed, its stderr says why
         }
-        if !t.ro {
-            if let Some((from, to)) = t.before.take().zip(changes::snapshot(&self.folder)) {
+        if !turn.read_only {
+            if let Some((from, to)) = turn.before.take().zip(changes::snapshot(&self.folder)) {
                 let files = changes::changed(&self.folder, &from, &to);
                 if !files.is_empty() {
                     self.blocks.push(Block::Changed { from, to, files, diffs: None });
                 }
             }
         }
-        let meta = if t.stopped { "stopped".to_string() } else {
-            let mut bits = vec![mmss(t.began.elapsed()), self.ctx_text()];
+        let meta = if turn.stopped { "stopped".to_string() } else {
+            let mut bits = vec![mmss(turn.began.elapsed()), self.ctx_text()];
             if self.cost > 0.0 {
                 bits.push(if self.cost < 1.0 { format!("${:.3}", self.cost) } else { format!("${:.2}", self.cost) });
             }
-            bits.push(if t.ro { "read-only" } else { "edit-only" }.into());
-            if rc != 0 && !failed {
-                bits.push(format!("exit {rc}"));
+            bits.push(if turn.read_only { "read-only" } else { "edit-only" }.into());
+            if exit_code != 0 && !failed {
+                bits.push(format!("exit {exit_code}"));
             }
             bits.join(" · ")
         };
@@ -428,10 +460,10 @@ impl Chat {
         self.turns += 1;
     }
 
-    /// A held session: is it free yet? (every 1.5 s)
+    /// A held session: is it free yet?
     fn poll(&mut self, tui: &Tui) -> bool {
         let Note::InTerminal(sid) = &self.note else { return false };
-        if self.polled.elapsed() < Duration::from_millis(1500) {
+        if self.polled.elapsed() < HOLDER_POLL {
             return false;
         }
         self.polled = Instant::now();
@@ -444,90 +476,99 @@ impl Chat {
 
     /// ctrl+t: the picked profile's session (`reid --resume <profile> --id <id>`) in a console of its own.
     fn terminal(&mut self) {
-        if let Some(t) = self.terminal.as_mut() {
-            if matches!(t.try_wait(), Ok(None)) {
+        if let Some(terminal) = self.terminal.as_mut() {
+            if matches!(terminal.try_wait(), Ok(None)) {
                 self.flash = "The terminal is open in its own window.".into();
                 return;
             }
         }
-        let p = self.picked();
-        let args: Vec<String> = match self.sids.get(&p) {
-            Some(s) => vec!["--resume".into(), p.clone(), "--id".into(), s.clone()],
-            None => vec![p.clone()],
+        let profile = self.picked();
+        let args: Vec<String> = match self.sids.get(&profile) {
+            Some(sid) => vec!["--resume".into(), profile.clone(), "--id".into(), sid.clone()],
+            None => vec![profile.clone()],
         };
         match std::env::current_exe().and_then(|exe| Command::new(exe).args(&args).current_dir(&self.folder)
             .creation_flags(CREATE_NEW_CONSOLE).spawn()) {
-            Ok(c) => {
-                self.terminal = Some(c);
-                self.flash = format!("{p} opened in a terminal window.");
+            Ok(child) => {
+                self.terminal = Some(child);
+                self.flash = format!("{profile} opened in a terminal window.");
             }
-            Err(e) => self.flash = format!("Couldn't open a terminal ({e})."),
+            Err(error) => self.flash = format!("Couldn't open a terminal ({error})."),
         }
     }
 
     fn toggle_diff(&mut self) {
         let folder = self.folder.clone();
-        let Some(Block::Changed { from, to, files, diffs }) = self.blocks.iter_mut().rev().find(|b| matches!(b, Block::Changed { .. })) else {
+        let last_changed = self.blocks.iter_mut().rev().find(|block| matches!(block, Block::Changed { .. }));
+        let Some(Block::Changed { from, to, files, diffs }) = last_changed else {
             self.flash = "No changes to show yet.".into();
             return;
         };
         *diffs = match diffs {
             Some(_) => None,
-            None => Some(files.iter().map(|f| clean(&changes::file_diff(&folder, from, to, &f.path, 200))).collect()),
+            None => Some(files.iter().map(|file| clean(&changes::file_diff(&folder, from, to, &file.path, MAX_DIFF_LINES))).collect()),
         };
     }
 
+    fn open_handoff(&mut self) {
+        let path = Path::new(&self.folder).join(reidcc::handoff::DIR).join("handoff.md");
+        if path.exists() {
+            crate::open_file(&path.to_string_lossy());
+        } else {
+            self.flash = "No handoff here yet.".into();
+        }
+    }
+
     // ----------------------------------------------------------- drawing ---
-    fn lines(&self, w: i64) -> Vec<String> {
+    fn lines(&self, width: i64) -> Vec<String> {
         let mut out: Vec<String> = vec![];
-        for b in &self.blocks {
-            match b {
-                Block::Info(s) => out.extend(wrap(&[(DIM.into(), s.clone())], w)),
+        for block in &self.blocks {
+            match block {
+                Block::Info(text) => out.extend(wrap(&[(DIM.into(), text.clone())], width)),
                 Block::Ask { who, text } => {
                     if !out.is_empty() {
                         out.push(String::new());
                     }
-                    let mut pieces = vec![(TEXT3.to_string(), format!("{who} › "))];
-                    pieces.push((TEXT.into(), clean(text).replace('\n', " ")));
-                    out.extend(wrap(&pieces, w).into_iter().map(|l| format!("{LINE}▏{R}{l}")));
+                    let pieces = [(TEXT3.to_string(), format!("{who} › ")), (TEXT.into(), clean(text).replace('\n', " "))];
+                    out.extend(wrap(&pieces, width).into_iter().map(|line| format!("{LINE}▏{R}{line}")));
                     out.push(String::new());
                 }
-                Block::Tool { name, summary } => out.push(format!("{TEXT2}{}{R} {TEXT3}{}{R}", super::ljust(name, 6),
-                                                                  fit(summary, (w - 7).max(1)))),
-                Block::Text(t) => out.extend(md_lines(t, w)),
-                Block::Fail(s) => out.extend(wrap(&[(OXIDE.into(), s.clone())], w)),
-                Block::Meta(s) => {
-                    out.push(format!("{TEXT3}{s}{R}"));
-                }
+                Block::Tool { name, summary } => out.push(format!("{TEXT2}{}{R} {TEXT3}{}{R}", super::ljust(name, TOOL_NAME_WIDTH),
+                                                                  fit(summary, (width - TOOL_NAME_WIDTH - 1).max(1)))),
+                Block::Text(reply) => out.extend(md_lines(reply, width)),
+                Block::Fail(text) => out.extend(wrap(&[(OXIDE.into(), text.clone())], width)),
+                Block::Meta(text) => out.push(format!("{TEXT3}{text}{R}")),
                 Block::Changed { files, diffs, .. } => {
-                    let (a, d) = files.iter().fold((0, 0), |(a, d), f| (a + f.added.unwrap_or(0), d + f.removed.unwrap_or(0)));
+                    let (added, removed) = files.iter().fold((0, 0), |(added, removed), file| {
+                        (added + file.added.unwrap_or(0), removed + file.removed.unwrap_or(0))
+                    });
                     let n = files.len();
                     let hint = if diffs.is_some() { "ctrl+d closes" } else { "ctrl+d shows the diff" };
                     out.push(format!("{TEXT2}changed · {n} file{}{R}  {} {}   {TEXT3}{hint}{R}", if n == 1 { "" } else { "s" },
-                                     count('+', Some(a)), count('−', Some(d))));
-                    for (i, f) in files.iter().enumerate() {
-                        let path = clean(&f.path);
-                        out.push(format!("  {TEXT}{}{R}  {} {}", fit(&path, (w - 16).max(4)), count('+', f.added), count('−', f.removed)));
-                        if let Some(ds) = diffs {
-                            for l in ds[i].lines() {
-                                let col = if l.starts_with("@@") { TEXT3 } else if l.starts_with('+') { TEXT }
-                                          else if l.starts_with('-') { OXIDE } else { TEXT2 };
-                                out.push(format!("  {RULE}│{R} {col}{}{R}", fit(l, (w - 4).max(1))));
-                            }
+                                     count('+', Some(added)), count('−', Some(removed))));
+                    for (i, file) in files.iter().enumerate() {
+                        let path = clean(&file.path);
+                        out.push(format!("  {TEXT}{}{R}  {} {}", fit(&path, (width - 16).max(4)), count('+', file.added),
+                                         count('−', file.removed)));
+                        let Some(diffs) = diffs else { continue };
+                        for line in diffs[i].lines() {
+                            let color = if line.starts_with("@@") { TEXT3 } else if line.starts_with('+') { TEXT }
+                                        else if line.starts_with('-') { OXIDE } else { TEXT2 };
+                            out.push(format!("  {RULE}│{R} {color}{}{R}", fit(line, (width - 4).max(1))));
                         }
                     }
                 }
                 Block::Switch { from, to } => {
-                    let mid = format!(" switch · {from} → {to} · .reid/handoff.md ");
-                    let side = ((w - clen(&mid)) / 2).max(2);
+                    let label = format!(" switch · {from} → {to} · .reid/handoff.md ");
+                    let side = ((width - clen(&label)) / 2).max(2);
                     out.push(String::new());
-                    out.push(format!("{RULE}{}{R}{LINE}{mid}{R}{RULE}{}{R}", rep("─", side), rep("─", (w - side - clen(&mid)).max(0))));
+                    out.push(format!("{RULE}{}{R}{LINE}{label}{R}{RULE}{}{R}", rep("─", side), rep("─", (width - side - clen(&label)).max(0))));
                     out.push(String::new());
                 }
             }
         }
-        if let Some(t) = &self.turn {
-            if !t.refused {
+        if let Some(turn) = &self.turn {
+            if !turn.refused {
                 out.push(format!("{TEXT2}▍{R}")); // the caret: the turn is still going
             }
         }
@@ -535,53 +576,55 @@ impl Chat {
     }
 
     fn draw(&mut self, tui: &Tui) {
-        let (w, h) = tui.size();
-        let ww = w - 4;
+        let (width, height) = tui.size();
+        let body_width = width - 4;
         // the bar: where and who on the left, the meters on the right (emerald only while a turn runs)
-        let left = format!(" {LINE}RC{R}  {TEXT}{}{R}  {TEXT2}{} · {}{}{R}", fit(&show_path(&self.folder), (w / 2).max(10)), self.cur,
-                           self.engine(&self.cur), if self.ro { " · read-only" } else { "" });
+        let left = format!(" {LINE}RC{R}  {TEXT}{}{R}  {TEXT2}{} · {}{}{R}", fit(&show_path(&self.folder), (width / 2).max(10)),
+                           self.cur, self.engine(&self.cur), if self.read_only { " · read-only" } else { "" });
         let right = match &self.turn {
-            Some(t) => format!("{EMERALD}● {}{R} {TEXT2}· {}{R} ", mmss(t.began.elapsed()), self.ctx_text()),
+            Some(turn) => format!("{EMERALD}● {}{R} {TEXT2}· {}{R} ", mmss(turn.began.elapsed()), self.ctx_text()),
             None => format!("{TEXT2}ready · {}{R} ", self.ctx_text()),
         };
-        let mut top = vec![format!("{left}{}{right}", rep(" ", (w - clen(&left) - clen(&right)).max(1))), tui.rule()];
+        let mut screen = vec![format!("{left}{}{right}", rep(" ", (width - clen(&left) - clen(&right)).max(1))), tui.rule()];
 
         // the composer: note, field, controls, keys
-        let mut bottom = vec![tui.rule()];
+        let mut composer = vec![tui.rule()];
         let note = match &self.note {
             Note::None => None,
             Note::InTerminal(_) => Some(format!("{BRONZE}in terminal{R}  {TEXT2}This session is open in a terminal. It clears when that closes.{R}")),
-            Note::Locked(m) => Some(format!("{BRONZE}locked{R}  {TEXT2}{m}{R}  {TEXT}ctrl+r sends it read-only{R}")),
-            Note::Refused(m) => Some(format!("{BRONZE}refused{R}  {TEXT2}{}{R}", fit(m, (w - 14).max(4)))),
+            Note::Locked(message) => Some(format!("{BRONZE}locked{R}  {TEXT2}{message}{R}  {TEXT}ctrl+r sends it read-only{R}")),
+            Note::Refused(message) => Some(format!("{BRONZE}refused{R}  {TEXT2}{}{R}", fit(message, (width - 14).max(4)))),
         };
-        if let Some(n) = note {
-            bottom.push(format!(" {n}"));
+        if let Some(note) = note {
+            composer.push(format!(" {note}"));
         } else if !self.flash.is_empty() {
-            bottom.push(format!(" {TEXT2}{}{R}", fit(&self.flash, w - 2)));
+            composer.push(format!(" {TEXT2}{}{R}", fit(&self.flash, width - 2)));
         }
-        let shown = if self.field.is_empty() && self.turn.is_none() { format!("{TEXT3}Ask {}…{R}", self.picked()) } else { self.field.clone() };
-        let field = wrap(&[(TEXT.into(), shown)], ww - 2);
-        let start = field.len().saturating_sub(3);
-        for (i, l) in field[start..].iter().enumerate() {
+        let shown = if self.field.is_empty() && self.turn.is_none() { format!("{TEXT3}Ask {}…{R}", self.picked()) }
+                    else { self.field.clone() };
+        let field = wrap(&[(TEXT.into(), shown)], body_width - 2);
+        let start = field.len().saturating_sub(FIELD_ROWS);
+        for (i, line) in field[start..].iter().enumerate() {
             let cursor = if i + start == field.len() - 1 && self.turn.is_none() { "\x1b[7m \x1b[27m" } else { "" };
-            bottom.push(format!(" {TEXT3}{}{R} {l}{cursor}", if i == 0 { "›" } else { " " }));
+            composer.push(format!(" {TEXT3}{}{R} {line}{cursor}", if i == 0 { "›" } else { " " }));
         }
-        let p = self.picked();
+        let profile = self.picked();
         let primary = if self.turn.is_some() { format!("{OXIDE}esc stop{R}") }
-                      else if self.switching() { format!("{TEXT}↵ switch → {}{R}", self.engine(&p)) }
+                      else if self.switching() { format!("{TEXT}↵ switch → {}{R}", self.engine(&profile)) }
                       else { format!("{TEXT}↵ send{R}") };
-        let ctl = format!(" {TEXT}{p} · {}{R}   {TEXT}{}{R} {TEXT2}read-only{R}", self.engine(&p), if self.ro { "✓" } else { "·" });
-        bottom.push(format!("{ctl}{}{primary} ", rep(" ", (w - clen(&ctl) - clen(&primary) - 1).max(1))));
+        let controls = format!(" {TEXT}{profile} · {}{R}   {TEXT}{}{R} {TEXT2}read-only{R}", self.engine(&profile),
+                               if self.read_only { "✓" } else { "·" });
+        composer.push(format!("{controls}{}{primary} ", rep(" ", (width - clen(&controls) - clen(&primary) - 1).max(1))));
         let back = if self.turn.is_some() { "" } else { " · esc back" };
-        bottom.push(tui.help(&format!("tab profile · ctrl+r read-only · ctrl+t terminal · ctrl+d diff · ctrl+o handoff · pgup/pgdn scroll{back}")));
+        composer.push(tui.help(&format!("tab profile · ctrl+r read-only · ctrl+t terminal · ctrl+d diff · ctrl+o handoff · pgup/pgdn scroll{back}")));
 
-        let room = (h - 1 - top.len() as i64 - bottom.len() as i64).max(1);
-        let all = self.lines(ww);
-        let n = all.len() as i64;
-        self.scroll = self.scroll.clamp(0, (n - room).max(0));
-        let end = n - self.scroll;
+        let room = (height - 1 - screen.len() as i64 - composer.len() as i64).max(1);
+        let all = self.lines(body_width);
+        let total = all.len() as i64;
+        self.scroll = self.scroll.clamp(0, (total - room).max(0));
+        let end = total - self.scroll;
         let first = (end - room).max(0);
-        let mut body: Vec<String> = all[first as usize..end as usize].iter().map(|l| format!("  {l}")).collect();
+        let mut body: Vec<String> = all[first as usize..end as usize].iter().map(|line| format!("  {line}")).collect();
         if self.scroll > 0 {
             if let Some(last) = body.last_mut() {
                 *last = format!("  {TEXT3}↓ {} more lines · end jumps there{R}", self.scroll);
@@ -590,72 +633,69 @@ impl Chat {
         while (body.len() as i64) < room {
             body.push(String::new());
         }
-        top.extend(body);
-        top.extend(bottom);
-        tui.paint(&top);
+        screen.extend(body);
+        screen.extend(composer);
+        tui.paint(&screen);
     }
 }
 
 /// The chat view on `profile` in the TUI's folder; back to the caller when you leave it (esc).
 pub(super) fn run(tui: &mut Tui, profile: &str) -> T<()> {
     let cfg = load_config(tui.ctx)?;
-    let profs: Vec<(String, String)> = profiles(&cfg).iter()
-        .map(|(n, p)| (n.clone(), super::engine_str(p.as_object().unwrap_or(&Default::default())))).collect();
-    let Some(pick) = profs.iter().position(|(n, _)| n == profile) else {
+    let all: Vec<(String, String)> = profiles(&cfg).iter()
+        .map(|(name, prof)| (name.clone(), super::engine_str(prof.as_object().unwrap_or(&Default::default())))).collect();
+    let Some(pick) = all.iter().position(|(name, _)| name == profile) else {
         return Err(Stop::Err(reidcc::ReidError(format!("No profile named {profile}."))));
     };
-    let mut c = Chat {
-        folder: tui.cwd.clone(), cur: profile.into(), pick, profiles: profs, sids: HashMap::new(), turns: 0, ro: false,
+    let mut chat = Chat {
+        folder: tui.cwd.clone(), cur: profile.into(), pick, profiles: all, sids: HashMap::new(), turns: 0, read_only: false,
         field: String::new(), blocks: vec![], note: Note::None, polled: Instant::now(), turn: None, context: None, cost: 0.0,
         scroll: 0, terminal: None, flash: String::new(),
     };
-    c.blocks.push(Block::Info(format!("{} · ask {profile} anything. Write turns are edit-only; ctrl+t opens a terminal for shell and tests.",
-                                      show_path(&c.folder))));
+    chat.blocks.push(Block::Info(format!("{} · ask {profile} anything. Write turns are edit-only; ctrl+t opens a terminal for shell and tests.",
+                                         show_path(&chat.folder))));
     let (mut dirty, mut drawn, mut size) = (true, Instant::now(), tui.size());
     loop {
         if console::interrupted() {
             return Err(Stop::Int);
         }
-        dirty |= c.pump() | c.poll(tui) | (tui.size() != size);
-        if dirty || (c.turn.is_some() && drawn.elapsed() >= Duration::from_secs(1)) {
+        dirty |= chat.pump() | chat.poll(tui) | (tui.size() != size);
+        if dirty || (chat.turn.is_some() && drawn.elapsed() >= TIMER_REDRAW) {
             size = tui.size();
-            c.draw(tui);
+            chat.draw(tui);
             (dirty, drawn) = (false, Instant::now());
         }
         if !console::kbhit() {
-            std::thread::sleep(Duration::from_millis(30));
+            std::thread::sleep(KEY_POLL);
             continue;
         }
-        let k = getkey()?;
+        let key = getkey()?;
         dirty = true;
         let page = (tui.size().1 / 2).max(3);
-        match k.as_str() {
-            "esc" if c.turn.is_some() => c.stop(),
+        match key.as_str() {
+            "esc" if chat.turn.is_some() => chat.stop(),
             "esc" => return Ok(()),
             // shortcut: a pasted line break sends, like Enter; a multi-line paste needs the chat window
-            "enter" => c.send(),
+            "enter" => chat.send(),
             "backspace" => {
-                c.field.pop();
+                chat.field.pop();
             }
-            "\t" if c.turn.is_none() => c.pick = (c.pick + 1) % c.profiles.len(),
-            "\x12" if c.turn.is_none() => {
-                if matches!(c.note, Note::Locked(_)) {
-                    (c.ro, c.note) = (true, Note::None);
-                    c.send();
+            TAB if chat.turn.is_none() => chat.pick = (chat.pick + 1) % chat.profiles.len(),
+            CTRL_R if chat.turn.is_none() => {
+                if matches!(chat.note, Note::Locked(_)) {
+                    (chat.read_only, chat.note) = (true, Note::None);
+                    chat.send();
                 } else {
-                    c.ro = !c.ro;
+                    chat.read_only = !chat.read_only;
                 }
             }
-            "\x14" => c.terminal(),
-            "\x04" => c.toggle_diff(),
-            "\x0f" => {
-                let p = reidcc::py::join(&c.folder, &[reidcc::handoff::DIR, "handoff.md"]);
-                if reidcc::py::exists(&p) { crate::open_file(&p) } else { c.flash = "No handoff here yet.".into() }
-            }
-            "pgup" | "up" => c.scroll += page,
-            "pgdn" | "down" => c.scroll = (c.scroll - page).max(0),
-            "end" => c.scroll = 0,
-            k if k.chars().count() == 1 && !k.chars().next().is_some_and(char::is_control) => c.field.push_str(k),
+            CTRL_T => chat.terminal(),
+            CTRL_D => chat.toggle_diff(),
+            CTRL_O => chat.open_handoff(),
+            "pgup" | "up" => chat.scroll += page,
+            "pgdn" | "down" => chat.scroll = (chat.scroll - page).max(0),
+            "end" => chat.scroll = 0,
+            typed if typed.chars().count() == 1 && !typed.chars().next().is_some_and(char::is_control) => chat.field.push_str(typed),
             _ => {}
         }
     }
@@ -668,7 +708,7 @@ mod tests {
 
     #[test]
     fn replies_render_like_the_chat_window() {
-        let plain = |t: &str| md_lines(t, 60).iter().map(|l| strip_sgr(l).trim_end().to_string()).collect::<Vec<_>>();
+        let plain = |text: &str| md_lines(text, 60).iter().map(|line| strip_sgr(line).trim_end().to_string()).collect::<Vec<_>>();
         assert_eq!(plain("Use `Option<T>` and **care**, see [calc.py](C:/w/calc.py:9)."),
                    vec!["Use Option<T> and care, see calc.py."]);
         // a fence still streaming is code already, its ``` hidden

@@ -310,12 +310,16 @@ pub fn resume_id(last: &Obj, engine: &str) -> String {
     if same && !sid.is_empty() { sid } else { "-c".into() }
 }
 
+/// Local time as `2026-11-26T14:05:09`, the form reid_state.json and the lock records use.
+pub fn now_iso() -> String {
+    let (year, month, day, hour, minute, second) = py::now_local();
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}")
+}
+
 fn remember_locked(ctx: &Ctx, name: &str, cwd: &str, sid: Option<&str>, engine: &str) -> std::io::Result<()> {
     let mut st = load_state(ctx);
-    let (y, mo, d, h, mi, s) = py::now_local();
     st.insert("last".into(), serde_json::json!({
-        "profile": name, "cwd": cwd, "sid": sid, "engine": engine,
-        "at": format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}")}));
+        "profile": name, "cwd": cwd, "sid": sid, "engine": engine, "at": now_iso()}));
     let mut dirs = vec![Value::String(cwd.into())];
     if let Some(Value::Array(old)) = st.get("recent_dirs") {
         dirs.extend(old.iter().filter(|d| py::normcase(&pyjson::py_str(d)) != py::normcase(cwd)).cloned());
