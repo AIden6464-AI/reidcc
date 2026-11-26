@@ -157,7 +157,6 @@ pub fn run(ctx: &Ctx, cfg: &Obj, t: &Turn, emit: &mut dyn FnMut(&Event)) -> Resu
     let prof = profiles(cfg).get(t.profile).and_then(Value::as_object).unwrap_or(&empty);
     let engine = engine_of(prof, t.profile)?;
     let claude = engine == "claude";
-    let refuse = |m: String| Err(EngineError::Refused { message: m });
     if let Some(r) = t.resume.filter(|r| !locks::valid_id(r)) {
         return refuse(format!("{r} isn't a session id."));
     }
@@ -172,15 +171,18 @@ pub fn run(ctx: &Ctx, cfg: &Obj, t: &Turn, emit: &mut dyn FnMut(&Event)) -> Resu
     res
 }
 
+fn refuse(message: String) -> Result<i32, EngineError> {
+    Err(EngineError::Refused { message })
+}
+
 fn turn(ctx: &Ctx, prof: &Obj, t: &Turn, engine: &'static str, launch: &mut engines::Launch, own: &[String],
         emit: &mut dyn FnMut(&Event)) -> Result<i32, EngineError> {
     let claude = engine == "claude";
-    let refuse = |m: &str| Err(EngineError::Refused { message: m.into() });
     let mut sid = t.resume.map(String::from);
     if let Some(r) = t.resume {
         let there = if claude { session::session_exists(r) } else { engines::codex::thread_exists(&launch.env, r) };
         if !there {
-            return refuse(&format!("There's no {engine} session {r} to continue."));
+            return refuse(format!("There's no {engine} session {r} to continue."));
         }
     }
     let argv = &mut launch.argv;
@@ -260,9 +262,6 @@ fn spawn(ctx: &Ctx, t: &Turn, engine: &'static str, launch: &engines::Launch, si
     // the engine and everything it starts die with this process, however it ends: no orphan
     // holding a session the lock says is free
     let job = crate::win::job_kill_on_close(child.as_raw_handle() as _);
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(t.prompt.as_bytes()); // fails only if the engine already quit: its exit says why
-    }
     let mut stderr = child.stderr.take().expect("piped");
     let tail = std::thread::spawn(move || {
         let mut buf = Vec::new();
@@ -271,6 +270,15 @@ fn spawn(ctx: &Ctx, t: &Turn, engine: &'static str, launch: &engines::Launch, si
         let skip = text.chars().count().saturating_sub(2000);
         text.chars().skip(skip).collect::<String>()
     });
+    // on its own thread, after the readers exist: a pipe holds ~4 KB, and an engine that writes
+    // before it has read a long prompt would otherwise wait on us while we wait on it
+    if let Some(mut stdin) = child.stdin.take() {
+        let prompt = t.prompt.to_owned();
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(prompt.as_bytes()); // fails only if the engine already quit: its exit says why
+            drop(stdin); // EOF: the prompt is complete
+        });
+    }
     let mut parser = Parser::new(engine);
     let mut failed = false;
     for line in std::io::BufReader::new(child.stdout.take().expect("piped")).split(b'\n').map_while(Result::ok) {

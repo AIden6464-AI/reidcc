@@ -90,7 +90,11 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
     let mut sid = None;
     if claude {
         match resume {
-            Some("-c") => launch.argv.push("-c".into()),
+            Some("-c") => {
+                launch.argv.push("-c".into());
+                // Claude picks the session, so there's no id to lock
+                note = "This continues Claude's last session in this folder. Reidcc can't lock it: close it first if it's open in another window.".into();
+            }
             Some(r) if session_exists(r) => {
                 launch.argv.extend(["--resume".into(), r.into()]);
                 sid = Some(r.to_string());
@@ -174,7 +178,14 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
                 // Codex picks its own id: its thread file appears with the first message
                 sid = engines::codex::thread_of(&launch.env, child.id(), since, &mut skip);
                 if let Some(id) = sid.as_deref() {
-                    held = lock(id).ok(); // a thread Codex just made: nobody else has it
+                    // a new thread is nobody else's, but `resume --last` can land on one a window has open
+                    match lock(id) {
+                        Ok(l) => held = Some(l),
+                        Err(e) => {
+                            kill_tree(&mut child);
+                            return Err(e);
+                        }
+                    }
                     let _ = remember_session(ctx, name, cwd, Some(id), engine); // kept even if the window is closed
                 }
             }

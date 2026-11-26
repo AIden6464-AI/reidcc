@@ -65,9 +65,10 @@ class Repo:
         git("commit", "-qm", "init")
         self.procs, self.sids = [], set()
 
-    def stream(self, args, timeout=300):
+    def stream(self, args, timeout=300, stdin=None):
         p = subprocess.run([REID, "--stream", *args], cwd=self.work, env=self.env, capture_output=True,
-                           text=True, encoding="utf-8", timeout=timeout, stdin=subprocess.DEVNULL)
+                           text=True, encoding="utf-8", timeout=timeout,
+                           **({"input": stdin} if stdin is not None else {"stdin": subprocess.DEVNULL}))
         evs = events(p.stdout)
         self.sids.update(e["session_id"] for e in of(evs, "started"))
         return evs, p.returncode, p.stderr
@@ -208,6 +209,18 @@ def main():
         for f in glob.glob(os.path.join(CODEX_SESSIONS, "*", "*", "*", "rollout-*%s.jsonl" % s2)):
             thread = open(f, encoding="utf-8").read()
         check("codex got the handoff in its turn", "NOTE-M1Q" in thread and "From: cl" in thread, len(thread))
+        gi = os.path.join(r.work, ".reid", ".gitignore")
+        status = subprocess.run(["git", "status", "--porcelain"], cwd=r.work, capture_output=True, text=True).stdout
+        check(".reid/ ignores itself: git status never shows it", os.path.exists(gi) and open(gi).read() == "*\n" and ".reid" not in status, status)
+
+        # ---- 2b: a prompt far past a pipe's ~4 KB buffer (a deadlock if stdin blocks the readers) --
+        long = "".join("filler line %d: ignore it.\n" % i for i in range(900)) + "Reply with just the word LONG."
+        try:
+            evs, rc, err = r.stream(["cl", "--read-only", "-"], timeout=180, stdin=long)
+            ok, why = rc == 0 and "LONG" in text_of(evs), (rc, evs[-3:], err[-300:])
+        except subprocess.TimeoutExpired:
+            ok, why = False, "hung: no answer in 180 s"
+        check("a %d KB prompt on stdin streams through (no pipe deadlock)" % (len(long) // 1024), len(long) > 16384 and ok, why)
 
         # ---- 3: locks ----------------------------------------------------------------------------
         a, aev = r.start(["cl", "Write a 2500-word story about a lighthouse keeper. Output only the story, no tools."])

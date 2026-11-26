@@ -28,7 +28,8 @@ pub fn render(s: &Switch) -> String {
     let mut md = format!("# Handoff\n\n- Folder: {}\n- From: {} · {}\n- Written: {y:04}-{mo:02}-{d:02} {h:02}:{mi:02}\n",
                          s.folder, s.profile, s.engine);
     let section = |md: &mut String, title: &str, body: &str| md.push_str(&format!("\n## {title}\n\n{body}\n"));
-    match git(s.folder, &["status", "--porcelain=v1", "-uall"]) {
+    // git's default lists a new folder once (?? .venv/), not every file in it
+    match git(s.folder, &["status", "--porcelain=v1"]) {
         None => section(&mut md, "Changed files", "Not a git repo, so no list of changes."),
         Some(st) => {
             section(&mut md, "Changed files", &if st.is_empty() { "None.".into() } else { format!("```\n{st}\n```") });
@@ -50,7 +51,10 @@ pub fn render(s: &Switch) -> String {
 pub fn write(s: &Switch) -> R<(String, String)> {
     let md = render(s);
     let path = py::join(s.folder, &[DIR, "handoff.md"]);
-    std::fs::create_dir_all(py::dirname(&path)).and_then(|_| std::fs::write(&path, &md)).map_err(crate::engines::io)?;
+    let dir = py::dirname(&path);
+    // git ignores the whole folder, so `git add -A` never commits a handoff (or the local path in it)
+    std::fs::create_dir_all(&dir).and_then(|_| std::fs::write(py::join(&dir, &[".gitignore"]), "*\n"))
+        .and_then(|_| std::fs::write(&path, &md)).map_err(crate::engines::io)?;
     Ok((path, md))
 }
 

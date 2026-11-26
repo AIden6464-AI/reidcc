@@ -17,14 +17,18 @@ const FILE_SHARE_READ: u32 = 1;
 
 pub struct Lock {
     file: Option<File>,
-    paths: Vec<String>, // removed on release: the lock, and the session record next to it
+    paths: Vec<String>, // removed on release: [0] the lock, then the records next to it
 }
 
 impl Drop for Lock {
     fn drop(&mut self) {
-        self.file.take(); // release first; removing fails harmlessly if someone took it meanwhile
-        for p in &self.paths {
+        // records go while it's still held, so they can't be the next holder's
+        for p in self.paths.iter().skip(1) {
             let _ = std::fs::remove_file(p);
+        }
+        self.file.take();
+        if let Some(lock) = self.paths.first() {
+            let _ = std::fs::remove_file(lock); // fails harmlessly if a new holder already has it open
         }
     }
 }
