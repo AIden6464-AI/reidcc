@@ -80,21 +80,22 @@ Items marked *local* are created on your machine and never committed (see `.giti
 
 ```text
 reidcc\
-├─ app\               local: the Python app's build (Reidcc.exe = window, reidcc.com / reid.com = terminal)
-├─ python\            the Python app's source (what app\ is built from)
+├─ app\               local: the Python original's build (the author's older setup)
+├─ python\            the Python original, which rs\ was ported from 1:1 (parity tests still read it)
 │  ├─ reid.py         TUI, CLI and engine
 │  ├─ reid_gui.py     the app window
 │  └─ build\          build.ps1 + spec + make_assets.py (rebuild app\ after editing the source)
-├─ rs\                the Rust rewrite: reid.exe (CLI + TUI) and Reidcc.exe (window), 1:1 with the Python app,
-│                     plus session window beta; not installed into app\ yet
+├─ rs\                the app: reid.exe (CLI + TUI) and Reidcc.exe (window), what the installer ships since 0.2.0
+│                     (core\, cli\, app\ = Tauri, ui\ = the window's TypeScript, tests\ = acceptance flows)
 ├─ vision\            how Reidcc looks and talks: palette, design & motion, voice, branding\ art
 │  ├─ SPEC-vision-v1.md  vision version 1: sizes, session windows, snap, headless, rigs (session window and snap betas built)
-│  └─ Spec\           proxy, gate (built), tui (proposed), codex-opencode (Codex built, OpenCode proposed),
+│  ├─ Spec\           proxy, gate (built), tui (proposed), codex-opencode (Codex built, OpenCode proposed),
 │                     codex-signin-persona (built), codex-proxy (proposed), rust-rewrite (stage 0 built),
-│                     rust-tui-gui (1:1 TUI + GUI in Rust, built, awaiting sign-off), app,
-│                     github-repo (installer + updater, built), unified-interface (Step 0 + Milestone 1
-│                     built on dev), github-pages (website, built in site\;
+│                     rust-tui-gui (1:1 TUI + GUI in Rust, built, shipping since 0.2.0), app,
+│                     github-repo (installer + updater, built), unified-interface (Step 0 and Milestones 1,
+│                     2, 2B, 2C built on dev), plugins, github-pages (website, built in site\;
 │                     the mock it was ported from is in Spec\github-pages\mock\)
+│  └─ ads\            one post per subreddit, with the posting rules and order
 ├─ site\             the website: VitePress landing page + docs, deployed by .github\workflows\pages.yml
 ├─ assets\            banner.png, gate frames (gate_*.png) and TUI half-block gate frames (tui\gate_*.json.gz)
 ├─ docs\              README images
@@ -121,10 +122,10 @@ reidcc\
   <img src="vision/branding/Classical%20Blueprint%20Flow%20with%20Emerald%20Signal-1.png" alt="folder → profile → open gate" width="760" />
 </p>
 
-- **Typed in a terminal** (`reid` or `reidcc`) → **TUI** in that terminal (runs `reidcc.com`).
-- **Started as an app** (Start Menu `Reidcc`, double-clicking `app\Reidcc.exe`) → **GUI** window.
+- **Typed in a terminal** (`reid`) → **TUI** in that terminal.
+- **Started as an app** (Start Menu or desktop `Reidcc`, or `Reidcc.exe`) → **GUI** window.
 - **Any arguments** → CLI. `reid --gui` / `reid --tui` force one (from a terminal, `--gui` detaches the window).
-- **Rebuilding:** editing `python\reid.py` or `python\reid_gui.py` does nothing until you run `python\build\build.ps1` (about 15 s, atomic swap into `app\`).
+- **Rebuilding:** see [Build from source](#build-from-source). The Python original rebuilds with `python\build\build.ps1` into `app\`.
 
 ### One screen and the gate
 
@@ -132,7 +133,7 @@ The flow is `folder → profile → open gate` in both the GUI and the TUI. The 
 
 - **Keys (GUI):** `Enter` on the profile list opens the gate · `Ctrl+Enter` opens the gate from anywhere · `Ctrl+O` picks a folder · `Ctrl+R` resumes · `Esc` clears a message.
 - **Keys (TUI):** `↵ open gate · r resume · e edit · n new · x delete · d default · w pick folder · m memory · 1–9 jump · q quit`
-- **The gate:** hovering or focusing `open gate` / `resume` shows a faint blueprint ghost of the gate over the launcher. Pressing it starts the session while the gate opens. The Rust beta opens a Reidcc session window by default. The installed Python launcher opens Windows Terminal. Any key or click skips the animation.
+- **The gate:** hovering or focusing `open gate` / `resume` shows a faint blueprint ghost of the gate over the launcher. Pressing it starts the session while the gate opens, in a Reidcc session window (the Python original opened Windows Terminal). Any key or click skips the animation.
 
 <p align="center">
   <img src="vision/branding/Emerald%20Portal_%20Engraved%20Blueprint%20Monument.png" alt="The Gate" width="760" />
@@ -142,16 +143,19 @@ The flow is `folder → profile → open gate` in both the GUI and the TUI. The 
 
 ```text
 reid                    Open the TUI in a terminal, or the GUI when launched as an app
-reid <profile> [args]   Launch a profile in the current folder
-reid --resume           Resume the last session (Claude or Codex)
+reid <profile> [args]   Launch a profile in the current folder; extra args go to its engine
+reid -c / reid "do X"   Anything that isn't a profile goes to the default profile's engine
+reid --resume [profile] Resume the last session (Claude or Codex), with that profile or its own
+reid --resume <profile> --id ID   Resume that session, in this folder
 reid --chat [profile]   Chat with Claude Code and Codex in this folder, in the terminal
-reid --dry <profile>    Show the exact command and proxy plan without launching
-reid --stream <profile> [--read-only] [--resume ID] [--switch-from PROFILE] [--with JSON] PROMPT
+reid --stream <profile> [--read-only] [--resume ID] [--with JSON] [--switch-from PROFILE] PROMPT
                         Run one headless turn and print its events as JSON lines
+reid --dry [-v] [profile]   Show the exact command and proxy plan (-v: the prompt and settings files too)
 reid -l                 List all profiles and their summaries
 reid --tui / --gui      Force the TUI or GUI
-reid --edit             Open reid.json
-reid --mem              Open reidcc_memory.md
+reid --edit / --mem     Open reid.json / reidcc_memory.md
+reid --version          Show the Reidcc version
+reid --update           Install the latest Reidcc (installed copies only)
 reid -h                 Full CLI help
 ```
 
@@ -226,22 +230,23 @@ Used by `reid` profiles via the `proxy` field (`slim`, `ultra`, `optimize`, `cap
 
 ---
 
-## Rust rewrite & Vision v1
+## Rust app & roadmap
 
-Reidcc is being rebuilt in Rust (`rs\`: Tauri 2 + TypeScript + `portable-pty` + `xterm.js`) using the exact same data files and `mitmproxy` add-ons. Build with `cargo build --release` in `rs\`.
+Reidcc runs on Rust since 0.2.0 (`rs\`: Tauri 2 + TypeScript + `portable-pty` + `xterm.js`), with the same data files and `mitmproxy` add-ons as the Python original. Build with `cargo build --release` in `rs\`. The acceptance flows live in `rs\tests\` (`python rs\tests\<flow>.py`; the GUI flows overwrite the shots in `session_shots\`, `gui_shots\` and `dock_shots\`).
 
 | Stage | Status | Details |
 |---|---|---|
 | **Stage 0 · core + CLI** | Built | `rs\core`, `rs\cli` (`reid.exe`, 153/154 byte-identical parity with Python) |
-| **Stage 1 · 1:1 TUI + GUI** | Built, awaiting sign-off | 48/48 TUI parity, 175/175 GUI `reid.json` parity (`rs\target\release\Reidcc.exe`) |
+| **Stage 1 · 1:1 TUI + GUI** | Built, shipping since 0.2.0 | 48/48 TUI parity, 175/175 GUI `reid.json` parity (`rs\target\release\Reidcc.exe`) |
 | **Stage 2 · session windows** | Beta built in Rust | Embedded ConPTY + xterm.js window with Telemetry Bar and drag shimmer |
 | **Stage 3 · snap and fuse** | Beta built in Rust | Drag session windows together for a shared frame of up to four live panes. Drag the frame header to move them together or a pane header to pull it out. |
 | **Vision v1 · sizes** | Built in Rust | The launcher has three sizes: `main` (`Alt+1`), `medium` (the form, drag it narrow) and `small` (`Alt+2`), plus the `pod` (`Alt+3`, or drag it small): a capsule with one slot per running session. To do: a key for medium, and the pod as a toggle |
 | **Vision v1 · headless, rigs** | Proposed | Headless run strips, orchestrator rigs, TUI redesign |
 | **Unified interface · Step 0** | Built on `dev` | Codex resume both ways (`vision\Spec\SPEC-unified-interface.md`) |
-| **Unified interface · Milestone 1** | Built on `dev` (core + CLI) | `reid --stream`: one headless turn on Claude or Codex as JSON-line events (started, text, tool call, usage, done, error); context stays unknown when the engine doesn't report it. **Read-only** uses each CLI's own flags (Claude loses its write tools; Codex runs in a read-only sandbox). **Switch** writes `.reid\handoff.md` (changed files, diff stat, optional tests and note) and passes it to the next engine. **Locks** are held by the OS and freed if a process dies: one window per session; session windows share a folder, a headless write turn needs it alone. Acceptance test 25/25 |
-| **Unified interface · Milestone 2** | GUI and TUI built on `dev` | **open chat** (beside resume) opens a chat window on the launcher's folder and profile: one composer over Claude Code and Codex, each turn a `reid --stream` child. It streams text and tool lines, `stop` kills the turn, and after a write turn a collapsible **changed** block (from git) opens to each file's diff. Picking another profile turns `send` into `switch → <engine>`, with a `.reid/handoff.md` divider. **open terminal** resumes that session in a session window. Lock refusals show in the composer (`focus window`, `send read-only`). Acceptance test 31/31. In the TUI, `c` (or `reid --chat [profile]`) opens the same chat in text: tab picks the profile, ctrl+r read-only, ctrl+t open terminal, ctrl+d the diff. Acceptance test 33/33 |
+| **Unified interface · Milestone 1** | Built on `dev` (core + CLI) | `reid --stream`: one headless turn on Claude or Codex as JSON-line events (started, text, tool call, usage, done, error); context stays unknown when the engine doesn't report it. **Read-only** uses each CLI's own flags (Claude loses its write tools; Codex runs in a read-only sandbox). **Switch** writes `.reid\handoff.md` (changed files, diff stat, optional tests and note) and passes it to the next engine. **Locks** are held by the OS and freed if a process dies: one window per session; session windows share a folder, a headless write turn needs it alone. Acceptance test 30/30 |
+| **Unified interface · Milestone 2** | GUI and TUI built on `dev` | **open chat** (beside resume) opens a chat window on the launcher's folder and profile: one composer over Claude Code and Codex, each turn a `reid --stream` child. It streams text and tool lines, `stop` kills the turn, and after a write turn a collapsible **changed** block (from git) opens to each file's diff. Picking another profile turns `send` into `switch → <engine>`, with a `.reid/handoff.md` divider. **open terminal** resumes that session in a session window. Lock refusals show in the composer (`focus window`, `send read-only`). Acceptance test 41/41. In the TUI, `c` (or `reid --chat [profile]`) opens the same chat in text: tab picks the profile, ctrl+r read-only, ctrl+t open terminal, ctrl+d the diff. Acceptance test 40/40 |
 | **Unified interface · Milestone 2C** | Built on `dev` | Model, effort, MCP servers and plugins. In the launcher, **tune** beside the model sets a profile's effort and turns single MCP servers and plugins off or on (profile keys `effort`, `mcp_off`, `plugins`). In a chat, **tune** (TUI: ctrl+e) changes model, effort, servers and plugins for that chat's turns only; reid.json stays as it is |
+| **0.2.5 beta polish** | Built on `dev`, not released | Turns read `edits` or `read-only`, and the composer says what the next turn may do before you send (`edits · no shell` for Claude, `edits · shell` for Codex). Three or more tool lines in a row fold into one (`ran N commands ›`). Context and cost show only when the engine reports them. The chat column caps at 720px, centred. `--text3` is `#7F7A73`, clearing 4.5:1 contrast |
 
 <p align="center">
   <img src="docs/session-window.png" alt="Reidcc session window beta" width="900" />
