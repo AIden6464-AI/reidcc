@@ -40,22 +40,22 @@ const engine = (p: string) => engines[p] ?? "claude";
 
 // ---------------------------------------------------------------- the bar ---
 const pad = (n: number) => String(n).padStart(2, "0");
-const ctxText = () => context == null ? "context unknown" : `context ${Math.round(context)}%`;
+// context only when the engine reported it: Codex doesn't, and "context unknown" in three places said nothing
+const ctxText = (pct: number) => `context ${Math.round(pct)}%`;
+const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 function bar(): void {
   const where = $("where");
-  where.replaceChildren(el("b", "", info.shown), document.createTextNode(`  ${cur} · ${engine(cur)}${readOnly ? " · read-only" : ""}`));
-  const m = $("meters");
+  where.title = info.shown;
+  where.replaceChildren(el("b", "", folderName(info.shown)), document.createTextNode(`  ${cur} · ${engine(cur)}${readOnly ? " · read-only" : ""}`));
+  const parts: Node[] = [];
   if (running) {
     const s = Math.floor((Date.now() - began) / 1000);
-    const live = el("span", "live", `● ${pad(Math.floor(s / 60))}:${pad(s % 60)}`);
-    m.replaceChildren(live, document.createTextNode(" · "), meterCtx());
+    parts.push(el("span", "live", `● ${pad(Math.floor(s / 60))}:${pad(s % 60)}`));
   } else {
-    m.replaceChildren(document.createTextNode("ready · "), meterCtx());
+    parts.push(document.createTextNode("ready"));
   }
-}
-function meterCtx(): HTMLSpanElement {
-  const c = el("span", context != null && context >= 90 ? "hot" : context != null && context >= 75 ? "warn" : "", ctxText());
-  return c;
+  if (context != null) parts.push(document.createTextNode(" · "), el("span", context >= 90 ? "hot" : context >= 75 ? "warn" : "", ctxText(context)));
+  $("meters").replaceChildren(...parts);
 }
 $("min").onclick = () => win.minimize();
 $("max").onclick = () => win.toggleMaximize();
@@ -113,7 +113,7 @@ function onEvent(e: Ev, profile: string): void {
         }
         const line = el("div", "tool");
         line.append(el("b", "", String(e.name ?? "").toLowerCase()), el("span", "", String(e.summary ?? "")));
-        tt.tools.append(line);
+        addTool(tt.tools, line);
         break;
       }
       case "usage":
@@ -127,6 +127,36 @@ function onEvent(e: Ev, profile: string): void {
         break;
     }
   });
+}
+
+/** this many tool lines in a row and more fold into one line that opens on a click */
+const FOLD_AT = 3;
+const SHELLS = ["shell", "bash", "powershell"];
+function addTool(box: HTMLElement, line: HTMLElement): void {
+  let list = box.querySelector<HTMLElement>(":scope > .tlist");
+  if (!list && box.childElementCount + 1 < FOLD_AT) {
+    box.append(line);
+    return;
+  }
+  if (!list) {
+    list = el("div", "tlist");
+    list.append(...box.children);
+    const head = el("button", "thead");
+    head.onclick = () => openFold(box);
+    box.replaceChildren(head, list);
+  }
+  list.append(line);
+  foldLabel(box);
+}
+function openFold(box: HTMLElement): void {
+  box.classList.toggle("open");
+  foldLabel(box);
+}
+/** "ran 10 commands ›" when every line is a shell call, "10 tool calls ›" otherwise */
+function foldLabel(box: HTMLElement): void {
+  const names = [...box.querySelectorAll(".tool b")].map((b) => b.textContent ?? "");
+  const what = names.every((n) => SHELLS.includes(n)) ? `ran ${names.length} commands` : `${names.length} tool calls`;
+  box.querySelector(".thead")!.textContent = `${what} ${box.classList.contains("open") ? "⌄" : "›"}`;
 }
 
 /** reid's errors: a lock refusal becomes the composer's note; the rest go in the stream */
@@ -195,9 +225,10 @@ function sendReadOnly(): void {
 function meta(stopped: boolean, rc: number): void {
   if (!t) return;
   const s = Math.round((Date.now() - began) / 1000);
-  const bits = stopped ? ["stopped"] : [`${pad(Math.floor(s / 60))}:${pad(s % 60)}`, ctxText()];
+  const bits = stopped ? ["stopped"] : [`${pad(Math.floor(s / 60))}:${pad(s % 60)}`];
+  if (!stopped && context != null) bits.push(ctxText(context));
   if (!stopped && cost > 0) bits.push(`$${cost.toFixed(cost < 1 ? 3 : 2)}`);
-  if (!stopped) bits.push(t.ro ? "read-only" : "edit-only");
+  if (!stopped) bits.push(t.ro ? "read-only" : "edits");
   if (!stopped && rc !== 0 && !t.reply.querySelector(".fail")) bits.push(`exit ${rc}`);
   t.reply.append(el("div", "meta", bits.join(" · ")));
 }
@@ -269,8 +300,11 @@ function sideContext(): void {
     r.append(el("span", "", k), el("span", "r", v));
     return r;
   };
-  $("context").replaceChildren(kv("context", context == null ? "unknown" : `${Math.round(context)}%`),
-                               kv("cost", cost > 0 ? `$${cost.toFixed(3)}` : "—"), kv("turns", String(turns)));
+  const rows: HTMLElement[] = [];
+  if (context != null) rows.push(kv("context", `${Math.round(context)}%`));
+  if (cost > 0) rows.push(kv("cost", `$${cost.toFixed(3)}`));
+  rows.push(kv("turns", String(turns)));
+  $("context").replaceChildren(...rows);
 }
 
 // ------------------------------------------------------------ tuning (2C) ---
@@ -347,7 +381,13 @@ const switching = () => pickedProfile() !== cur && turns > 0;
 function setReadOnly(on: boolean): void {
   readOnly = on;
   ro.querySelector(".m")!.textContent = on ? "✓" : "·";
+  capability();
   bar();
+}
+/** what the next turn may do: Claude turns lose Bash and PowerShell, Codex keeps its sandboxed shell */
+function capability(): void {
+  const shell = engine(pickedProfile()) === "codex" ? "shell" : "no shell";
+  $("cap").textContent = `${readOnly ? "read-only" : "edits"} · ${shell}`;
 }
 function primary(): void {
   if (running) {
@@ -362,6 +402,7 @@ function primary(): void {
   pick.disabled = running;
   field.placeholder = `Ask ${pickedProfile()}…`;
   tuneButton();
+  capability();
 }
 
 async function send(): Promise<void> {
@@ -443,7 +484,7 @@ $("term").onclick = () => invoke("chat_terminal", { id, profile: pickedProfile()
   cur = info.profile;
   pick.value = cur;
   document.title = `chat · ${info.shown}`;
-  col.append(el("div", "empty", `${info.shown} · ask ${cur} anything. Write turns are edit-only; open terminal for shell and tests.`));
+  col.append(el("div", "empty", `${info.shown} · ask ${cur} anything. Turns make edits, or only read with read-only on; open terminal for shell and tests.`));
   sideSessions();
   sideContext();
   primary();

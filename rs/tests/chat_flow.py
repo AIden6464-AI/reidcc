@@ -3,7 +3,7 @@
   1  open chat (beside resume) opens a chat window on the launcher's folder and profile
   2  a Claude write turn streams, edits the repo, and shows what it changed (from git); a second
      turn is stopped mid-stream and its engine goes down with it
-  3  switch -> codex, read-only: the .reid/handoff.md divider, context unknown, nothing written
+  3  switch -> codex, read-only: the .reid/handoff.md divider, no context shown (Codex reports none), nothing written
      2b tune (Milestone 2C): this chat's effort reaches claude (--effort low); reid.json stays as it is
   4  open terminal resumes the Claude session (--resume <id>) in a session window; the composer then
      refuses: Codex writing ("A Reidcc window is open in this folder.", send read-only runs it read-only)
@@ -126,6 +126,9 @@ def main():
         st = c.st()
         bar = c.js("document.getElementById('where').textContent")
         check("the chat window is on the launcher's folder and profile", st["cur"] == CL and "work" in bar and "claude" in bar, bar)
+        where = c.js("[document.querySelector('#where b').textContent, document.getElementById('where').title]")
+        check("the bar shows the folder's name, its full path on hover", where[0] == "work" and where[1].endswith("work") and len(where[1]) > 4, where)
+        check("the composer says what a Claude turn may do: edits · no shell", c.js("document.getElementById('cap').textContent") == "edits · no shell")
         check("its one bone button is send", st["primary"] == "send" and c.js("document.querySelectorAll('.btn.primary').length") == 1)
         md = lambda text: c.js("__chat.md(%s)" % json.dumps(text))
         out = md("Option<T> and `Vec<u8>` <script>x</script>")
@@ -153,7 +156,7 @@ def main():
         zero = c.js("[...document.querySelectorAll('.changed .head .zero')].map(e => e.textContent)")
         check("a zero count is muted, not oxide", zero == ["−0"], zero)
         check("changed (from git) lists hello.txt", r.get("changed") == ["hello.txt"], r.get("changed"))
-        check("the meta line: context % and edit-only", "context " in r["meta"] and "%" in r["meta"] and "edit-only" in r["meta"], r["meta"])
+        check("the meta line: context % and edits", "context " in r["meta"] and "%" in r["meta"] and r["meta"].endswith("edits"), r["meta"])
 
         c.js("__chat.type(%s)" % json.dumps("Count from 1 to 300, one number per line, nothing else."))
         c.js("__chat.click('#go')")
@@ -197,12 +200,26 @@ def main():
         c.js("__chat.pick('%s')" % CX)
         check("picking codex turns send into switch → codex", c.st()["primary"] == "switch → codex", c.st()["primary"])
         c.js("__chat.readOnly(true)")
+        cap = c.js("document.getElementById('cap').textContent")
+        check("a read-only Codex turn: read-only · shell", cap == "read-only · shell", cap)
         r = c.turn("Review what changed in this folder. Reply with one short sentence.")
         div = c.js("[...document.querySelectorAll('.switch')].map(d => d.textContent)")
         check("the switch divider names .reid/handoff.md", len(div) == 1 and "claude → codex" in div[0] and ".reid/handoff.md" in div[0], div)
         check(".reid/handoff.md was written", os.path.exists(os.path.join(work, ".reid", "handoff.md")))
-        check("codex answered read-only with context unknown",
-              bool(r.get("text")) and "context unknown" in r["meta"] and "read-only" in r["meta"] and not r.get("changed"), r)
+        check("codex answered read-only, its unreported context left out of the meta line",
+              bool(r.get("text")) and "context" not in r["meta"] and r["meta"].endswith("read-only") and not r.get("changed"), r)
+        side = c.js("[document.querySelector('#meters').textContent, document.querySelector('#context').textContent]")
+        check("the bar and the sidebar leave it out too: no 'unknown', no —",
+              side[0] == "ready" and not any(w in side[1] for w in ("context", "unknown", "—")), side)
+        fold = c.js("[...[...document.querySelectorAll('.reply')].pop().querySelectorAll('.thead')].map(e => e.textContent)")
+        if len(r.get("tools", [])) >= 3:
+            check("%d tool lines fold into one line" % len(r["tools"]),
+                  len(fold) == 1 and fold[0] in ("ran %d commands ›" % len(r["tools"]), "%d tool calls ›" % len(r["tools"])), fold)
+            opened = c.js("(() => { const r = [...document.querySelectorAll('.reply')].pop(); r.querySelector('.thead').click();"
+                          " return [r.querySelector('.thead').textContent, r.querySelector('.tlist').offsetHeight]; })()")
+            check("a click opens the fold", opened[0].endswith("⌄") and opened[1] > 0, opened)
+        else:
+            check("fewer than 3 tool lines stay unfolded", fold == [], (fold, r.get("tools")))
         check("codex shell lines show the command, not the PowerShell wrapper",
               not any("pwsh" in x.lower() and "-command" in x.lower() for x in r.get("tools", [])), r.get("tools"))
         check("the read-only turn wrote nothing", files() == before and open(os.path.join(work, "hello.txt"), encoding="utf-8").read().strip() == "hi", files())

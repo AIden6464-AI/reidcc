@@ -42,7 +42,7 @@ Engraved stone and blueprint linework on near-black, with one emerald signal.
 |---|---|---|
 | `text` (primary, titles, file names) | `#D6D0C8` | derived: marble highlight, a touch brighter than the `#C0B9B2` average, for legibility |
 | `text-2` (secondary, explanations) | `#9F978E` | sampled: the `REIDCC · READY` tag, image 2 |
-| `text-3` (muted telemetry, `·`, timestamps) | `#746F69` | sampled: stone mid-tone |
+| `text-3` (muted telemetry, `·`, timestamps) | `#7F7A73` | stone mid-tone, raised from the sampled `#746F69` to clear 4.5:1 on canvas and surface-1 (0.2.5) |
 
 ### Signal
 | Token | Hex | Source |

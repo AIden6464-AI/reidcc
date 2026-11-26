@@ -252,7 +252,7 @@ Reidcc is being rebuilt in Rust (`rs\`: Tauri 2 + TypeScript + `portable-pty` + 
 ## Design language
 
 - **Ground:** `#040404` canvas, `#0E0D0C` surface 1, `#171513` surface 2, `#292723` stone dark, `1px` `#2A2724` hairlines.
-- **Type:** bone hierarchy (`#D6D0C8` / `#9F978E` / `#746F69`), neo-grotesque sans for UI, monospace with `tabular-nums` on all meters, diffs and timers.
+- **Type:** bone hierarchy (`#D6D0C8` / `#9F978E` / `#7F7A73`), neo-grotesque sans for UI, monospace with `tabular-nums` on all meters, diffs and timers.
 - **Signals:** one emerald (`#00C463`) for ready and active; bronze (`#C99A45`) for loading and 75–89% context; oxide (`#C0584B`) for 90%+ context, limits and errors.
 - **Motion:** `cubic-bezier(0.16, 1, 0.3, 1)`, zero bounce, `240ms` per-step ceiling.
 

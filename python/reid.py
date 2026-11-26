@@ -1397,7 +1397,7 @@ def _fg(h):
     return "\x1b[38;2;%d;%d;%dm" % tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
 
 
-TEXT, TEXT2, TEXT3 = _fg("#D6D0C8"), _fg("#9F978E"), _fg("#746F69")
+TEXT, TEXT2, TEXT3 = _fg("#D6D0C8"), _fg("#9F978E"), _fg("#7F7A73")
 LINE = _fg("#928A82")  # linework: the art's engraved lines
 EMERALD, BRONZE, OXIDE = _fg("#00C463"), _fg("#C99A45"), _fg("#C0584B")
 ACC = TEXT     # labels you act on

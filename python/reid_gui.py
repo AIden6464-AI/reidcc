@@ -23,7 +23,7 @@ from tkinter import ttk, filedialog, font as tkfont
 C = {
     "canvas": "#040404", "s1": "#0E0D0C", "s2": "#171513", "stone": "#292723",
     "line": "#2A2724", "line2": "#4A4540", "linework": "#928A82",
-    "text": "#D6D0C8", "text2": "#9F978E", "text3": "#746F69",
+    "text": "#D6D0C8", "text2": "#9F978E", "text3": "#7F7A73",
     "emerald": "#00C463", "bronze": "#C99A45", "oxide": "#C0584B",
 }
 SUB = "subscription"

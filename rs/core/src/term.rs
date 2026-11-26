@@ -3,7 +3,7 @@
 
 pub const TEXT: &str = "\x1b[38;2;214;208;200m"; // #D6D0C8
 pub const TEXT2: &str = "\x1b[38;2;159;151;142m"; // #9F978E
-pub const TEXT3: &str = "\x1b[38;2;116;111;105m"; // #746F69
+pub const TEXT3: &str = "\x1b[38;2;127;122;115m"; // #7F7A73: the lowest warm stone clearing 4.5:1 on canvas and s1
 pub const BRONZE: &str = "\x1b[38;2;201;154;69m"; // #C99A45
 pub const OXIDE: &str = "\x1b[38;2;192;88;75m"; // #C0584B
 pub const R: &str = "\x1b[0m";

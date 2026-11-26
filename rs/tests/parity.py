@@ -243,7 +243,7 @@ def main():
             extra = {"REID_PROFILE": prof} if prof else {}
             py, rs = run("py", home, ["--statusline"], work, data, extra), run("rs", home, ["--statusline"], work, data, extra)
             # Rust shows a missing context as unknown, never 0% (SPEC-unified-interface Milestone 1)
-            if py != rs and (py[0], py[1].replace("[38;2;159;151;142mcontext 0%", "[38;2;116;111;105mcontext unknown"), py[2]) == rs:
+            if py != rs and (py[0], py[1].replace("[38;2;159;151;142mcontext 0%", "[38;2;127;122;115mcontext unknown"), py[2]) == rs:
                 crashes.append(label)
                 print("known  %s: context unknown, not 0%%" % label)
                 continue

@@ -2,7 +2,7 @@
 //! text. One folder, one composer over Claude Code and Codex. Each turn is a `reid --stream` child, as in
 //! the chat window: stop kills it and its job takes the engine down; a crashed turn can't take the TUI.
 
-use super::{clen, fit, getkey, rep, Stop, Tui, B, DIM, EMERALD, LINE, RULE, T, VAL};
+use super::{clen, fit, getkey, rep, strip_sgr, Stop, Tui, B, DIM, EMERALD, LINE, RULE, T, VAL};
 use crate::console;
 use reidcc::term::{BRONZE, OXIDE, R, TEXT, TEXT2, TEXT3};
 use reidcc::engines::tuning::{self, Choices};
@@ -309,11 +309,15 @@ impl Chat {
         self.picked() != self.cur && self.turns > 0
     }
 
-    fn ctx_text(&self) -> String {
-        match self.context {
-            Some(pct) => format!("context {pct}%"),
-            None => "context unknown".into(),
-        }
+    /// context only when the engine reported it; Codex doesn't, and "context unknown" said nothing
+    fn ctx_text(&self) -> Option<String> {
+        self.context.map(|pct| format!("context {pct}%"))
+    }
+
+    /// what the next turn may do: Claude turns lose Bash and PowerShell, Codex keeps its sandboxed shell
+    fn capability(&self, profile: &str) -> String {
+        let shell = if self.engine(profile) == "codex" { "shell" } else { "no shell" };
+        format!("{} · {shell}", if self.read_only { "read-only" } else { "edits" })
     }
 
     // ------------------------------------------------------------- turns ---
@@ -483,11 +487,12 @@ impl Chat {
             }
         }
         let meta = if turn.stopped { "stopped".to_string() } else {
-            let mut bits = vec![mmss(turn.began.elapsed()), self.ctx_text()];
+            let mut bits = vec![mmss(turn.began.elapsed())];
+            bits.extend(self.ctx_text());
             if self.cost > 0.0 {
                 bits.push(if self.cost < 1.0 { format!("${:.3}", self.cost) } else { format!("${:.2}", self.cost) });
             }
-            bits.push(if turn.read_only { "read-only" } else { "edit-only" }.into());
+            bits.push(if turn.read_only { "read-only" } else { "edits" }.into());
             if exit_code != 0 && !failed {
                 bits.push(format!("exit {exit_code}"));
             }
@@ -746,11 +751,15 @@ impl Chat {
         // the bar: where and who on the left, the meters on the right (emerald only while a turn runs)
         let left = format!(" {LINE}RC{R}  {TEXT}{}{R}  {TEXT2}{} · {}{}{R}", fit(&show_path(&self.folder), (width / 2).max(10)),
                            self.cur, self.engine(&self.cur), if self.read_only { " · read-only" } else { "" });
-        let right = match &self.turn {
-            Some(turn) => format!("{EMERALD}● {}{R} {TEXT2}· {}{R} ", mmss(turn.began.elapsed()), self.ctx_text()),
-            None => format!("{TEXT2}ready · {}{R} ", self.ctx_text()),
+        let state = match &self.turn {
+            Some(turn) => format!("{EMERALD}● {}{R}", mmss(turn.began.elapsed())),
+            None => format!("{TEXT2}ready{R}"),
         };
-        let mut screen = vec![format!("{left}{}{right}", rep(" ", (width - clen(&left) - clen(&right)).max(1))), tui.rule()];
+        let right = match self.ctx_text() {
+            Some(context) => format!("{state} {TEXT2}· {context}{R} "),
+            None => format!("{state} "),
+        };
+        let mut screen = vec![format!("{left}{}{right}", rep(" ", (width - shown_len(&left) - shown_len(&right)).max(1))), tui.rule()];
 
         // the composer: note, field, controls, keys
         let mut composer = vec![tui.rule()];
@@ -781,7 +790,10 @@ impl Chat {
         let summary = if summary.is_empty() { String::new() } else { format!(" {TEXT2}· {summary}{R}") };
         let controls = format!(" {TEXT}{profile} · {}{R}{summary}   {TEXT}{}{R} {TEXT2}read-only{R}", self.engine(&profile),
                                if self.read_only { "✓" } else { "·" });
-        composer.push(format!("{controls}{}{primary} ", rep(" ", (width - clen(&controls) - clen(&primary) - 1).max(1))));
+        // what the turn may do sits before the key, when the line has room for it
+        let with_capability = format!("{TEXT2}{}{R}   {primary}", self.capability(&profile));
+        let primary = if shown_len(&controls) + shown_len(&with_capability) + 2 <= width { with_capability } else { primary };
+        composer.push(format!("{controls}{}{primary} ", rep(" ", (width - shown_len(&controls) - shown_len(&primary) - 1).max(1))));
         let back = if self.turn.is_some() { "" } else { " · esc back" };
         if self.tuning.is_some() {
             composer.push(tui.help("↑↓ choose · ←→ change · space switch · ^e or esc done"));
@@ -811,6 +823,11 @@ impl Chat {
 }
 
 /// The chat view on `profile` in the TUI's folder; back to the caller when you leave it (esc).
+/// the width a line takes on screen: its characters without the colour escapes
+fn shown_len(line: &str) -> i64 {
+    clen(&strip_sgr(line))
+}
+
 pub(super) fn run(tui: &mut Tui, profile: &str) -> T<()> {
     let cfg = load_config(tui.ctx)?;
     let all: Vec<(String, String)> = profiles(&cfg).iter()
@@ -824,7 +841,7 @@ pub(super) fn run(tui: &mut Tui, profile: &str) -> T<()> {
         field: String::new(), blocks: vec![], note: Note::None, polled: Instant::now(), turn: None, context: None, cost: 0.0,
         scroll: 0, terminal: None, flash: String::new(),
     };
-    chat.blocks.push(Block::Info(format!("{} · ask {profile} anything. Write turns are edit-only; ctrl+t opens a terminal for shell and tests.",
+    chat.blocks.push(Block::Info(format!("{} · ask {profile} anything. Turns make edits, or only read with read-only on; ctrl+t opens a terminal for shell and tests.",
                                          show_path(&chat.folder))));
     let (mut dirty, mut drawn, mut size) = (true, Instant::now(), tui.size());
     loop {

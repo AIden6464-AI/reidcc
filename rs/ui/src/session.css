@@ -31,11 +31,11 @@ body { font-family: var(--ui); user-select: none; cursor: default; }
 
 #ctl { flex: none; display: flex; height: 100%; }
 #ctl button {
-  width: 44px; height: 100%; border: 0; background: transparent; color: var(--text3);
+  width: 48px; height: 100%; border: 0; background: transparent; color: var(--text3);
   font: 14px/1 var(--ui); padding: 0; transition: color 120ms var(--ease), background-color 120ms var(--ease);
 }
 #ctl button:hover { color: var(--text); background: var(--s2); }
-#ctl #close:hover { color: var(--oxide); }
+#ctl #close:hover { color: var(--text); background: var(--oxide); }
 #ctl button:focus { outline: none; }
 
 /* Zone 2: the engine, full width (the Changed Rail is a later step) */

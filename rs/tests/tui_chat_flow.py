@@ -5,7 +5,7 @@ chat_flow.py's round trip, in a pseudo-terminal:
   2  a Claude write turn streams, edits the repo and shows what it changed (ctrl+d: the diff); a second
      turn is stopped mid-stream and its engine goes down with it
      2b ctrl+e tune: this chat's effort reaches claude (--effort low); reid.json stays as it is
-  3  tab -> codex, ctrl+r read-only: the .reid/handoff.md divider, context unknown, nothing written
+  3  tab -> codex, ctrl+r read-only: the .reid/handoff.md divider, no context shown (Codex reports none), nothing written
   4  ctrl+t resumes the Claude session (--resume <id>) in a console of its own; the composer then
      refuses: Codex writing ("A Reidcc window is open in this folder.", ctrl+r sends it read-only) and
      Claude ("in terminal", cleared once the terminal lets go)
@@ -46,6 +46,11 @@ def check(name, ok, info=""):
     print("%s  %s%s" % ("ok  " if ok else "FAIL", name, ("" if ok or info == "" else "  " + str(info)[:600])))
 
 
+def ready(bar):
+    """The bar's right side when no turn runs: "ready", then the context only if the engine reported it."""
+    return bar.rstrip().endswith("ready") or "ready · context" in bar
+
+
 class View:
     """The chat view in a Term: its bar is the first line, the composer the last few."""
 
@@ -78,9 +83,9 @@ class View:
         time.sleep(0.8)
         end = time.time() + timeout
         while time.time() < end:
-            if "ready ·" in self.bar():
+            if ready(self.bar()):
                 time.sleep(0.5)
-                if "ready ·" in self.bar():
+                if ready(self.bar()):
                     return True
             time.sleep(0.2)
         return False
@@ -165,6 +170,7 @@ def main():
         check("c opens the chat view on the selected profile and folder",
               ("%s · claude" % CL) in v.bar() and "work" in v.bar() and "ready" in v.bar(), v.bar())
         check("its one primary key is send", v.controls().rstrip().endswith("↵ send"), v.controls())
+        check("the composer says what a Claude turn may do: edits · no shell", "edits · no shell" in v.controls(), v.controls())
 
         # ---- 2: Claude write turn, then stop ---------------------------------------------------------
         v.type("Create a file named hello.txt containing exactly the text: hi. Then reply with just DONE.")
@@ -179,7 +185,7 @@ def main():
         check("changed (from git) lists hello.txt, its zero muted",
               "changed · 1 file" in screen and "hello.txt" in screen and "−0" in screen, screen)
         meta = next((l.strip() for l in v.lines() if re.match(r"\s*\d\d:\d\d · context ", l)), "")
-        check("the meta line: context % and edit-only", "%" in meta and meta.endswith("edit-only"), meta)
+        check("the meta line: context % and edits", "%" in meta and meta.endswith("edits"), meta)
         v.key(CTRL_D)
         check("ctrl+d shows the diff", "│ +hi" in term.text(), term.text())
         v.key(CTRL_D)
@@ -230,14 +236,16 @@ def main():
         check("tab to codex turns send into switch → codex", v.pick(CX) and v.controls().rstrip().endswith("↵ switch → codex"), v.controls())
         v.key(CTRL_R)
         check("ctrl+r ticks read-only", "✓ read-only" in v.controls(), v.controls())
+        check("a read-only Codex turn: read-only · shell", "read-only · shell" in v.controls(), v.controls())
         v.type("Review what changed in this folder. Reply with one short sentence.")
         v.key(ENTER, 0)
         v.idle()
         screen = term.text()
         check("the switch divider names .reid/handoff.md", "switch · claude → codex · .reid/handoff.md" in screen, screen)
         check(".reid/handoff.md was written", os.path.exists(os.path.join(work, ".reid", "handoff.md")))
-        meta = next((l.strip() for l in reversed(v.lines()) if "read-only" in l and "context" in l), "")
-        check("codex answered read-only with context unknown", "context unknown" in meta, meta)
+        meta = next((l.strip() for l in reversed(v.lines()) if re.match(r"\s*\d\d:\d\d · ", l)), "")
+        check("codex answered read-only, its unreported context left out", meta.endswith("read-only") and "context" not in meta, meta)
+        check("the bar leaves the unreported context out too", ready(v.bar()) and "context" not in v.bar(), v.bar())
         check("the read-only turn wrote nothing", files() == before and open(p, encoding="utf-8").read().strip() == "hi", files())
         check("the conversation is with codex now; the key is send again",
               ("%s · codex" % CX) in v.bar() and v.controls().rstrip().endswith("↵ send"), (v.bar(), v.controls()))
@@ -265,7 +273,7 @@ def main():
         check("the refused ask stays in the field", any("› Add a line to README.md." in l for l in v.lines()[-8:]), v.lines()[-8:])
         v.key(CTRL_R, 0)
         v.idle()
-        meta = next((l.strip() for l in reversed(v.lines()) if "context" in l and "·" in l and not l.startswith(" RC")), "")
+        meta = next((l.strip() for l in reversed(v.lines()) if re.match(r"\s*\d\d:\d\d · ", l)), "")
         check("ctrl+r sends it read-only", "read-only" in meta and "✓ read-only" in v.controls() and not v.note(), (meta, v.note()))
         check("README.md is untouched", open(os.path.join(work, "README.md"), encoding="utf-8").read() == "base\n")
 

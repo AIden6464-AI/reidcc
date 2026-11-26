@@ -15,8 +15,8 @@ use std::time::{Duration, Instant};
 const LINE: &str = "\x1b[38;2;146;138;130m"; // #928A82, the art's engraved lines
 const EMERALD: &str = "\x1b[38;2;0;196;99m"; // #00C463
 const ACC: &str = TEXT; // labels you act on
-const DIM: &str = TEXT2; // labels, hints, the key legend (SPEC-one-look 6.1: #9F978E, not #746F69)
-const RULE: &str = TEXT3; // #746F69 is for separators, rules and timestamps only
+const DIM: &str = TEXT2; // labels, hints, the key legend (SPEC-one-look 6.1: #9F978E, not #7F7A73)
+const RULE: &str = TEXT3; // #7F7A73 is for separators, rules and timestamps only
 const VAL: &str = "\x1b[48;2;14;13;12m"; // a value's ground, #0E0D0C (6.2)
 const WARN: &str = TEXT; // flash messages
 const SEL: &str = "\x1b[48;2;41;39;35m\x1b[38;2;214;208;200m"; // stone-dark row, bone text
