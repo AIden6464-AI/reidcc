@@ -8,13 +8,19 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 function inline(line: string): string {
   const h = /^#{1,6} +(.*)$/.exec(line);
   if (h) return `<b>${inline(h[1])}</b>`;
-  return esc(line).split(/(`[^`]+`)/).map((part, i) => {
-    if (i % 2) return `<code>${part.slice(1, -1)}</code>`;
-    return part
-      .replace(/\*\*([^*]+?)\*\*/g, "<b>$1</b>")
-      // a link shows its text; the target (often a local path) is its tooltip, never a navigation
-      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<span class="mdlink" title="$2">$1</span>');
+  // left to right, a `code` span or a whole [link](target) is one token, so a link's text can hold code
+  // and a code span's text never turns into a link
+  return esc(line).split(/(`[^`]+`|\[(?:[^\]`]|`[^`]*`)+\]\([^)\s]+\))/).map((part, i) => {
+    if (i % 2 === 0) return bold(part);
+    if (part.startsWith("`")) return `<code>${part.slice(1, -1)}</code>`;
+    // a link shows its text; the target (often a local path) is its tooltip, never a navigation
+    const at = part.lastIndexOf("](");
+    return `<span class="mdlink" title="${part.slice(at + 2, -1)}">${codeAndBold(part.slice(1, at))}</span>`;
   }).join("");
+}
+const bold = (text: string): string => text.replace(/\*\*([^*]+?)\*\*/g, "<b>$1</b>");
+function codeAndBold(text: string): string {
+  return text.split(/(`[^`]+`)/).map((part, i) => (i % 2 ? `<code>${part.slice(1, -1)}</code>` : bold(part))).join("");
 }
 
 /** HTML for a reply so far. A fence still open (the text is streaming) is a code block to the end. */

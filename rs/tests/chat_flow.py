@@ -138,6 +138,9 @@ def main():
         check("markdown: heading, bold, link text (target as tooltip), a closed fence",
               out.startswith("<b>Title</b>") and "<b>ok</b>" in out and '<span class="mdlink" title="C:/w/calc.py:9">calc.py</span>' in out
               and '<pre class="code">a</pre>end' in out, out)
+        out = md("[The `--version` check](C:/w/reid.py:2173) and `arr[0](x)`")
+        check("markdown: a link's text can hold code; code never becomes a link",
+              out == '<span class="mdlink" title="C:/w/reid.py:2173">The <code>--version</code> check</span> and <code>arr[0](x)</code>', out)
 
         # ---- 2: Claude write turn, then stop -------------------------------------------------------
         r = c.turn("Create a file named hello.txt containing exactly the text: hi\nThen reply with just DONE.")

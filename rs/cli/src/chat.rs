@@ -139,18 +139,60 @@ pub(super) fn clean(text: &str) -> String {
 
 /// One markdown line outside a fence as styled pieces: `code`, **bold**, [text](target) -> text.
 fn inline(line: &str) -> Vec<(String, String)> {
-    let mut out = vec![];
     if let Some(heading) = line.trim_start().strip_prefix('#') {
         let heading = heading.trim_start_matches('#');
         if heading.starts_with(' ') {
             return inline(heading.trim()).into_iter().map(|(style, text)| (format!("{B}{style}"), text)).collect();
         }
     }
-    let parts: Vec<&str> = line.split('`').collect();
+    let mut out = vec![];
+    let mut rest = line;
+    while let Some((open, mid, close)) = next_link(rest) {
+        code_and_bold(&rest[..open], "", &mut out);
+        code_and_bold(&rest[open + 1..mid], UNDER, &mut out);
+        rest = &rest[close + 1..];
+    }
+    code_and_bold(rest, "", &mut out);
+    out
+}
+
+/// The first whole `[text](target)` as byte offsets of `[`, `](` and `)`. Left to right: a closed `code`
+/// span is skipped, so its text never turns into a link, while a link's text may hold code.
+fn next_link(text: &str) -> Option<(usize, usize, usize)> {
+    let bytes = text.as_bytes();
+    let skip_code = |at: usize| text[at + 1..].find('`').map(|end| at + 1 + end);
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'`' => i = skip_code(i).unwrap_or(i),
+            b'[' => {
+                let mut j = i + 1;
+                while j < bytes.len() && bytes[j] != b']' && bytes[j] != b'[' {
+                    j = if bytes[j] == b'`' { skip_code(j).unwrap_or(j) } else { j } + 1;
+                }
+                if text[j..].starts_with("](") {
+                    if let Some(close) = text[j + 2..].find(')').map(|at| j + 2 + at) {
+                        let target = &text[j + 2..close];
+                        if !target.is_empty() && !target.contains(char::is_whitespace) {
+                            return Some((i, j, close));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// `code` and **bold** pieces of plain text, each style after `under` (a link's underline, or "").
+fn code_and_bold(text: &str, under: &str, out: &mut Vec<(String, String)>) {
+    let parts: Vec<&str> = text.split('`').collect();
     let closed = parts.len() % 2 == 1; // an odd count of pieces: every ` has its pair
     for (i, part) in parts.iter().enumerate() {
         if i % 2 == 1 && (closed || i < parts.len() - 1) {
-            out.push((format!("{CODE}{TEXT}"), part.to_string()));
+            out.push((format!("{under}{CODE}{TEXT}"), part.to_string()));
             continue;
         }
         let part = if i % 2 == 1 { format!("`{part}") } else { part.to_string() }; // the unclosed one
@@ -158,39 +200,13 @@ fn inline(line: &str) -> Vec<(String, String)> {
         let paired = pieces.len() % 2 == 1;
         for (j, piece) in pieces.iter().enumerate() {
             if j % 2 == 1 && (paired || j < pieces.len() - 1) {
-                out.push((format!("{B}{TEXT}"), piece.to_string()));
+                out.push((format!("{under}{B}{TEXT}"), piece.to_string()));
             } else {
                 let piece = if j % 2 == 1 { format!("**{piece}") } else { piece.to_string() };
-                links(&piece, &mut out);
+                out.push((format!("{under}{TEXT}"), piece));
             }
         }
     }
-    out
-}
-
-/// `[text](target)` shows its text, underlined; anything else is plain.
-fn links(text: &str, out: &mut Vec<(String, String)>) {
-    let mut rest = text;
-    while let Some(open) = rest.find('[') {
-        let found = rest[open..].find("](").map(|at| open + at).and_then(|mid| {
-            let close = rest[mid + 2..].find(')').map(|at| mid + 2 + at)?;
-            let target = &rest[mid + 2..close];
-            (!target.is_empty() && !target.contains(char::is_whitespace) && !rest[open + 1..mid].contains('['))
-                .then_some((mid, close))
-        });
-        match found {
-            Some((mid, close)) => {
-                out.push((TEXT.into(), rest[..open].into()));
-                out.push((format!("{UNDER}{TEXT}"), rest[open + 1..mid].into()));
-                rest = &rest[close + 1..];
-            }
-            None => {
-                out.push((TEXT.into(), rest[..=open].into()));
-                rest = &rest[open + 1..];
-            }
-        }
-    }
-    out.push((TEXT.into(), rest.into()));
 }
 
 /// Styled pieces wrapped at `width` columns; a line's leading spaces (a list's indent) stay on its first row.
@@ -885,6 +901,12 @@ mod tests {
         assert!(md_lines("```\nfn x() {", 60)[0].contains(VAL));
         assert_eq!(plain("## Title\nan unclosed `tick and **star"), vec!["Title", "an unclosed `tick and **star"]);
         assert_eq!(plain("a [b] (c) [d](e f)"), vec!["a [b] (c) [d](e f)"]);
+        // a link's text can hold code (Codex: [The `--version` check](path)); code never becomes a link
+        let pieces = inline("see [The `--version` check](C:/w/reid.py:2173).");
+        assert_eq!(pieces.iter().map(|(_, text)| text.as_str()).collect::<String>(), "see The --version check.");
+        assert!(pieces.iter().any(|(style, text)| text == "--version" && style.contains(UNDER) && style.contains(CODE)));
+        assert_eq!(plain("`arr[0](x)` and [a](b)"), vec!["arr[0](x) and a"]);
+        assert!(inline("`arr[0](x)`").iter().all(|(style, _)| !style.contains(UNDER)));
         // engine text can't drive the terminal
         assert_eq!(clean("hi\x1b[2Jthere\x07\tx"), "hi[2Jthere    x");
         // wrapped at the width, indents only on a line's first row
