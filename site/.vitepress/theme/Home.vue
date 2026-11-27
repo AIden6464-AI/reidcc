@@ -292,7 +292,7 @@ onBeforeUnmount(() => stop());
     <section class="band" data-reveal><div class="wrap">
       <span class="tag" style="--i:0">chat</span>
       <h2 style="--i:1">One chat over Claude Code and Codex.</h2>
-      <p class="sub" style="--i:2">Each turn streams its text and tool lines. After a turn that edits files, you see which files changed, and each one opens to its diff. Pick the other engine and it picks up from a handoff.</p>
+      <p class="sub" style="--i:2">Each turn streams its text and tool lines. After a turn that edits files, you see which files changed, and each one opens to its diff. Pick the other engine and it gets a handoff of what changed.</p>
       <div class="frame wide" style="--i:3" data-measure><img :src="chatSrc" alt="Reidcc's chat after a Claude turn that wrote a file: the reply, the changed block and the composer" width="1120" height="720" loading="lazy"></div>
       <div class="steps">
         <div style="--i:4"><span class="tag">switch → codex</span><p>The next turn gets <code>.reid/handoff.md</code>: the changed files and the diff stat.</p></div>

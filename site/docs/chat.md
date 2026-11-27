@@ -20,7 +20,10 @@ tool lines as they come.
 ## Switch engines
 
 Pick another profile and **send** becomes `switch → <engine>`. Reidcc writes `.reid/handoff.md` in the
-folder (changed files, diff stat) and passes it to the next engine, so it picks up where the last one stopped.
+folder (changed files, diff stat) and passes it to the next engine.
+
+The handoff carries what changed in the files, not the conversation: the next engine doesn't see what you
+and the last one said. A full context switch is planned for 0.2.6 ([what's next](./next)).
 
 ## Open terminal
 

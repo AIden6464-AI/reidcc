@@ -187,7 +187,7 @@ Asked by Reid 2026-11-27:
 
 | Release | What | On the site |
 |---|---|---|
-| 0.2.6 beta | OpenCode as a third native engine, wired into chat, `--stream`, resume, tune and `.reid/handoff.md` switching, the same as Claude Code and Codex | `docs/next.md`, one paragraph |
+| 0.2.6 beta | OpenCode as a third native engine, wired into chat, `--stream`, resume, tune and `.reid/handoff.md` switching, the same as Claude Code and Codex. **And** the switch becomes a full context switch (Reid, 2026-11-27: "The handoff.md that's not a full context switch this is 02.6"): today the handoff carries only folder, from, `git status`, diff stat, tests and note (`rs/core/src/handoff.rs`), none of the conversation | `docs/next.md`, two paragraphs |
 | 0.2.7 | Cleanup under the hood: a symmetric Engine trait, a typed Profile model, retiring the legacy `python/` parity code and the tracked test shots | `docs/next.md`, two lines; not on the landing page |
 | 0.3.0 | The next major milestone, not announced | `docs/next.md` says only `Planned.` |
 
