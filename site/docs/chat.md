@@ -12,7 +12,7 @@ tool lines as they come.
 - Turns read `edits` or `read-only`. Before you send, the composer says what the next turn may do:
   `edits · no shell` for Claude Code, `edits · shell` for Codex. Read-only uses each engine's own flags.
 - 3 or more tool lines in a row fold into one: `ran N commands ›`.
-- Context and cost show only when the engine reports them.
+- Context and cost show only when the engine reports them: Claude Code reports both. Codex reports token counts instead (`19.9k in · 5 out` on the turn, in · cached · out in the side panel); its context and cost stay hidden, never 0.
 - After a turn that edits files, a **changed** block lists them (from git). Each file opens to its diff.
 
 ## Switch engines

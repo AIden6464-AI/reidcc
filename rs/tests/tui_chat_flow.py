@@ -245,6 +245,7 @@ def main():
         check(".reid/handoff.md was written", os.path.exists(os.path.join(work, ".reid", "handoff.md")))
         meta = next((l.strip() for l in reversed(v.lines()) if re.match(r"\s*\d\d:\d\d · ", l)), "")
         check("codex answered read-only, its unreported context left out", meta.endswith("read-only") and "context" not in meta, meta)
+        check("codex's real token counts in the meta line", bool(re.search(r"\d[\d.]*k? in · \d[\d.]*k? out", meta)), meta)
         check("the bar leaves the unreported context out too", ready(v.bar()) and "context" not in v.bar(), v.bar())
         check("the read-only turn wrote nothing", files() == before and open(p, encoding="utf-8").read().strip() == "hi", files())
         check("the conversation is with codex now; the key is send again",

@@ -28,7 +28,7 @@ From left to right: the folder, `PROFILE · main`, the persona if there is one, 
 Click **RC** on the bar and the launcher opens beside the terminal. Click it again for full, and again to close it.
 `Alt+2` opens it beside and `Alt+1` full; they never reach the engine. The terminal keeps its size either way.
 
-When a session ends (`/reid`, Codex's `/quit`, or the engine exits), the window you're in turns into Reidcc.
+When a session ends (`/reid`, Codex's `/quit`, or the engine exits), the window you're in turns into Reidcc. `/reid` and Codex's `/quit` turn it at once; Claude's `/exit` shows `finished` for a moment first.
 
 ## Snap (beta)
 

@@ -14,7 +14,7 @@ the Claude sessions and Codex threads it makes are deleted afterwards. Kills onl
 
     python rs\\tests\\chat_flow.py
 """
-import os, sys, json, glob, time, shutil, subprocess, urllib.request
+import os, re, sys, json, glob, time, shutil, subprocess, urllib.request
 import psutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -211,6 +211,8 @@ def main():
         side = c.js("[document.querySelector('#meters').textContent, document.querySelector('#context').textContent]")
         check("the bar and the sidebar leave it out too: no 'unknown', no —",
               side[0] == "ready" and not any(w in side[1] for w in ("context", "unknown", "—")), side)
+        check("codex's real token counts: in the meta line and the sidebar",
+              bool(re.search(r"\d[\d.]*k? in · \d[\d.]*k? out", r["meta"])) and "tokens in" in side[1] and "tokens out" in side[1], (r["meta"], side[1]))
         fold = c.js("[...[...document.querySelectorAll('.reply')].pop().querySelectorAll('.thead')].map(e => e.textContent)")
         if len(r.get("tools", [])) >= 3:
             check("%d tool lines fold into one line" % len(r["tools"]),

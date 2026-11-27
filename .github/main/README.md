@@ -65,6 +65,9 @@ stay on one screen, and changes save as you make them.
 - **Inside a session:** click **RC** on the bar and Reidcc opens beside the terminal; again for full, again
   to close (`Alt+2` beside, `Alt+1` full). `/reid` turns the window into Reidcc with the conversation kept
   (`r` resumes it with any profile) · `/exit` leaves as usual.
+- **Inside a Codex session:** Codex has no `/reid`, so `/quit` (or any clean exit) is the way back. The
+  window turns into Reidcc at once, with the Codex thread recorded: **resume** (`r` in the TUI) reopens
+  that exact thread. A chat's **open terminal** works the same way: `/quit` and the chat carries on.
 
 ### Chat
 

@@ -167,6 +167,9 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
         let (mut skip, mut tick) = (std::collections::HashSet::new(), 0u32);
         loop {
             if let Some(s) = child.try_wait().map_err(engines::io)? {
+                if !claude && sid.is_none() {
+                    sid = engines::codex::thread_left(&launch.env, cwd, since, &skip);
+                }
                 return Ok((s.code().unwrap_or(1), false));
             }
             if py::exists(&flag) {

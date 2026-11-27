@@ -6,7 +6,7 @@ use crate::{err, environ, memory, on, on_by_default, py, pyjson, show_path, text
 use serde_json::{Number, Value};
 use std::collections::HashSet;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant, SystemTime};
 
@@ -386,17 +386,41 @@ pub fn thread_of(env: &Env, root: u32, since: SystemTime, skip: &mut HashSet<Pat
             skip.insert(p); // another session's (or a finished one's): it never becomes ours
             continue;
         }
-        let mut first = String::new();
-        let _ = std::io::BufRead::read_line(&mut std::io::BufReader::new(std::fs::File::open(&p).ok()?), &mut first);
-        let meta = pyjson::loads(&first).ok()?;
-        let pl = meta.get("payload")?;
-        if pl.get("source").is_some_and(Value::is_object) {
-            skip.insert(p); // {"subagent": …}: a helper thread, not the session's own
+        let pl = session_meta(&p)?;
+        if helper_thread(&pl) {
+            skip.insert(p);
             continue;
         }
         return pl.get("id").and_then(Value::as_str).map(str::to_string);
     }
     None
+}
+
+/// The thread a Codex that already exited wrote, when thread_of never saw it (a message, then /quit
+/// within the second between looks): the one thread file in `cwd` changed since `since` that nothing holds
+/// open. Another window's is still held; two candidates means it can't tell, so none.
+pub fn thread_left(env: &Env, cwd: &str, since: SystemTime, skip: &HashSet<PathBuf>) -> Option<String> {
+    let same = |a: &str, b: &str| py::normcase(a.trim_end_matches('\\')) == py::normcase(b.trim_end_matches('\\'));
+    let mut found = thread_files(env).into_iter()
+        .filter(|p| !skip.contains(p) && std::fs::metadata(p).and_then(|m| m.modified()).is_ok_and(|m| m >= since))
+        .filter(|p| crate::win::file_holders(&p.to_string_lossy()).is_empty())
+        .filter_map(|p| session_meta(&p))
+        .filter(|pl| !helper_thread(pl) && pl.get("cwd").and_then(Value::as_str).is_some_and(|c| same(c, cwd)))
+        .filter_map(|pl| pl.get("id").and_then(Value::as_str).map(str::to_string));
+    let id = found.next()?;
+    found.next().is_none().then_some(id)
+}
+
+/// A thread file's first line: {"type":"session_meta","payload":{"id":…,"cwd":…}}.
+fn session_meta(path: &Path) -> Option<Value> {
+    let mut first = String::new();
+    let _ = std::io::BufRead::read_line(&mut std::io::BufReader::new(std::fs::File::open(path).ok()?), &mut first);
+    pyjson::loads(&first).ok()?.get("payload").cloned()
+}
+
+/// {"source": {"subagent": …}}: a helper thread (guardian…), not the session's own.
+fn helper_thread(payload: &Value) -> bool {
+    payload.get("source").is_some_and(Value::is_object)
 }
 
 /// Codex's command. `prepare` writes the prompt file (and may read Codex's own prompt, ~1 s the
@@ -503,4 +527,32 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
     }
     argv.extend(args);
     Ok(Launch { argv, env, temps: vec![] })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thread_left_finds_the_one_unheld_thread_in_the_folder() {
+        let home = std::env::temp_dir().join(format!("reid_codex_threads_{}", std::process::id()));
+        let day = home.join("sessions").join("2026").join("11").join("26");
+        std::fs::create_dir_all(&day).unwrap();
+        let work = home.join("work").to_string_lossy().into_owned();
+        let write = |id: &str, cwd: &str, source: &str| {
+            let meta = serde_json::json!({"type": "session_meta", "payload": {"id": id, "cwd": cwd, "source": serde_json::from_str::<Value>(source).unwrap()}});
+            std::fs::write(day.join(format!("rollout-2026-11-26T20-00-00-{id}.jsonl")), format!("{meta}\n")).unwrap();
+        };
+        let env: Env = [("CODEX_HOME".to_string(), home.to_string_lossy().into_owned())].into_iter().collect();
+        let since = SystemTime::now() - Duration::from_secs(2);
+        write("t-other", r"C:\elsewhere", "\"cli\"");
+        write("t-helper", &work, "{\"subagent\": \"guardian\"}");
+        assert_eq!(thread_left(&env, &work, since, &HashSet::new()), None);
+        write("t-mine", &format!("{work}\\"), "\"cli\"");
+        assert_eq!(thread_left(&env, &work, since, &HashSet::new()).as_deref(), Some("t-mine"));
+        // a second candidate in the folder: can't tell which was ours
+        write("t-mine-too", &work, "\"cli\"");
+        assert_eq!(thread_left(&env, &work, since, &HashSet::new()), None);
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }

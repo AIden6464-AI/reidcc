@@ -176,10 +176,12 @@ function back(note: string) {
 function ended(rc: number, isBack: boolean) {
   const codex = info.engine === "codex";
   if (isBack) return back("Back from the session.");
+  // Codex has no /reid: its /quit is the way back, so it turns back at once like /reid does
+  if (rc === 0 && codex) return back("Back from Codex.");
   if (rc === 0) {
     state = "finished";
     drawMeters();
-    setTimeout(() => back(codex ? "Back from Codex." : "Back from the session."), 1500);
+    setTimeout(() => back("Back from the session."), 1500);
     return;
   }
   state = `failed · code ${rc >>> 0} · any key closes`;

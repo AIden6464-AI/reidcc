@@ -264,7 +264,7 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
     }
     if is_codex(prof) && extra.is_empty() && reidcc::term::is_tty() {
         // no /reid in Codex: quitting it comes back
-        let msg = if end.rc == 0 { "Back from Codex.".to_string() }
+        let msg = if end.rc == 0 { "Back from Codex. r resumes it.".to_string() }
                   else { format!("Codex ended with code {}. See the output above.", end.rc as u32) };
         return Ok(tui::Tui::new(ctx, &py::getcwd(), &msg).run());
     }
