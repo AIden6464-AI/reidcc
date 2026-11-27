@@ -13,7 +13,8 @@ Every Reidcc release. Newest first. Everything is beta.
 - Turns read `edits` or `read-only`. The composer says what the next turn may do before you send:
   `edits · no shell` for Claude, `edits · shell` for Codex.
 - 3 or more tool lines in a row fold into one: `ran N commands ›`.
-- Context and cost show only when the engine reports them.
+- Context and cost show only when the engine reports them. Codex reports neither, so they stay hidden;
+  its real token counts show instead (the thread's total so far: `19.9k in · 5 out`, cached in the side panel).
 - **open terminal** resumes the chat's session in a session window.
 - In the terminal: `c` in the TUI, or `reid --chat [profile]`. `tab` picks the profile, `ctrl+r` read-only,
   `ctrl+t` open terminal, `ctrl+d` the diff, `ctrl+e` tune.
@@ -22,12 +23,14 @@ Every Reidcc release. Newest first. Everything is beta.
 - **tune**, beside the model: a profile's effort, and single MCP servers and plugins on or off.
   Saved in `reid.json` as `effort`, `mcp_off` and `plugins`.
 - In a chat, **tune** changes model, effort, servers and plugins for that chat only. `reid.json` stays as it is.
+- On a Codex profile the launcher's mcp row reads **set in tune ›**: Codex's servers, plugins and effort are set
+  there. tools, chrome, connectors and safe mode stay greyed out (Claude only).
 
 ### One window
 - Click **RC** on a session window's bar and the launcher opens beside the terminal. Again: full. Again: closed.
   `Alt+2` beside, `Alt+1` full. The terminal keeps its size.
 - `/reid`, Codex's `/quit` and a session that ends turn the window you're in into Reidcc. Nothing jumps
-  forward from behind.
+  forward from behind. `/reid` and Codex's `/quit` turn it at once.
 - The launcher docks into snapped frames too.
 
 ### Launcher
@@ -39,7 +42,12 @@ Every Reidcc release. Newest first. Everything is beta.
 
 ### Engines
 - Codex resumes both ways, like Claude Code. Each window finds its own Codex thread.
-- Codex profiles take the proxy: `capture`, `slim` and `ultra` (`optimize` stays Claude-only).
+- Codex's `/quit` is its way back, like `/reid`: the thread is recorded, `resume` reopens it, and
+  `reid <codex profile>` lands in the TUI with `Back from Codex. r resumes it.` A thread made just before
+  a quick `/quit` is still found.
+- Codex profiles take the proxy: `capture`, `slim` and `ultra` (`optimize` stays Claude-only). Measured on
+  codex-cli 0.172.0: `slim` −12.0% and `ultra` −13.1% input tokens, but a fresh slimmed thread gets no
+  server cache (numbers on the docs' proxy page).
 - `reid --stream <profile> PROMPT`: one headless turn as JSON lines. `reid --resume <profile> --id ID`
   continues one session in this folder.
 
