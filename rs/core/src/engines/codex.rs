@@ -1,7 +1,7 @@
 //! Codex: the command for a Codex profile, its sign-in (codex login or a codex\*.toml provider
 //! file) and its persona + memory prompt file (vision\SPEC-codex-signin-persona.md).
 
-use super::{apply_env, claude_only_on, io, is_claude_model, need, Launch};
+use super::{apply_env, io, is_claude_model, need, Launch};
 use crate::{err, environ, memory, on, on_by_default, py, pyjson, show_path, text, Ctx, Env, Obj, R};
 use serde_json::{Number, Value};
 use std::collections::HashSet;
@@ -280,6 +280,11 @@ fn config_keys(args: &[String]) -> Vec<String> {
 
 /// codex\prompts\<profile>.md; names that aren't plain get a short hash so two can't collide.
 pub fn prompt_path(ctx: &Ctx, name: &str) -> String {
+    prompt_file(&py::join(&ctx.codex_dir, &["prompts"]), name)
+}
+
+/// `dir\<profile>.md`, the slug rule above (OpenCode's prompt files use it too).
+pub(crate) fn prompt_file(dir: &str, name: &str) -> String {
     let (mut slug, mut run) = (String::new(), false);
     for c in name.to_lowercase().chars() {
         if c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' {
@@ -297,7 +302,7 @@ pub fn prompt_path(ctx: &Ctx, name: &str) -> String {
     if slug != name {
         slug = format!("{slug}-{}", &py::sha1_hex(name)[..6]);
     }
-    py::join(&ctx.codex_dir, &["prompts", &format!("{slug}.md")])
+    py::join(dir, &[&format!("{slug}.md")])
 }
 
 /// Codex's own prompt ("You are Codex…") for these settings, via `codex debug prompt-input` (no
@@ -427,16 +432,7 @@ fn helper_thread(payload: &Value) -> bool {
 /// Codex's command. `prepare` writes the prompt file (and may read Codex's own prompt, ~1 s the
 /// first time); previews pass false and get the same command without touching anything.
 pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd: Option<&str>, prepare: bool) -> R<Launch> {
-    let on_c = claude_only_on(prof);
-    if !on_c.is_empty() {
-        let listing = if on_c.len() > 1 {
-            format!("{} and {}", on_c[..on_c.len() - 1].join(", "), on_c[on_c.len() - 1])
-        } else {
-            on_c[0].to_string()
-        };
-        return err(format!("Codex can't use {listing}. Turn {} off for {name}, or pick a Claude profile.",
-                           if on_c.len() > 1 { "them" } else { "it" }));
-    }
+    super::refuse_claude_only(prof, name, "Codex")?;
     crate::proxy::plan(ctx, prof)?; // validates the proxy field
     let model = text(prof, "model");
     if is_claude_model(&model) {

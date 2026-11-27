@@ -51,7 +51,7 @@ interface Tuning {
 }
 interface Refresh {
   title: string; tags: string; mode_texts: [string, string]; mode_disabled: boolean;
-  disabled: Record<string, boolean>; codex: boolean; ready: boolean; status: string; preview: string;
+  disabled: Record<string, boolean>; tune_note: string; ready: boolean; status: string; preview: string;
 }
 
 class App {
@@ -419,7 +419,6 @@ class App {
     row("tools", combo("tools", false).root);
     this.tuneNote = label("set in tune ›", "text3", "label");
     this.tuneNote.classList.add("slink");
-    this.tuneNote.title = "Codex: MCP servers, plugins and effort are set in tune. tools, chrome, connectors and safe mode are Claude only.";
     this.tuneNote.style.display = "none";
     this.tuneNote.addEventListener("click", () => void this.openTune(this.tuneNote));
     row("mcp", combo("mcp", true).root, [this.tuneNote]);
@@ -905,7 +904,8 @@ class App {
     for (const k of ["safe", "chrome", "connectors"]) this.checks[k].setDisabled(r.disabled[k]);
     for (const k of ["tools", "mcp"]) this.cb[k].root.title = r.disabled[k] ? "Claude only" : "";
     for (const k of ["safe", "chrome", "connectors"]) this.checks[k].root.title = r.disabled[k] ? "Claude only" : "";
-    this.tuneNote.style.display = r.codex ? "" : "none";
+    this.tuneNote.style.display = r.tune_note ? "" : "none";
+    this.tuneNote.title = r.tune_note;
     this.bGo.classList.toggle("off", !r.ready); // SPEC-one-look 1.5: the disabled look while not ready
     this.paintWhere();
     this.statusDot.style.color = r.ready ? C.emerald : C.oxide;

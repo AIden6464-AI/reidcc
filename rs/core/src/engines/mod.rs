@@ -4,12 +4,13 @@
 
 pub mod claude;
 pub mod codex;
+pub mod opencode;
 pub mod tuning;
 
 use crate::{err, profiles, py, Ctx, Env, Obj, R, BASE_MODELS};
 use serde_json::Value;
 
-pub const ENGINES: [&str; 2] = ["claude", "codex"];
+pub const ENGINES: [&str; 3] = ["claude", "codex", "opencode"];
 
 /// Fields only Claude Code understands, with the words the screens use.
 pub const CLAUDE_ONLY: [(&str, &str); 6] = [("tools", "a tools limit"), ("mcp", "an MCP choice"),
@@ -30,19 +31,30 @@ impl Launch {
     }
 }
 
-/// Exactly "claude" or "codex"; missing (or null) means claude. Anything else is an error.
+/// Exactly "claude", "codex" or "opencode"; missing (or null) means claude. Anything else is an error.
 pub fn engine_of(prof: &Obj, name: &str) -> R<&'static str> {
     match prof.get("engine") {
         None | Some(Value::Null) => Ok("claude"),
         Some(Value::String(s)) if s == "claude" => Ok("claude"),
         Some(Value::String(s)) if s == "codex" => Ok("codex"),
-        Some(v) => err(format!("Profile {name}: there's no engine called {}. Use claude or codex.", crate::pyjson::py_str(v))),
+        Some(Value::String(s)) if s == "opencode" => Ok("opencode"),
+        Some(v) => err(format!("Profile {name}: there's no engine called {}. Use claude, codex or opencode.", crate::pyjson::py_str(v))),
     }
 }
 
 /// For the screens: never fails.
 pub fn is_codex(prof: &Obj) -> bool {
     prof.get("engine").and_then(Value::as_str) == Some("codex")
+}
+
+/// The profile's engine for the screens: never fails (an unknown one shows as claude, and its launch says why).
+pub fn engine_name(prof: &Obj) -> &'static str {
+    engine_of(prof, "").unwrap_or("claude")
+}
+
+/// The coding tool's name in sentences ("replace Codex's prompt").
+pub fn tool_name(engine: &str) -> &'static str {
+    match engine { "codex" => "Codex", "opencode" => "OpenCode", _ => "Claude Code" }
 }
 
 /// The Claude-only fields switched on in this profile, in screen words. "tools" counts whenever
@@ -52,12 +64,21 @@ pub fn claude_only_on(prof: &Obj) -> Vec<&'static str> {
         .map(|(_, w)| *w).collect()
 }
 
+/// Codex and OpenCode refuse a profile with Claude-only fields on, naming them.
+pub(crate) fn refuse_claude_only(prof: &Obj, name: &str, engine: &str) -> R<()> {
+    let on_c = claude_only_on(prof);
+    let Some((last, rest)) = on_c.split_last() else { return Ok(()) };
+    let listing = if rest.is_empty() { last.to_string() } else { format!("{} and {last}", rest.join(", ")) };
+    err(format!("{engine} can't use {listing}. Turn {} off for {name}, or pick a Claude profile.",
+                if rest.is_empty() { "it" } else { "them" }))
+}
+
 pub fn is_claude_model(model: &str) -> bool {
     !model.is_empty() && (BASE_MODELS.contains(&model) || model.to_lowercase().starts_with("claude"))
 }
 
 /// Return the launch for profile `name`. Everything that can fail is checked before any temp
-/// file is written. `prepare=false` (previews) only matters for Codex: no prompt file written.
+/// file is written. `prepare=false` (previews) only matters for Codex and OpenCode: no prompt file written.
 pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, extra: &[String], cwd: Option<&str>, prepare: bool) -> R<Launch> {
     let profs = profiles(cfg);
     let Some(Value::Object(prof)) = profs.get(name) else {
@@ -66,10 +87,11 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, extra: &[String], cwd: Option<&st
         }
         return err(format!("No profile named {name}. Profiles: {}.", profs.keys().cloned().collect::<Vec<_>>().join(", ")));
     };
-    if engine_of(prof, name)? == "codex" {
-        return codex::build(ctx, cfg, name, prof, extra, cwd, prepare);
+    match engine_of(prof, name)? {
+        "codex" => codex::build(ctx, cfg, name, prof, extra, cwd, prepare),
+        "opencode" => opencode::build(ctx, cfg, name, prof, extra, cwd, prepare),
+        _ => claude::build(ctx, cfg, name, prof, extra, cwd),
     }
-    claude::build(ctx, cfg, name, prof, extra, cwd)
 }
 
 /// A profile's file field: resolved, and it has to exist.

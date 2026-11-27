@@ -101,8 +101,8 @@ fn resume_target(ctx: &Ctx, cfg: &reidcc::Obj, rest: &[String]) -> (String, Stri
         _ => (default_profile(cfg).to_string(), rest.to_vec()),
     };
     let cwd = if !s("cwd").is_empty() && py::isdir(&s("cwd")) { s("cwd") } else { py::getcwd() };
-    let codex = profiles(cfg).get(&name).and_then(|v| v.as_object()).is_some_and(is_codex);
-    let sid = reidcc::resume_id(&last, if codex { "codex" } else { "claude" });
+    let engine = profiles(cfg).get(&name).and_then(|v| v.as_object()).map_or("claude", engines::engine_name);
+    let sid = reidcc::resume_id(&last, engine);
     (name, cwd, sid, extra)
 }
 
@@ -193,9 +193,16 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
         let (name, cwd, sid, extra) = resume_target(ctx, &cfg, &args[1..]);
         let mut launch = engines::build(ctx, &cfg, &name, &extra, Some(&cwd), true)?;
         launch.remove_temps();
-        if profiles(&cfg).get(&name).and_then(|v| v.as_object()).is_some_and(is_codex) {
+        let engine = profiles(&cfg).get(&name).and_then(|v| v.as_object()).map_or("claude", engines::engine_name);
+        if engine == "codex" {
             let id = if sid != "-c" && codex::thread_exists(&launch.env, &sid) { sid } else { "--last".into() };
             launch.argv.splice(1..1, ["resume".to_string(), id]);
+        } else if engine == "opencode" {
+            if sid != "-c" && engines::opencode::session_exists(&launch.env, &cwd, &sid) {
+                launch.argv.extend(["--session".into(), sid]);
+            } else {
+                launch.argv.push("--continue".into());
+            }
         } else if sid == "-c" || !session::session_exists(&sid) {
             launch.argv.push("-c".into());
         } else {
@@ -248,6 +255,9 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
                 out!("{}", std::fs::read_to_string(&pp).unwrap_or_default());
             }
         }
+        if let Some(layer) = launch.env.get(engines::opencode::CONFIG_CONTENT).filter(|_| engines::engine_name(prof) == "opencode") {
+            out!("  config layer: {layer}"); // the model and the prompt file's path; sign-in keys stay in their file
+        }
         for t in &launch.temps {
             let kind = if t.contains("reid_settings_") { "settings file" } else { "prompt file" };
             out!("  {kind}: {} chars", py::getsize(t));
@@ -262,10 +272,11 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
     if let Some(rc) = session::window_end(&end) {
         return Ok(rc);
     }
-    if is_codex(prof) && extra.is_empty() && reidcc::term::is_tty() {
-        // no /reid in Codex: quitting it comes back
-        let msg = if end.rc == 0 { "Back from Codex. r resumes it.".to_string() }
-                  else { format!("Codex ended with code {}. See the output above.", end.rc as u32) };
+    let tool = match engines::engine_name(prof) { "codex" => "Codex", "opencode" => "OpenCode", _ => "" };
+    if !tool.is_empty() && extra.is_empty() && reidcc::term::is_tty() {
+        // no /reid in Codex or OpenCode: quitting it comes back
+        let msg = if end.rc == 0 { format!("Back from {tool}. r resumes it.") }
+                  else { format!("{tool} ended with code {}. See the output above.", end.rc as u32) };
         return Ok(tui::Tui::new(ctx, &py::getcwd(), &msg).run());
     }
     if end.back {

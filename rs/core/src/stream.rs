@@ -1,5 +1,6 @@
 //! StreamEngine (SPEC-unified-interface, Milestone 1): one headless turn of Claude Code
-//! (`-p --output-format stream-json`) or Codex (`exec --json`), as one event stream. Read-only is
+//! (`-p --output-format stream-json`), Codex (`exec --json`) or OpenCode (`run --format json`), as one
+//! event stream. Read-only is
 //! enforced by each CLI's own switches (checked against the installed claude and codex), never by
 //! asking the model nicely.
 
@@ -97,7 +98,7 @@ pub const CLAUDE_WRITE_TOOLS: [&str; 7] = ["Write", "Edit", "NotebookEdit", "Bas
 
 /// One line of a tool call: the path, command or query it acts on.
 fn summary(input: &Value) -> String {
-    let full = ["file_path", "command", "pattern", "path", "url", "query", "description"].iter()
+    let full = ["file_path", "filePath", "command", "pattern", "path", "url", "query", "description"].iter()
         .find_map(|key| input.get(*key).and_then(Value::as_str).map(String::from))
         .or_else(|| input.as_str().map(String::from))
         .unwrap_or_else(|| if input.is_null() { String::new() } else { input.to_string() });
@@ -175,20 +176,28 @@ fn relative(text: &str, folder: &str) -> String {
 
 /// Turns an engine's JSON lines into events.
 pub struct Parser {
-    claude: bool,
+    engine: String,
     /// the turn's folder: tool lines show paths inside it relative to it
     folder: String,
     context_tokens: Option<u64>, // Claude: what the last request sent, i.e. what's in the context now
+    /// OpenCode: the turn's token and cost totals so far (each step_finish is one request)
+    steps: (Tokens, f64),
+    started: bool,
 }
 
 impl Parser {
     pub fn new(engine: &str, folder: &str) -> Parser {
-        Parser { claude: engine == "claude", folder: folder.into(), context_tokens: None }
+        Parser { engine: engine.into(), folder: folder.into(), context_tokens: None,
+                 steps: (Tokens { input: 0, cached: Some(0), output: 0 }, 0.0), started: false }
     }
 
     pub fn line(&mut self, line: &str) -> Vec<Event> {
         let Ok(json) = serde_json::from_str::<Value>(line) else { return vec![] }; // banners, warnings
-        let mut events = if self.claude { self.claude_line(&json) } else { codex_line(&json) };
+        let mut events = match self.engine.as_str() {
+            "claude" => self.claude_line(&json),
+            "opencode" => self.opencode_line(&json),
+            _ => codex_line(&json),
+        };
         for event in &mut events {
             if let Event::ToolCall { summary, .. } = event {
                 *summary = relative(summary, &self.folder);
@@ -225,6 +234,42 @@ impl Parser {
                     out.push(Event::Error(EngineError::Engine { message }));
                 }
                 out
+            }
+            _ => vec![],
+        }
+    }
+
+    /// OpenCode's run --format json: every line has type, sessionID and part. There's no end line: the
+    /// turn ends when the process does.
+    fn opencode_line(&mut self, json: &Value) -> Vec<Event> {
+        let part = &json["part"];
+        match json["type"].as_str().unwrap_or_default() {
+            "step_start" if !self.started => {
+                self.started = true;
+                vec![Event::Started { session_id: text_of(&json["sessionID"]) }]
+            }
+            "text" => vec![Event::TextDelta { text: text_of(&part["text"]) }],
+            "tool_use" => vec![Event::ToolCall { name: text_of(&part["tool"]), summary: summary(&part["state"]["input"]) }],
+            "step_finish" => {
+                let t = &part["tokens"];
+                if !t.is_object() {
+                    return vec![Event::Usage { context_pct: None, cost_usd: None, tokens: None }];
+                }
+                let count = |v: &Value| v.as_u64().unwrap_or(0);
+                let cached = count(&t["cache"]["read"]);
+                let (sum, cost) = &mut self.steps;
+                sum.input += count(&t["input"]) + cached + count(&t["cache"]["write"]);
+                sum.cached = Some(sum.cached.unwrap_or(0) + cached);
+                sum.output += count(&t["output"]) + count(&t["reasoning"]);
+                *cost += part["cost"].as_f64().unwrap_or(0.0);
+                let tokens = Tokens { input: sum.input, cached: sum.cached, output: sum.output };
+                vec![Event::Usage { context_pct: None, cost_usd: part["cost"].as_f64().map(|_| *cost), tokens: Some(tokens) }]
+            }
+            "error" => {
+                let error = &json["error"];
+                let message = [&error["message"], &error["data"]["message"], &error["type"]].into_iter()
+                    .map(text_of).find(|m| !m.is_empty()).unwrap_or_default();
+                vec![Event::Error(EngineError::Engine { message })]
             }
             _ => vec![],
         }
@@ -277,13 +322,12 @@ pub fn run(ctx: &Ctx, cfg: &Obj, turn: &Turn, emit: &mut dyn FnMut(&Event)) -> R
     let empty = Obj::new();
     let prof = profiles(cfg).get(turn.profile).and_then(Value::as_object).unwrap_or(&empty);
     let engine = engine_of(prof, turn.profile)?;
-    let claude = engine == "claude";
     if let Some(id) = turn.resume.filter(|id| !locks::valid_id(id)) {
         return refuse(format!("{id} isn't a session id."));
     }
     // read-only can't trust a profile that turns the engine's own guards off
     let own = crate::args(prof);
-    if let Some(arg) = own.iter().find(|arg| own_guards(arg, claude)).filter(|_| turn.mode == Mode::ReadOnly) {
+    if let Some(arg) = own.iter().find(|arg| own_guards(arg, engine)).filter(|_| turn.mode == Mode::ReadOnly) {
         return refuse(format!("Read-only can't run {} with {arg} in its args. Take it out, or use another profile.", turn.profile));
     }
     let mut launch = engines::build(ctx, cfg, turn.profile, &[], Some(turn.folder), true)?;
@@ -302,13 +346,31 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
     let claude = engine == "claude";
     let mut sid = turn.resume.map(String::from);
     if let Some(id) = turn.resume {
-        let there = if claude { session::session_exists(id) } else { engines::codex::thread_exists(&launch.env, id) };
+        let there = match engine {
+            "claude" => session::session_exists(id),
+            "opencode" => engines::opencode::session_exists(&launch.env, turn.folder, id),
+            _ => engines::codex::thread_exists(&launch.env, id),
+        };
         if !there {
             return refuse(format!("There's no {engine} session {id} to continue."));
         }
     }
-    let argv = &mut launch.argv;
     let mode = if turn.mode == Mode::ReadOnly { "read-only" } else { "write" };
+    if engine == "opencode" {
+        engines::opencode::turn_agent(&mut launch.env, turn.mode == Mode::ReadOnly);
+        let model = engines::opencode::turn_args(prof, &launch.env, turn.folder);
+        let argv = &mut launch.argv;
+        argv.insert(1, "run".into()); // right after the exe: --standalone and the profile's flags follow
+        argv.extend(["--format", "json", "--agent", engines::opencode::TURN_AGENT].map(String::from));
+        argv.extend(model);
+        if turn.mode == Mode::Write {
+            argv.push("--auto".into()); // run can't ask: what the turn's agent doesn't deny is allowed
+        }
+        let id = turn.resume.map(String::from).unwrap_or_else(engines::opencode::new_session_id);
+        argv.extend(["--session".into(), id.clone()]); // the prompt comes on stdin
+        sid = Some(id);
+    }
+    let argv = &mut launch.argv;
     if claude {
         argv.extend(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"].map(String::from));
         if turn.mode == Mode::ReadOnly {
@@ -330,10 +392,10 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
                 sid = Some(id);
             }
         }
-    } else {
+    } else if engine == "codex" {
         argv.extend(["exec", "--json", "--skip-git-repo-check"].map(String::from));
         let sandbox = if turn.mode == Mode::ReadOnly { Some("read-only") }
-                      else if own.iter().any(|arg| own_guards(arg, false)) { None } // the profile chose its own
+                      else if own.iter().any(|arg| own_guards(arg, "codex")) { None } // the profile chose its own
                       else { Some("workspace-write") };
         if let Some(sandbox) = sandbox {
             argv.extend(["-c".into(), format!("sandbox_mode=\"{sandbox}\"")]);
@@ -375,11 +437,15 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
 }
 
 /// A profile arg that sets the engine's own permission guards (or turns them off). Matched loosely on
-/// purpose: any spelling of a guard flag (`--sandbox`, `-c sandbox_mode=…`) counts.
-fn own_guards(arg: &str, claude: bool) -> bool {
+/// purpose: any spelling of a guard flag (`--sandbox`, `-c sandbox_mode=…`) counts. OpenCode's guards
+/// are the turn's agent, so picking another agent counts too.
+fn own_guards(arg: &str, engine: &str) -> bool {
     let arg = arg.to_lowercase();
-    arg.contains("dangerously") || if claude { arg == "bypasspermissions" }
-        else { arg.contains("sandbox") || arg.contains("approval") || ["--yolo", "--full-auto", "-s", "-a"].contains(&arg.as_str()) }
+    arg.contains("dangerously") || match engine {
+        "claude" => arg == "bypasspermissions",
+        "opencode" => arg == "--auto" || arg.starts_with("--agent"),
+        _ => arg.contains("sandbox") || arg.contains("approval") || ["--yolo", "--full-auto", "-s", "-a"].contains(&arg.as_str()),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -498,6 +564,32 @@ mod tests {
         let ev = run("claude", &[r#"{"type":"result","is_error":true,"subtype":"error_during_execution","errors":["boom"]}"#]);
         assert_eq!(ev, vec![Event::Usage { context_pct: None, cost_usd: None, tokens: None },
                             Event::Error(EngineError::Engine { message: "boom".into() })]);
+    }
+
+    #[test]
+    fn opencode_run_json_becomes_events() {
+        // OpenCode 2.3.0's real shapes (2026-11-27), trimmed
+        let ev = run("opencode", &[
+            r#"{"type":"step_start","sessionID":"ses_ab","part":{"type":"step-start"}}"#,
+            r#"{"type":"tool_use","sessionID":"ses_ab","part":{"tool":"read","state":{"status":"completed","input":{"path":"C:\\w\\a.txt"},"output":"x"}}}"#,
+            r#"{"type":"tool_use","sessionID":"ses_ab","part":{"tool":"edit","state":{"status":"completed","input":{"filePath":"C:\\w\\b.txt"}}}}"#,
+            r#"{"type":"step_finish","sessionID":"ses_ab","part":{"reason":"tool-calls","cost":0.25,"tokens":{"input":9607,"output":39,"reasoning":1,"cache":{"read":1664,"write":0}}}}"#,
+            r#"{"type":"step_start","sessionID":"ses_ab","part":{"type":"step-start"}}"#,
+            r#"{"type":"text","sessionID":"ses_ab","part":{"text":"Done."}}"#,
+            r#"{"type":"step_finish","sessionID":"ses_ab","part":{"reason":"stop","cost":0.5,"tokens":{"input":71,"output":3,"reasoning":0,"cache":{"read":11264,"write":0}}}}"#,
+            r#"{"type":"error","sessionID":"","error":{"type":"unknown","message":"Variant unavailable"}}"#,
+        ]);
+        assert_eq!(ev, vec![
+            Event::Started { session_id: "ses_ab".into() },
+            Event::ToolCall { name: "read".into(), summary: "a.txt".into() },
+            Event::ToolCall { name: "edit".into(), summary: "b.txt".into() },
+            Event::Usage { context_pct: None, cost_usd: Some(0.25), tokens: Some(Tokens { input: 11271, cached: Some(1664), output: 40 }) },
+            Event::TextDelta { text: "Done.".into() },
+            // the turn's totals: every step is a request
+            Event::Usage { context_pct: None, cost_usd: Some(0.75), tokens: Some(Tokens { input: 22606, cached: Some(12928), output: 43 }) },
+            Event::Error(EngineError::Engine { message: "Variant unavailable".into() }),
+        ]);
+        assert!(own_guards("--agent=build", "opencode") && own_guards("--auto", "opencode") && !own_guards("--auto", "claude"));
     }
 
     #[test]

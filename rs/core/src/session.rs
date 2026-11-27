@@ -70,7 +70,8 @@ pub struct Ended {
 }
 
 /// Run the profile's engine in this terminal. `resume` is a session id, or "-c" for the last one in
-/// the folder. /reid is Claude's; a Codex session's id is found while it runs (codex::thread_of).
+/// the folder. /reid is Claude's; a Codex session's id is found while it runs (codex::thread_of);
+/// Claude's and OpenCode's are picked up front.
 pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume: Option<&str>) -> Res<Ended> {
     let empty = Obj::new();
     let prof = profiles(cfg).get(name).and_then(Value::as_object).unwrap_or(&empty);
@@ -88,7 +89,27 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
     let mut note = String::new();
     let continuing = extra.iter().any(|a| ["-c", "--continue", "-r", "--resume"].contains(&a.as_str()) || a.starts_with("--resume="));
     let mut sid = None;
-    if claude {
+    if engine == "opencode" {
+        let session = |argv: &mut Vec<String>, id: &str| argv.extend(["--session".into(), id.into()]);
+        match resume {
+            Some("-c") => {
+                launch.argv.push("--continue".into());
+                note = "This continues OpenCode's last session in this folder. Reidcc can't lock it: close it first if it's open in another window.".into();
+            }
+            Some(r) if engines::opencode::session_exists(&launch.env, cwd, r) => {
+                session(&mut launch.argv, r);
+                sid = Some(r.to_string());
+            }
+            Some(_) => note = "That OpenCode session isn't there any more, so this is a new one.".into(),
+            None => {}
+        }
+        let own = extra.iter().chain(crate::args(prof).iter()).any(|a| ["-c", "--continue", "-s", "--session"].contains(&a.as_str()));
+        if sid.is_none() && !own && resume != Some("-c") {
+            let id = engines::opencode::new_session_id(); // OpenCode makes the session for a new id
+            session(&mut launch.argv, &id);
+            sid = Some(id);
+        }
+    } else if claude {
         match resume {
             Some("-c") => {
                 launch.argv.push("-c".into());
@@ -143,14 +164,18 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
         if is_tty() {
             write(&format!("{TERM_RESET}\x1b[?1049l"));
         }
-        let back = if claude { "/reid comes back here" } else { "codex · /quit comes back here" };
+        let back = match engine {
+            "claude" => "/reid comes back here",
+            "opencode" => "opencode · /exit comes back here",
+            _ => "codex · /quit comes back here",
+        };
         if window_file().is_some() {
             errln!("{TEXT3}{back}{R}"); // a session window's bar already names the profile (SPEC-one-look 7.4)
         } else {
             errln!("{TEXT2}REIDCC{TEXT} · {name} {TEXT3}· {back}{R}");
         }
         if !claude && is_tty() {
-            write(&format!("\x1b]0;REIDCC · codex · {name}\x07")); // the tab title (Codex's own is off)
+            write(&format!("\x1b]0;REIDCC · {engine} · {name}\x07")); // the tab title (Codex's own is off)
         }
         if !note.is_empty() {
             errln!("{TEXT3}{note}{R}");
@@ -167,7 +192,7 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
         let (mut skip, mut tick) = (std::collections::HashSet::new(), 0u32);
         loop {
             if let Some(s) = child.try_wait().map_err(engines::io)? {
-                if !claude && sid.is_none() {
+                if engine == "codex" && sid.is_none() {
                     sid = engines::codex::thread_left(&launch.env, cwd, since);
                 }
                 return Ok((s.code().unwrap_or(1), false));
@@ -177,7 +202,7 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
                 return Ok((child.try_wait().ok().flatten().and_then(|s| s.code()).unwrap_or(1), true));
             }
             tick += 1;
-            if !claude && sid.is_none() && tick % 5 == 0 {
+            if engine == "codex" && sid.is_none() && tick % 5 == 0 {
                 // Codex picks its own id: its thread file appears with the first message
                 sid = engines::codex::thread_of(&launch.env, child.id(), since, &mut skip);
                 if let Some(id) = sid.as_deref() {

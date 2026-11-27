@@ -52,6 +52,7 @@ pub struct Ctx {
     pub config: String,
     pub state: String,
     pub codex_dir: String,
+    pub opencode_dir: String,
     pub proxy_dir: String,
     /// argv prefix that runs this CLI: Claude Code runs it for the statusline.
     pub cli: Vec<String>,
@@ -72,6 +73,7 @@ impl Ctx {
             config: py::join(home, &["reid.json"]),
             state: py::join(home, &["reid_state.json"]),
             codex_dir: py::join(home, &["codex"]),
+            opencode_dir: py::join(home, &["opencode"]),
             proxy_dir: py::join(home, &["proxy"]),
             cli: vec![exe],
             codex_login: Mutex::new(HashMap::new()),
