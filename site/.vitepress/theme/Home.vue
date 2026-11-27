@@ -256,13 +256,13 @@ onBeforeUnmount(() => stop());
       <div class="stage"><div class="wrap">
         <div class="copy" data-reveal>
           <span class="tag" style="--i:0">reidcc · ready</span>
-          <h1 style="--i:1">Folder.<br>Profile.<br>Gate.</h1>
+          <h1 style="--i:1">Folder.<br> Profile.<br> Gate.</h1>
           <p class="lead" style="--i:2">A launcher for Claude Code and Codex. Pick a folder and a profile, and your persona, memory and settings are already there.</p>
           <div class="ctas" style="--i:3">
             <a class="btn primary" id="open" href="#download">{{ release ? "download for windows" : "build from source" }}</a>
             <a class="btn" :href="docs">read the docs</a>
           </div>
-          <a class="news" v-if="news" :href="changes" style="--i:4">{{ news.release }} · {{ news.title || "what's new" }} <span class="sep">›</span></a>
+          <a class="news" v-if="news" :href="changes" style="--i:4">{{ news.release }} · {{ news.title || "what's new" }}&nbsp;<span class="sep">›</span></a>
           <div class="hint" style="--i:5">folder <span class="sep">→</span> profile <span class="sep">→</span> open gate <span class="scrollcue">· scroll to open</span></div>
         </div>
         <div class="frame gate" data-measure>
