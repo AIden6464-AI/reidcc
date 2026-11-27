@@ -224,8 +224,18 @@ impl Model {
         }
     }
 
+    /// Writes reid.json. A failed write (the file held open by OneDrive, an antivirus scan, reid.py)
+    /// shows an error with the reason, like the TUI does, so a profile edit never vanishes silently.
     pub fn save(&mut self, cfg: &Obj) {
-        let _ = reidcc::save_json(&self.ctx.config, &Value::Object(cfg.clone()));
+        if let Err(text) = self.try_save(cfg) {
+            self.push(say(text, "error", &[("open reid.json", "open_config")], None));
+        }
+    }
+
+    /// save() for callers that report back themselves (rigs, settings messages).
+    pub fn try_save(&self, cfg: &Obj) -> Result<(), String> {
+        reidcc::save_json(&self.ctx.config, &Value::Object(cfg.clone())).map_err(|e| format!(
+            "Couldn't save reid.json ({e}). The change isn't saved: close what has the file open, then try again."))
     }
 
     pub fn real_folder(&self) -> String {

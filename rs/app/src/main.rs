@@ -57,6 +57,27 @@ fn asset(name: &str) -> Option<String> {
     }
 }
 
+/// The pages' own origin on Windows (Tauri 2 serves WebviewUrl::App at http://tauri.localhost).
+/// gate.ts fetch()es frames from reid.localhost, so this one origin needs the CORS header.
+const APP_ORIGIN: &str = "http://tauri.localhost";
+
+/// A reid:// request path -> the file under `root` (the assets folder), or None.
+/// Only plain names below assets/ pass: no root, drive, `..`, `.` or `:`, and the resolved
+/// file must still sit inside `root` after symlinks are followed.
+fn served_asset(root: &std::path::Path, path: &str) -> Option<std::path::PathBuf> {
+    use std::path::{Component, Path};
+    let rel = path.trim_start_matches('/').strip_prefix("assets/")?;
+    let rel_path = Path::new(rel);
+    let plain = !rel.is_empty() && !rel.contains(':') && !rel.contains('\\')
+        && rel_path.components().all(|part| matches!(part, Component::Normal(_)));
+    if !plain {
+        return None;
+    }
+    let root = root.canonicalize().ok()?;
+    let file = root.join(rel_path).canonicalize().ok()?;
+    (file.starts_with(&root) && file.is_file()).then_some(file)
+}
+
 /// argv prefix that runs reid in a console: reid.exe next to this exe.
 fn cli_command() -> Vec<String> {
     let exe = std::env::current_exe().unwrap_or_default();
@@ -537,11 +558,11 @@ fn main() {
         })
         .register_uri_scheme_protocol("reid", |_ctx, req| {
             // reid://localhost/assets/... : the gate frames and the banner, straight from assets\
-            let path = req.uri().path().trim_start_matches('/').replace('/', "\\");
-            let body = (!path.contains("..")).then(|| asset(&path)).flatten().and_then(|p| std::fs::read(p).ok());
+            let body = asset("assets").and_then(|root| served_asset(std::path::Path::new(&root), req.uri().path()))
+                .and_then(|file| std::fs::read(file).ok());
             match body {
                 Some(b) => tauri::http::Response::builder().header("Content-Type", "image/png")
-                    .header("Access-Control-Allow-Origin", "*").body(b).unwrap(),
+                    .header("Access-Control-Allow-Origin", APP_ORIGIN).body(b).unwrap(),
                 None => tauri::http::Response::builder().status(404).body(vec![]).unwrap(),
             }
         })
@@ -616,4 +637,30 @@ fn show(app: AppHandle) {
 #[tauri::command]
 fn metrics() -> fonts::Fonts {
     fonts::fonts()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::served_asset;
+
+    #[test]
+    fn asset_paths_stay_inside_assets() {
+        let base = std::env::temp_dir().join(format!("reidcc_asset_test_{}", std::process::id()));
+        let root = base.join("assets");
+        std::fs::create_dir_all(root.join("gate_open")).unwrap();
+        std::fs::write(root.join("banner.png"), b"png").unwrap();
+        std::fs::write(root.join("gate_open").join("f1.png"), b"png").unwrap();
+        std::fs::write(base.join("secret.json"), b"key").unwrap();
+
+        assert!(served_asset(&root, "/assets/banner.png").is_some());
+        assert!(served_asset(&root, "/assets/gate_open/f1.png").is_some());
+        let secret = base.join("secret.json").to_string_lossy().replace('\\', "/");
+        for bad in ["/assets/../secret.json", "/assets/gate_open/../../secret.json", "/assets/./banner.png",
+                    "/assets/..\\secret.json", "/json/api.json", "/secret.json", "/assets/", "/assets/missing.png",
+                    "/assets/gate_open", &format!("/assets/{secret}"), "/assets/C:/Windows/win.ini",
+                    "/assets//etc/passwd", "/C:/Users/you/Reidcc/json/api.json"] {
+            assert!(served_asset(&root, bad).is_none(), "{bad} should be refused");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

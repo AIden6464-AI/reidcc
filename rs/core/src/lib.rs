@@ -221,8 +221,11 @@ pub fn default_config() -> Value {
 /// json.dump(indent=2, ensure_ascii=False) to a temp file, then replace.
 pub fn save_json(path: &str, data: &Value) -> std::io::Result<()> {
     let tmp = format!("{path}.{}.tmp", std::process::id()); // per process: two writers never share a temp file
-    py::write_text(&tmp, &pyjson::dumps(data, Some(2), false), false)?;
-    std::fs::rename(&tmp, path)
+    let written = py::write_text(&tmp, &pyjson::dumps(data, Some(2), false), false).and_then(|()| std::fs::rename(&tmp, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp); // a refused swap must not leave reid.json.<pid>.tmp behind
+    }
+    written
 }
 
 pub fn load_config(ctx: &Ctx) -> R<Obj> {

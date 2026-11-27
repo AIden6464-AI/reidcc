@@ -41,7 +41,7 @@ pub fn rig_save(app: AppHandle, webview: Webview, st: S, sessions: State<'_, ses
     let mut all = rigs(&cfg);
     all.insert(name.clone(), rig);
     cfg.insert("rigs".into(), Value::Object(all));
-    m.save(&cfg);
+    m.try_save(&cfg)?;
     drop(m);
     let _ = app.emit_to("main", "rigs-changed", ());
     Ok(format!("Saved as rig {name}."))

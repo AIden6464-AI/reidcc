@@ -118,7 +118,9 @@ fn change_temp(st: &App, which: &str, dir: &str) -> String {
     let mut m = st.m.lock().unwrap();
     let Some(mut cfg) = m.cfg() else { return "reid.json has an error. Fix it, then try again.".into() };
     if same(dir, &default) { cfg.shift_remove(key); } else { cfg.insert(key.into(), Value::String(dir.into())); }
-    m.save(&cfg);
+    if let Err(text) = m.try_save(&cfg) {
+        return text;
+    }
     reidcc::apply_locations(&cfg);
     if which == "temp" { "Sessions opened from now on put their temp files here." } else { "Claude sessions opened from now on keep their scratch folders here." }.into()
 }

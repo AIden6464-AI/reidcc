@@ -90,7 +90,7 @@ reidcc\
 ├─ vision\            how Reidcc looks and talks: palette, design & motion, voice, branding\ art
 │  ├─ SPEC-vision-v1.md  vision version 1: sizes, session windows, snap, headless, rigs (session window and snap betas built)
 │  ├─ Spec\           proxy, gate (built), tui (proposed), codex-opencode (Codex built, OpenCode proposed),
-│                     codex-signin-persona (built), codex-proxy (proposed), rust-rewrite (stage 0 built),
+│                     codex-signin-persona (built), codex-proxy (built), rust-rewrite (stage 0 built),
 │                     rust-tui-gui (1:1 TUI + GUI in Rust, built, shipping since 0.2.0), app,
 │                     github-repo (installer + updater, built), unified-interface (Step 0 and Milestones 1,
 │                     2, 2B, 2C built on dev), plugins, github-pages (website, built in site\;
@@ -181,7 +181,7 @@ A profile selects its engine (`claude` or `codex`) on the `name` row. Profiles w
 - **Persona and memory:** uses the same persona files and `reidcc_memory.md` (`add to Codex's prompt` or `replace Codex's prompt`). Generated files live in `codex\prompts\<profile>.md`; nothing is written to `~/.codex`.
 - **Session flow:** Codex statusline (`model · folder · context · 5h · weekly`), `REIDCC · codex · <profile>` tab title, and `/quit` returns to the Reidcc TUI.
 - **Resume:** works both ways, like Claude. Reidcc finds the Codex thread while the session runs, and `resume` reopens it (`codex resume <id>`, or `--last` when the id isn't known yet).
-- **Proxy *(proposed)*:** per-session `capture`, `slim` and `ultra` add-ons for Codex traffic are specced in `vision\Spec\SPEC-codex-proxy.md`.
+- **Proxy:** per-session `capture`, `slim` and `ultra` add-ons for Codex traffic (`proxy\codex_*_addon.py`; `optimize` is Claude-only). See `vision\Spec\SPEC-codex-proxy.md`.
 
 ### OpenCode *(proposed)*
 
