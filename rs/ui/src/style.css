@@ -200,6 +200,7 @@ body[data-size="medium"] #settings { padding: 0 20px; }
 .fbtns { display: flex; gap: 6px; margin-left: 12px; }
 .fcell { display: flex; min-width: 0; }
 .fcell > .combo, .fcell > .entry { flex: 1; min-width: 0; }
+.fcell > .slink { flex: none; align-self: center; margin-left: 12px; white-space: nowrap; }
 .fprof .fbtns { flex: none; }
 #medium .check { font: 14px/19px var(--ui); height: 26px; }
 #medium .combo .entry { height: auto; }

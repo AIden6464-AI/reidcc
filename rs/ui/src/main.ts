@@ -76,6 +76,8 @@ class App {
   /** the form's own widgets; the shared ones move in (`put`) and back (`unplace`) */
   undo: (() => void)[] = [];
   cells: Record<string, HTMLDivElement> = {};
+  /** Codex profiles only: points from the greyed Claude-only rows to tune, which holds Codex's servers and plugins */
+  tuneNote!: HTMLDivElement;
   folderBox!: HTMLDivElement;
   profCombo!: Combo;
   defCheck!: Check;
@@ -415,7 +417,13 @@ class App {
     row("persona mode", mf, [], 3);
     row("proxy", combo("proxy", true).root);
     row("tools", combo("tools", false).root);
-    row("mcp", combo("mcp", true).root);
+    this.tuneNote = label("set in tune ›", "text3", "label");
+    this.tuneNote.classList.add("slink");
+    this.tuneNote.title = "Codex: MCP servers, plugins and effort are set in tune. tools, chrome, connectors and safe mode are Claude only.";
+    this.tuneNote.style.display = "none";
+    this.tuneNote.addEventListener("click", () => void this.openTune(this.tuneNote));
+    row("mcp", combo("mcp", true).root, [this.tuneNote]);
+    this.tuneNote.style.gridColumn = "3 / span 2";
     const sf = el("div");
     sf.style.cssText = "display:flex";
     for (const [k, txt] of [["memory", "memory"], ["chrome", "chrome"], ["connectors", "connectors"], ["safe", "safe mode"]]) {
@@ -559,6 +567,7 @@ class App {
     this.put(this.eFolder, this.folderBox);
     this.put(this.eName, c.name);
     for (const k of ["engine", "model", "auth", "persona", "proxy", "tools", "mcp"]) this.put(this.cb[k].root, c[k], "short");
+    this.put(this.tuneNote, c.mcp); // beside the mcp combo; hidden on Claude profiles, so the combo keeps the cell
     for (const [k, , sentence] of SENTENCES) {
       const ch = this.checks[k], old = ch.txt.textContent || "";
       this.put(ch.root, c[k]);
@@ -896,6 +905,7 @@ class App {
     for (const k of ["safe", "chrome", "connectors"]) this.checks[k].setDisabled(r.disabled[k]);
     for (const k of ["tools", "mcp"]) this.cb[k].root.title = r.disabled[k] ? "Claude only" : "";
     for (const k of ["safe", "chrome", "connectors"]) this.checks[k].root.title = r.disabled[k] ? "Claude only" : "";
+    this.tuneNote.style.display = r.codex ? "" : "none";
     this.bGo.classList.toggle("off", !r.ready); // SPEC-one-look 1.5: the disabled look while not ready
     this.paintWhere();
     this.statusDot.style.color = r.ready ? C.emerald : C.oxide;
