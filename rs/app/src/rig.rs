@@ -36,7 +36,7 @@ pub fn rig_save(app: AppHandle, webview: Webview, st: S, sessions: State<'_, ses
         return Err("Name the rig first.".into());
     }
     let rig = dock::rig_of(&app, webview.window(), &|id| sessions.leaf(id)).ok_or("Couldn't read this frame's layout.")?;
-    let mut m = st.m.lock().unwrap();
+    let m = st.m.lock().unwrap();
     let mut cfg = reidcc::load_config(&m.ctx).map_err(|e| e.0)?;
     let mut all = rigs(&cfg);
     all.insert(name.clone(), rig);
