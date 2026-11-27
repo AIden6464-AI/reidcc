@@ -341,17 +341,24 @@ pub fn run(ctx: &Ctx, cfg: &Obj, turn: &Turn, emit: &mut dyn FnMut(&Event)) -> R
     }
     let mut launch = engines::build(ctx, cfg, turn.profile, &[], Some(turn.folder), true)?;
     let mut said = transcript::Recorder::default();
+    let model = prof.get("model").and_then(Value::as_str).unwrap_or_default();
+    let save = |records: &[Value], emit: &mut dyn FnMut(&Event)| {
+        if let Some(Err(e)) = turn.chat.map(|chat| transcript::append(ctx, chat, records)) {
+            emit(&Event::Note { text: format!("the chat transcript wasn't saved: {}", e.0) });
+        }
+    };
+    // the ask once the engine starts (a refused turn leaves no trace, a stopped one keeps its ask), the
+    // reply at the end
     let res = launch_turn(ctx, prof, turn, engine, &mut launch, &own, &mut |e: &Event| {
+        if matches!(e, Event::Started { .. }) && !said.ran {
+            save(&[transcript::ask_record(turn.profile, engine, model, turn.prompt)], emit);
+        }
         said.push(e);
         emit(e)
     });
     launch.remove_temps();
-    // only a turn that ran: a refused one leaves no trace
-    if let Some(chat) = turn.chat.filter(|_| said.ran) {
-        let model = prof.get("model").and_then(Value::as_str).unwrap_or_default();
-        if let Err(e) = transcript::append(ctx, chat, &said.records(turn.profile, engine, model, turn.prompt)) {
-            emit(&Event::Note { text: format!("the chat transcript wasn't saved: {}", e.0) });
-        }
+    if said.ran {
+        save(&[said.reply_record(turn.profile, engine, model)], emit);
     }
     res
 }
@@ -368,7 +375,8 @@ fn carry(ctx: &Ctx, chat: &str, engine: &str, folder: &str, env: &crate::Env, em
     let (n, turns) = (all.len(), transcript::fit(all, transcript::budget(engine)));
     match native(engine, &turns, folder, env) {
         Ok(id) => {
-            emit(&Event::Note { text: format!("context carried: {n} turns in a new {engine} session") });
+            let turns = if n == 1 { "1 turn".to_string() } else { format!("{n} turns") };
+            emit(&Event::Note { text: format!("context carried: {turns} in a new {engine} session") });
             (Some(id), String::new())
         }
         Err(e) => {
@@ -399,7 +407,7 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
     };
     let resume = if carrying { carried.as_deref() } else { turn.resume };
     let mut sid = resume.map(String::from);
-    if let Some(id) = resume {
+    if let Some(id) = resume.filter(|_| !carrying) { // a carried session was checked as it was written
         let there = match engine {
             "claude" => session::session_exists(id),
             "opencode" => engines::opencode::session_exists(&launch.env, turn.folder, id),
@@ -637,14 +645,15 @@ mod tests {
         assert_eq!(none, (None, String::new()));
         let mut rec = transcript::Recorder::default();
         rec.push(&Event::TextDelta { text: "PERIWINKLE".into() });
-        transcript::append(&ctx, "c1", &rec.records("cl", "claude", "opus", "remember the codeword")).unwrap();
+        transcript::append(&ctx, "c1", &[transcript::ask_record("cl", "claude", "opus", "remember the codeword"),
+                                         rec.reply_record("cl", "claude", "opus")]).unwrap();
         let refused = carry(&ctx, "c1", "codex", &home, &env, &mut emit, |_, _, _, _| crate::err("format changed"));
         assert_eq!(refused.0, None);
         assert!(refused.1.contains("User: remember the codeword\n\nAssistant: [claude · opus]\nPERIWINKLE"), "{}", refused.1);
         let took = carry(&ctx, "c1", "codex", &home, &env, &mut emit, |engine, turns, _, _| Ok(format!("{engine}-{}", turns.len())));
         assert_eq!(took, (Some("codex-1".into()), String::new()));
         assert_eq!(notes, ["context passed as text: codex didn't take the session (format changed)",
-                           "context carried: 1 turns in a new codex session"]);
+                           "context carried: 1 turn in a new codex session"]);
         let _ = std::fs::remove_dir_all(home);
     }
 

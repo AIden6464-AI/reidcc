@@ -269,6 +269,9 @@ def main():
         check("a new window in the folder is refused while it writes", p.returncode == 1 and "writing in this folder" in p.stderr,
               (p.returncode, p.stderr[-300:]))
 
+        end = time.time() + 120  # the story's first words can take half a minute: measure once it streams
+        while time.time() < end and not of(aev, "text_delta"):
+            time.sleep(0.2)
         n0 = len(of(aev, "text_delta"))
         evs, rc, _ = r.stream(["cl", "--read-only", "Reply with just the word PONG."], timeout=120)
         n1 = len(of(aev, "text_delta"))
