@@ -66,8 +66,9 @@ pub fn settings_set(st: S, key: String, value: String) -> View {
         let mut m = st.m.lock().unwrap();
         if let Some(mut cfg) = m.cfg() {
             if value == default { cfg.shift_remove(k); } else { cfg.insert(k.into(), Value::String(value)); }
-            m.save(&cfg);
-            crate::recolor::set_from(&cfg); // sessions opened from now on
+            if m.save(&cfg) {
+                crate::recolor::set_from(&cfg); // sessions opened from now on
+            } // on failure view() below reads reid.json back, so the page shows what's really saved
         }
     }
     view(&st)

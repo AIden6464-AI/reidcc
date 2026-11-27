@@ -54,7 +54,7 @@ pub fn rig_delete(app: AppHandle, st: S, name: String) {
     let mut all = rigs(&cfg);
     if all.remove(&name).is_some() {
         cfg.insert("rigs".into(), Value::Object(all));
-        m.save(&cfg);
+        if !m.save(&cfg) { return; } // the error shows in the launcher; the rig list stays as saved
         drop(m);
         let _ = app.emit_to("main", "rigs-changed", ());
     }

@@ -226,10 +226,15 @@ impl Model {
 
     /// Writes reid.json. A failed write (the file held open by OneDrive, an antivirus scan, reid.py)
     /// shows an error with the reason, like the TUI does, so a profile edit never vanishes silently.
-    pub fn save(&mut self, cfg: &Obj) {
-        if let Err(text) = self.try_save(cfg) {
-            self.push(say(text, "error", &[("open reid.json", "open_config")], None));
+    /// false after a failed write: the error is queued, and the caller must stop there, since
+    /// anything it says after ("Saved.") replaces the error in the same message line.
+    #[must_use]
+    pub fn save(&mut self, cfg: &Obj) -> bool {
+        let result = self.try_save(cfg);
+        if let Err(text) = &result {
+            self.push(say(text.clone(), "error", &[("open reid.json", "open_config")], None));
         }
+        result.is_ok()
     }
 
     /// save() for callers that report back themselves (rigs, settings messages).
@@ -453,7 +458,7 @@ impl Model {
             put(&mut p, "settings", Value::Null); // sign-in files are per engine too
             let no_opt = engine == "codex" && proxy::drop_optimize(&mut p);
             set_profile(&mut cfg, &cur, p);
-            self.save(&cfg);
+            if !self.save(&cfg) { return; }
             self.load_profile(&cfg, &cur); // new model and sign-in lists for the new engine
             let tail = if no_opt { " optimize is Claude's, so it's off." } else { "" };
             self.push(say(format!("Engine is now {engine}. Model and sign-in reset to its defaults.{tail}"), "quiet", &[], Some(3.0)));
@@ -486,7 +491,7 @@ impl Model {
         put(&mut p, "no_connectors", Value::Bool(!v.connectors));
         let replace_codex = mode_changed && p.get("mode").and_then(Value::as_str) == Some("replace") && is_codex(&p);
         set_profile(&mut cfg, &cur, p);
-        self.save(&cfg);
+        if !self.save(&cfg) { return; }
         self.refresh(&cfg);
         if replace_codex {
             self.push(say(CODEX_REPLACE_HINT, "quiet", &[], Some(4.0)));
@@ -514,7 +519,7 @@ impl Model {
             put(&mut p, key, value);
         }
         set_profile(&mut cfg, &cur, p);
-        self.save(&cfg);
+        if !self.save(&cfg) { return; }
         self.refresh(&cfg);
         self.push(say("Saved.", "quiet", &[], Some(1.5)));
     }
@@ -538,7 +543,7 @@ impl Model {
         if cfg.get("default").and_then(Value::as_str) == Some(cur.as_str()) {
             cfg.insert(s("default"), Value::String(new.clone()));
         }
-        self.save(&cfg);
+        if !self.save(&cfg) { return; }
         self.current = Some(new.clone());
         self.reload(Some(&new));
     }
@@ -558,7 +563,7 @@ impl Model {
             // the settings page's default engine; a Codex profile starts on Codex's own default model
             let codex = cfg.get("default_engine").and_then(Value::as_str) == Some("codex");
             profiles_mut(&mut cfg).insert(n.clone(), if codex { json!({"engine": "codex"}) } else { json!({"model": "opus"}) });
-            self.save(&cfg);
+            if !self.save(&cfg) { return; }
             self.reload(Some(&n));
         }
     }
@@ -569,7 +574,7 @@ impl Model {
             let n = Self::unique(&cfg, &format!("{cur}-copy"));
             let copy = profiles(&cfg).get(&cur).cloned().unwrap_or(Value::Null);
             profiles_mut(&mut cfg).insert(n.clone(), copy);
-            self.save(&cfg);
+            if !self.save(&cfg) { return; }
             self.reload(Some(&n));
         }
     }
@@ -601,7 +606,7 @@ impl Model {
             let first = profiles(&c).keys().next().cloned().unwrap_or_default();
             c.insert(s("default"), Value::String(first));
         }
-        self.save(&c);
+        if !self.save(&c) { return; }
         self.current = None;
         let d = c.get("default").and_then(Value::as_str).map(String::from);
         self.reload(d.as_deref());
@@ -612,7 +617,7 @@ impl Model {
         let Some(cur) = self.current.clone() else { return };
         if let Some(mut cfg) = self.cfg() {
             cfg.insert(s("default"), Value::String(cur.clone()));
-            self.save(&cfg);
+            if !self.save(&cfg) { return; }
             self.reload(Some(&cur));
             self.push(say(format!("Default is now {cur}."), "quiet", &[], Some(3.0)));
         }

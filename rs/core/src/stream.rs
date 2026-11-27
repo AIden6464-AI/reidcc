@@ -285,9 +285,12 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
         if turn.mode == Mode::ReadOnly {
             argv.extend(["--permission-mode".into(), "default".into(), "--disallowedTools".into()]);
             argv.extend(CLAUDE_WRITE_TOOLS.map(String::from));
-        } else if !own.iter().any(|arg| arg.starts_with("--permission-mode") || arg.contains("dangerously")) {
-            argv.extend(["--permission-mode".into(), "acceptEdits".into()]); // -p can't ask, so edits are allowed up front
-            // edit-only (Part 6): shell goes through open terminal, even where the user's settings allow it here
+        } else {
+            if !own.iter().any(|arg| arg.starts_with("--permission-mode") || arg.contains("dangerously")) {
+                argv.extend(["--permission-mode".into(), "acceptEdits".into()]); // -p can't ask, so edits are allowed up front
+            }
+            // edit-only (Part 6), whatever permission mode the profile brings: shell goes through open terminal,
+            // so the composer's `edits · no shell` holds
             argv.extend(["--disallowedTools", "Bash", "PowerShell"].map(String::from));
         }
         match turn.resume {
