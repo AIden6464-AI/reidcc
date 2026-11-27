@@ -2,7 +2,7 @@
 
 Every Reidcc release. Newest first. Everything is beta.
 
-## 0.2.5 beta: one chat over Claude Code and Codex
+## 0.2.5 beta · 2026-11-27: one chat over Claude Code and Codex
 
 ### Chat
 - **open chat**, beside resume: one composer over Claude Code and Codex, in the launcher's folder and
