@@ -14,7 +14,9 @@ Two kinds of tool docs are shortened:
     is kept byte for byte, and unlisted sections pass through unchanged.
 
 Anything not listed (MCP namespaces, tools a future Codex adds) passes through unchanged.
-The rewrite is deterministic, so the server-side prompt cache still hits.
+The rewrite is deterministic, so the prompt cache hits from a thread's second turn. A fresh thread starts
+cold: additional_tools is input item 0, so plain Codex's prefix (warm from every other Codex request on the
+account) never matches. Measured on 0.172.0: 0 cached on turn 1, 17.5k-30.5k on turn 2 (site/docs/proxy.md).
 
 Optional: SLIM_LEVEL=ultra adds terser docs for more tools.
 Optional: SLIM_DROP=mcp__cua_repl,collaboration.spawn_agent removes whole namespaces or tools

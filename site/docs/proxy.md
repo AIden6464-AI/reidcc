@@ -37,6 +37,11 @@ plain Codex reused 7.5k to 15.5k cached tokens. So a short thread can cost more 
 without. From the second turn in a thread, `slim` was cached again (17.5k to 30.5k). `capture` alone changes
 nothing sent and kept its cache.
 
+Why: Codex sends its tools first, as input item 0, so `slim` changes the very first tokens of the prompt. The
+rewrite is the same every time (17,606 tokens on every run), but plain Codex's opening is the one every other
+Codex request on your account sends, so it's already in the server's cache. The slimmed opening only gets
+cached once a thread has sent it. `slim` pays off on long threads, not one-shot runs.
+
 ## Setup
 
 From the repo's `dev` branch: create `proxy\.venv` with mitmproxy, then add `proxy` to a profile in `reid.json`. See `proxy\README.md` there.
