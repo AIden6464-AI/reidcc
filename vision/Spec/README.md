@@ -12,12 +12,13 @@ hitting a wall, going public, or outside voices. That's the "why".
 
 | Date | Spec | What set it off | State |
 |---|---|---|---|
-| 11-17 | SPEC-codex-opencode | "let's make a spec on makeing this tool work for codex and opencode"; cut down after "i wanted to add a engine right not remakeing the hole app" | Codex built 11-19 · OpenCode not started |
+| 11-17 | SPEC-codex-opencode | "let's make a spec on makeing this tool work for codex and opencode"; cut down after "i wanted to add a engine right not remakeing the hole app" | Codex built 11-19 · OpenCode: milestone 2 goes into SPEC-0.2.6 |
 | 11-19 | SPEC-codex-signin-persona | Codex profiles had sign-in, persona and memory greyed out: "can we spec [...] for codex the signin and persona's" | built 11-19 |
 | 11-19 | SPEC-codex-proxy | his `claude` profile (codex + `proxy: capture`) was refused: "persona's don't work? what man" | built 11-23 ("All of the build proxy's [...] needs to be ported") |
 | 11-23 | SPEC-user-trial (+ results) | "act like there new users [...] what can be pushed more like a custom cli that sits on top" | run · 13/13 fixes done on dev, not released |
 | 11-23 | SPEC-agent-cli | the trial plus his Discord poll: "The agent cli that sits on top of agent clis" | idea · Reid command center, a separate app on top of Reidcc · outside reviews added 11-25 (Part 7: plumbing, what Reidcc needs) · command center replaced by SPEC-unified-interface |
 | 11-25 | SPEC-unified-interface (+ `.html` page) | Reid's Rev 4 blueprint: one GUI + TUI straight over Claude Code and Codex, no boss AI ("no NVIDIA SLI") | draft vision · Step 0 (Codex resume both ways) and Milestone 1 (reid --stream, Switch, OS locks; core + CLI) built on dev 11-25, hardened 74e8484; Milestone 2 decisions (Part 6) and a design-pass mock (`unified-interface/mock/`) in, awaiting Reid; next: Milestone 2 UI |
+| 11-27 | SPEC-0.2.6 | "The handoff.md that's not a full context switch this is 02.6" · "O and the opencode engine" · "Deterministic but [...] just shove the context it self around" | spec · not built · native-session resume verified on Claude 2.1.332 and Codex 0.172.0 |
 
 **Why it moved this way:** every step came from using Codex inside Reidcc and finding the gap with Claude
 (greyed fields, then the refused proxy). Once Codex came close to Claude, the next question was more
@@ -58,7 +59,7 @@ with the pod as a toggle (palette §5).
 | 11-17 | SPEC-app | a review of the .exe packaging | built |
 | 11-21 | SPEC-github-repo | "Spec out this as a GitHub repo and how it would be installed" | built through 0.2.x |
 | 11-21 | SPEC-github-pages | "a github pages website with docs and the feel that the Reidcc project/app feels" | built |
-| 11-27 | SPEC-website-0.2.5 | "spec doc a update to the Website and pull for other website for details" | built on dev · not published |
+| 11-27 | SPEC-website-0.2.5 | "spec doc a update to the Website and pull for other website for details" | built · published with 0.2.5 (11-27) |
 | 11-22 | SPEC-review-0.2.1 | "ask Gemini 4 neon to reveiw" | 0/8 fixed |
 | 11-23 | SPEC-reddit | "post on Reddit about Reidcc the right way. Spec that" | nothing posted (Reid posts) |
 

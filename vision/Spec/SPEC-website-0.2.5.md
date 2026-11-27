@@ -1,6 +1,6 @@
 # SPEC: the website for 0.2.5 (landing page, changelog, shots)
 
-Status: built on dev, not published (Rev 2 2026-11-27: decisions, roadmap, as built). Rev 1 2026-11-27. Updates the site that `SPEC-github-pages.md` built.
+Status: built and published with 0.2.5 (Rev 2 2026-11-27: decisions, roadmap, as built). Rev 1 2026-11-27. Updates the site that `SPEC-github-pages.md` built.
 
 Asked by Reid 2026-11-27:
 > "Well ok spec doc a update to the Website and pull for other website for details"
