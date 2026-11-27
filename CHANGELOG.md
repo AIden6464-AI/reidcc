@@ -53,6 +53,10 @@ Every Reidcc release. Newest first. Everything is beta.
   continues one session in this folder.
 
 ### Fixes
+- A chat's write turn no longer freezes Reidcc while git takes its before and after snapshots. New files over
+  2 MB stay out of them, so logs and build output don't pile up in `.git/objects`.
+- Read-only Claude turns can't use MCP tools either, even ones the settings allow.
+- A profile in `reid.json` that isn't an object gets an error that names it. Before, the TUI crashed.
 - A failed save of `reid.json` (the file held open by OneDrive or an antivirus scan) shows an error. Before,
   the window kept the change and the file didn't, with no message. The leftover `reid.json.<pid>.tmp` is removed.
 - The window's asset handler serves only files inside `assets\`, to Reidcc's own pages.

@@ -159,17 +159,25 @@ pub fn tuning_json(cfg: &reidcc::Obj, profile: &str, folder: &str) -> Value {
     out
 }
 
+const TURN_RUNNING: &str = "A turn is running. Stop it first.";
+
+/// The folder as a git tree, off the async runtime's threads: `git add -A` on a big repo takes seconds.
+async fn snapshot(folder: &str) -> Option<String> {
+    let folder = folder.to_string();
+    tauri::async_runtime::spawn_blocking(move || changes::snapshot(&folder)).await.ok().flatten()
+}
+
 /// One turn: `reid --stream <profile> …` in the chat's folder, its events to `chan`. Refusals (locks)
-/// come back as reid's own `error` events.
+/// come back as reid's own `error` events. Async, so the before-snapshot never holds up the windows.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub fn chat_send(st: crate::S, chats: State<Chats>, id: u32, profile: String, prompt: String, read_only: bool,
-                 resume: Option<String>, switch_from: Option<String>, with: Option<Value>, chan: Channel<Out>) -> Result<(), String> {
+pub async fn chat_send(st: crate::S<'_>, chats: State<'_, Chats>, id: u32, profile: String, prompt: String, read_only: bool,
+                       resume: Option<String>, switch_from: Option<String>, with: Option<Value>, chan: Channel<Out>) -> Result<(), String> {
     let c = chats.get(id)?;
-    let mut turn = c.turn.lock().unwrap();
-    if turn.is_some() {
-        return Err("A turn is running. Stop it first.".into());
+    if c.turn.lock().unwrap().is_some() {
+        return Err(TURN_RUNNING.into());
     }
+    c.stopped.store(false, Ordering::Relaxed);
     let cli = st.m.lock().unwrap().cli.clone();
     let mut args: Vec<String> = cli[1..].to_vec();
     args.extend(["--stream".into(), profile]);
@@ -186,7 +194,17 @@ pub fn chat_send(st: crate::S, chats: State<Chats>, id: u32, profile: String, pr
         args.extend(["--with".into(), with.to_string()]); // this chat's model / effort / MCP / plugins
     }
     args.push("-".into()); // the prompt on stdin: no length limit, nothing in the process list
-    *c.before.lock().unwrap() = if read_only { None } else { changes::snapshot(&c.folder) };
+    let before = if read_only { None } else { snapshot(&c.folder).await };
+    if c.stopped.load(Ordering::Relaxed) {
+        // `stop` came during the snapshot: the turn never starts
+        let _ = chan.send(Out::Exit { rc: 1, stopped: true, err: String::new() });
+        return Ok(());
+    }
+    let mut turn = c.turn.lock().unwrap();
+    if turn.is_some() {
+        return Err(TURN_RUNNING.into());
+    }
+    *c.before.lock().unwrap() = before;
     use std::os::windows::process::CommandExt;
     let mut child = Command::new(&cli[0]).args(&args).current_dir(&c.folder)
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
@@ -201,7 +219,6 @@ pub fn chat_send(st: crate::S, chats: State<Chats>, id: u32, profile: String, pr
         let s = s.trim().to_string();
         s.chars().skip(s.chars().count().saturating_sub(600)).collect::<String>()
     });
-    c.stopped.store(false, Ordering::Relaxed);
     *turn = Some(child);
     drop(turn);
     let chat = c.clone();
@@ -219,24 +236,28 @@ pub fn chat_send(st: crate::S, chats: State<Chats>, id: u32, profile: String, pr
     Ok(())
 }
 
-/// `stop`: kill the turn's reid.exe; its kill-on-close job takes the engine down with it.
+/// `stop`: kill the turn's reid.exe; its kill-on-close job takes the engine down with it. Before reid
+/// started (chat_send still taking its snapshot), the flag alone keeps the turn from starting.
 #[tauri::command]
 pub fn chat_stop(chats: State<Chats>, id: u32) -> Result<(), String> {
     let c = chats.get(id)?;
+    c.stopped.store(true, Ordering::Relaxed);
     if let Some(child) = c.turn.lock().unwrap().as_mut() {
-        c.stopped.store(true, Ordering::Relaxed);
         let _ = child.kill();
     }
     Ok(())
 }
 
-/// What the last write turn changed (None outside git, or for a read-only turn).
+/// What the last write turn changed (None outside git, or for a read-only turn). Async, like chat_send.
 #[tauri::command]
-pub fn chat_changed(chats: State<Chats>, id: u32) -> Result<Option<Changed>, String> {
+pub async fn chat_changed(chats: State<'_, Chats>, id: u32) -> Result<Option<Changed>, String> {
     let c = chats.get(id)?;
     let Some(from) = c.before.lock().unwrap().take() else { return Ok(None) };
-    let Some(to) = changes::snapshot(&c.folder) else { return Ok(None) };
-    let files = changes::changed(&c.folder, &from, &to).iter().map(|f| f.to_json()).collect();
+    let Some(to) = snapshot(&c.folder).await else { return Ok(None) };
+    let folder = c.folder.clone();
+    let (a, b) = (from.clone(), to.clone());
+    let files = tauri::async_runtime::spawn_blocking(move || changes::changed(&folder, &a, &b).iter().map(|f| f.to_json()).collect())
+        .await.unwrap_or_default();
     Ok(Some(Changed { from, to, files }))
 }
 

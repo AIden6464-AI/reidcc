@@ -19,7 +19,7 @@ Transparent MITM proxy that optimizes Anthropic `/v1/messages` payloads for prom
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\pip.exe install --only-binary :all: mitmproxy
-.\.venv\Scripts\pip.exe install pytest fastapi httpx uvicorn
+.\.venv\Scripts\pip.exe install pytest
 ```
 
 > The `--only-binary :all:` flag is required on Windows — `zstandard` (a mitmproxy dep) doesn't build cleanly with MSVC.
@@ -28,7 +28,7 @@ python -m venv .venv
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/pip install mitmproxy pytest fastapi httpx uvicorn
+./.venv/bin/pip install mitmproxy pytest
 ```
 
 ---

@@ -91,7 +91,9 @@ impl Event {
 }
 
 /// Claude Code tools that change files or run commands: gone from a read-only session (subagents too).
-pub const CLAUDE_WRITE_TOOLS: [&str; 6] = ["Write", "Edit", "NotebookEdit", "Bash", "PowerShell", "EnterWorktree"];
+/// `mcp__*` takes every MCP server's tools with them, even ones the settings allow: deny wins over allow
+/// (checked on claude 2.1.332: an allowed MCP tool that writes a file no longer exists in the turn).
+pub const CLAUDE_WRITE_TOOLS: [&str; 7] = ["Write", "Edit", "NotebookEdit", "Bash", "PowerShell", "EnterWorktree", "mcp__*"];
 
 /// One line of a tool call: the path, command or query it acts on.
 fn summary(input: &Value) -> String {

@@ -1,29 +1,23 @@
 """
-Behavior contract for optimize_payload().
+Behavior contract for claude_optimizer_addon.optimize_payload().
 
-Shared cases run against both implementations (proxy.py and
-claude_optimizer_addon.py). Where the two intentionally diverge
-(cache_control handling, pruning default) there are module-specific tests
-at the bottom.
-
-Shared cases always pass enable_pruning explicitly: proxy.py's default comes
-from the JIT_TOOL_PRUNING env var, the addon's default is False.
+The contract cases pass enable_pruning explicitly; the default (False) has
+its own test at the bottom.
 """
 import copy
 
 import pytest
 
 import claude_optimizer_addon
-import proxy
 
 REMINDER = "<system-reminder>\nfile changed\n</system-reminder>"
 DATE = "Today's date is 2026-11-01."
 BILLING = "x-anthropic-billing-header: cc_version=1.0"
 
 
-@pytest.fixture(params=[proxy, claude_optimizer_addon], ids=["proxy", "addon"])
-def optimize(request):
-    return request.param.optimize_payload
+@pytest.fixture
+def optimize():
+    return claude_optimizer_addon.optimize_payload
 
 
 def text(t):
@@ -34,7 +28,7 @@ def tool_result(tid, content="ok"):
     return {"type": "tool_result", "tool_use_id": tid, "content": content}
 
 
-# ---------- shared contract ----------
+# ---------- contract ----------
 
 @pytest.mark.parametrize("payload", [None, "str", 42, ["messages"]])
 def test_non_dict_returned_unchanged(optimize, payload):
@@ -206,7 +200,7 @@ def test_request_still_ends_with_user_turn_when_final_message_is_only_reminder(o
     assert out["messages"][-1]["role"] == "user"
 
 
-# ---------- module-specific (intentional divergence) ----------
+# ---------- addon specifics ----------
 
 def test_addon_preserves_cache_control():
     payload = {
@@ -216,17 +210,6 @@ def test_addon_preserves_cache_control():
     }
     snapshot = copy.deepcopy(payload)
     assert claude_optimizer_addon.optimize_payload(payload) == snapshot
-
-
-def test_proxy_strips_cache_control():
-    payload = {
-        "system": [{"type": "text", "text": "static", "cache_control": {"type": "ephemeral"}}],
-        "messages": [{"role": "user", "content": [
-            {"type": "text", "text": "q", "cache_control": {"type": "ephemeral"}}]}],
-    }
-    out = proxy.optimize_payload(payload, enable_pruning=False)
-    assert out["system"] == [text("static")]
-    assert out["messages"][0]["content"] == [text("q")]
 
 
 def test_addon_pruning_off_by_default():

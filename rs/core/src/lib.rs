@@ -245,6 +245,11 @@ pub fn load_config(ctx: &Ctx) -> R<Obj> {
         Some(v) if !pyjson::truthy(v) => {}
         _ => return Err(bad("profiles isn't an object".into())),
     }
+    // every caller may then take a profile as an object (the TUI's prof_mut did, and panicked)
+    let not_object = cfg.get("profiles").and_then(Value::as_object).and_then(|p| p.iter().find(|(_, v)| !v.is_object()));
+    if let Some((name, _)) = not_object {
+        return Err(bad(format!("profile {name} isn't an object")));
+    }
     if !has {
         cfg.insert("profiles".into(), default_config()["profiles"].clone());
     }
@@ -473,6 +478,19 @@ mod tests {
                    vec!["--add-dir", r"D:\Shared Work", "-v"]);
         assert_eq!(args(&prof(serde_json::json!({"args": ["--a", "b c"]}))), vec!["--a", "b c"]);
         assert!(args(&prof(serde_json::json!({}))).is_empty());
+    }
+
+    #[test]
+    fn a_profile_that_is_not_an_object_is_named_not_loaded() {
+        let home = std::env::temp_dir().join(format!("reid_cfg_{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        let ctx = Ctx::at(&home.to_string_lossy());
+        std::fs::write(&ctx.config, r#"{"profiles": {"main": {}, "work": null}}"#).unwrap();
+        let err = load_config(&ctx).unwrap_err().0;
+        assert!(err.contains("profile work isn't an object"), "{err}");
+        std::fs::write(&ctx.config, r#"{"profiles": {"main": {}}}"#).unwrap();
+        assert!(load_config(&ctx).is_ok());
+        let _ = std::fs::remove_dir_all(home);
     }
 
     #[test]

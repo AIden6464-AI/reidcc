@@ -30,8 +30,12 @@ fn git(folder: &str, index: Option<&str>, args: &[&str]) -> Option<String> {
     out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim_end().to_string())
 }
 
-/// The folder as a git tree: tracked and new files, .gitignore respected, `.reid` left out.
-/// None outside a git repo (or without git).
+/// New (untracked) files bigger than this stay out of a snapshot: every snapshot writes its files into
+/// .git/objects, and logs or build output would pile up there turn after turn.
+pub const UNTRACKED_MAX_BYTES: u64 = 2 * 1024 * 1024;
+
+/// The folder as a git tree: tracked and new files, .gitignore respected, `.reid` and new files over
+/// UNTRACKED_MAX_BYTES left out. None outside a git repo (or without git).
 pub fn snapshot(folder: &str) -> Option<String> {
     use std::sync::atomic::{AtomicU32, Ordering};
     static N: AtomicU32 = AtomicU32::new(0);
@@ -39,10 +43,22 @@ pub fn snapshot(folder: &str) -> Option<String> {
     let real = if crate::py::isabs(&real) { real } else { crate::py::join(folder, &[&real]) };
     let tmp = crate::py::join(&crate::py::gettempdir(),
                               &[&format!("reidcc_index_{}_{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed))]);
+    let specs = format!("{tmp}.specs");
     let _ = std::fs::copy(&real, &tmp); // its file times spare git re-reading every file; none yet is fine
-    let tree = git(folder, Some(&tmp), &["add", "-A", "--", ".", ":(exclude).reid"])
+    // the pathspecs go in a file: one exclude per big new file can outgrow a command line
+    let mut list = String::from(".\0:(exclude).reid\0");
+    let new = git(folder, Some(&tmp), &["ls-files", "-z", "--others", "--exclude-standard", "--", ".", ":(exclude).reid"]);
+    for path in new.as_deref().unwrap_or_default().split('\0').filter(|p| !p.is_empty()) {
+        if std::fs::metadata(crate::py::join(folder, &[path])).is_ok_and(|m| m.len() > UNTRACKED_MAX_BYTES) {
+            list.push_str(&format!(":(exclude,literal){path}\0"));
+        }
+    }
+    let from_file = format!("--pathspec-from-file={specs}");
+    let tree = std::fs::write(&specs, list).ok()
+        .and_then(|()| git(folder, Some(&tmp), &["add", "-A", &from_file, "--pathspec-file-nul"]))
         .and_then(|_| git(folder, Some(&tmp), &["write-tree"]));
     let _ = std::fs::remove_file(&tmp);
+    let _ = std::fs::remove_file(&specs);
     tree.filter(|t| !t.is_empty())
 }
 
@@ -85,13 +101,14 @@ mod tests {
         std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
         std::fs::write(dir.join("new.txt"), "x\n").unwrap();
         std::fs::write(dir.join(".reid").join("handoff.md"), "h\n").unwrap();
+        std::fs::write(dir.join("build [1].log"), vec![b'x'; UNTRACKED_MAX_BYTES as usize + 1]).unwrap();
         let after = snapshot(&d).unwrap();
         assert_eq!(changed(&d, &before, &after), vec![
             FileStat { path: "a.txt".into(), added: Some(1), removed: Some(0) },
             FileStat { path: "new.txt".into(), added: Some(1), removed: Some(0) },
         ]);
         assert!(file_diff(&d, &before, &after, "a.txt", 50).ends_with("+two"));
-        assert_eq!(git(&d, None, &["status", "--porcelain"]).unwrap().lines().count(), 3, "the real index is untouched");
+        assert_eq!(git(&d, None, &["status", "--porcelain"]).unwrap().lines().count(), 4, "the real index is untouched");
         assert!(changed(&d, &after, &snapshot(&d).unwrap()).is_empty(), "no change, no files");
         let _ = std::fs::remove_dir_all(dir);
     }
