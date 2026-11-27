@@ -2,7 +2,7 @@
 
 use crate::engines::{self, engine_of};
 use crate::term::{is_tty, write, BRONZE, OXIDE, R, TERM_RESET, TEXT, TEXT2, TEXT3};
-use crate::{err, errln, load_config, out, profile, profiles, proxy, py, pyjson, remember_session, Ctx, Obj, R as Res};
+use crate::{errln, load_config, out, profile, profiles, proxy, py, pyjson, remember_session, Ctx, Obj, R as Res};
 use serde_json::Value;
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime};
@@ -69,15 +69,13 @@ pub struct Ended {
     pub note: String,
 }
 
-/// Run the profile's engine in this terminal. Resume, the session id and /reid are Claude's;
-/// a Codex session is a plain new one.
+/// Run the profile's engine in this terminal. `resume` is a session id, or "-c" for the last one in
+/// the folder. /reid is Claude's; a Codex session's id is found while it runs (codex::thread_of).
 pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume: Option<&str>) -> Res<Ended> {
     let empty = Obj::new();
     let prof = profiles(cfg).get(name).and_then(Value::as_object).unwrap_or(&empty);
-    let claude = engine_of(prof, name)? == "claude";
-    if resume.is_some() && !claude {
-        return err("Resume is for Claude profiles for now. Open the gate for a new Codex session.");
-    }
+    let engine = engine_of(prof, name)?;
+    let claude = engine == "claude";
     sweep_temps(6);
     let mut launch = engines::build(ctx, cfg, name, extra, Some(cwd), true)?;
     let plan = match proxy::plan(ctx, prof) {
@@ -92,7 +90,11 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
     let mut sid = None;
     if claude {
         match resume {
-            Some("-c") => launch.argv.push("-c".into()),
+            Some("-c") => {
+                launch.argv.push("-c".into());
+                // Claude picks the session, so there's no id to lock
+                note = "This continues Claude's last session in this folder. Reidcc can't lock it: close it first if it's open in another window.".into();
+            }
             Some(r) if session_exists(r) => {
                 launch.argv.extend(["--resume".into(), r.into()]);
                 sid = Some(r.to_string());
@@ -105,7 +107,27 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
             launch.argv.extend(["--session-id".into(), id.clone()]);
             sid = Some(id);
         }
+    } else if let Some(r) = resume {
+        // right after codex.exe, so the profile's own flags go to the resumed session
+        let known = r != "-c" && engines::codex::thread_exists(&launch.env, r);
+        launch.argv.splice(1..1, ["resume".to_string(), if known { r.into() } else { "--last".into() }]);
+        if known {
+            sid = Some(r.to_string());
+        } else if r != "-c" {
+            note = "That Codex session isn't there any more, so this continues the last one in this folder.".into();
+        }
     }
+    // one process per session (SPEC-unified-interface M1): a second window on it is refused
+    let lock = |id: &str| crate::locks::session(ctx, &crate::locks::record(id, engine, name, cwd, "interactive"));
+    // and a share of the folder: other windows may join, a headless writing turn may not
+    let taken = sid.as_deref().map(lock).transpose().and_then(|l| Ok((l, crate::locks::folder_shared(ctx, cwd)?)));
+    let (mut held, room) = match taken {
+        Ok(l) => l,
+        Err(e) => {
+            launch.remove_temps();
+            return Err(e);
+        }
+    };
     let flag = back_flag_path();
     let _ = std::fs::remove_file(&flag);
     if claude {
@@ -121,8 +143,12 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
         if is_tty() {
             write(&format!("{TERM_RESET}\x1b[?1049l"));
         }
-        errln!("{TEXT2}REIDCC{TEXT} · {name} {TEXT3}{}{R}",
-               if claude { "· /reid comes back here" } else { "· codex · /quit comes back here" });
+        let back = if claude { "/reid comes back here" } else { "codex · /quit comes back here" };
+        if window_file().is_some() {
+            errln!("{TEXT3}{back}{R}"); // a session window's bar already names the profile (SPEC-one-look 7.4)
+        } else {
+            errln!("{TEXT2}REIDCC{TEXT} · {name} {TEXT3}· {back}{R}");
+        }
         if !claude && is_tty() {
             write(&format!("\x1b]0;REIDCC · codex · {name}\x07")); // the tab title (Codex's own is off)
         }
@@ -135,15 +161,36 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
             errln!("{TEXT3}proxy {} on 127.0.0.1:{} · log {}{R}", proxy::list(prof).join("+"), p.port, crate::show_path(&p.log_path));
             px = Some(p);
         }
+        let since = SystemTime::now() - Duration::from_secs(2); // file times are coarse
         let mut child = Command::new(&launch.argv[0]).args(&launch.argv[1..]).env_clear().envs(&launch.env)
             .current_dir(cwd).spawn().map_err(engines::io)?;
+        let (mut skip, mut tick) = (std::collections::HashSet::new(), 0u32);
         loop {
             if let Some(s) = child.try_wait().map_err(engines::io)? {
+                if !claude && sid.is_none() {
+                    sid = engines::codex::thread_left(&launch.env, cwd, since);
+                }
                 return Ok((s.code().unwrap_or(1), false));
             }
             if py::exists(&flag) {
                 kill_tree(&mut child);
                 return Ok((child.try_wait().ok().flatten().and_then(|s| s.code()).unwrap_or(1), true));
+            }
+            tick += 1;
+            if !claude && sid.is_none() && tick % 5 == 0 {
+                // Codex picks its own id: its thread file appears with the first message
+                sid = engines::codex::thread_of(&launch.env, child.id(), since, &mut skip);
+                if let Some(id) = sid.as_deref() {
+                    // a new thread is nobody else's, but `resume --last` can land on one a window has open
+                    match lock(id) {
+                        Ok(l) => held = Some(l),
+                        Err(e) => {
+                            kill_tree(&mut child);
+                            return Err(e);
+                        }
+                    }
+                    let _ = remember_session(ctx, name, cwd, Some(id), engine); // kept even if the window is closed
+                }
             }
             std::thread::sleep(Duration::from_millis(200));
         }
@@ -159,8 +206,9 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
     crate::win::console_restore(&saved);
     launch.remove_temps();
     let _ = std::fs::remove_file(&flag);
+    drop((held, room));
     let (rc, back) = result?;
-    remember_session(ctx, name, cwd, sid.as_deref(), claude).map_err(engines::io)?;
+    remember_session(ctx, name, cwd, sid.as_deref(), engine).map_err(engines::io)?;
     Ok(Ended { rc, back, sid, note })
 }
 
@@ -219,8 +267,11 @@ pub fn cmd_statusline(ctx: &Ctx) -> i32 {
     let sep = format!(" {TEXT3}·{R} ");
     let left = parts.join(&sep);
     let cw = get(&data, "context_window").and_then(|v| v.as_object().cloned()).unwrap_or_default();
-    let ctxp = pct(cw.get("used_percentage")).unwrap_or(0);
-    let mut meters = vec![format!("{}context {ctxp}%{R}", level(ctxp))];
+    let ctxp = pct(cw.get("used_percentage")); // None until Claude knows: shown as unknown, never 0%
+    let mut meters = vec![match ctxp {
+        Some(p) => format!("{}context {p}%{R}", level(p)),
+        None => format!("{TEXT3}context unknown{R}"),
+    }];
     let rl = get(&data, "rate_limits").and_then(|v| v.as_object().cloned()).unwrap_or_default();
     let lim: Vec<i64> = ["five_hour", "seven_day"].iter()
         .filter_map(|w| pct(rl.get(*w).and_then(Value::as_object).and_then(|o| o.get("used_percentage")))).collect();

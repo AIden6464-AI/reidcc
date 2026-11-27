@@ -1,0 +1,45 @@
+// The chat stream's markdown: just what engines write in replies. Code fences, inline code, bold,
+// links and headings; everything else stays as typed (the stream is pre-wrap). The TUI follows the
+// same rules (SPEC-unified-interface Part 6).
+
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+/** One line outside a fence. Escaped first, so `Option<T>` stays text; code spans are left alone. */
+function inline(line: string): string {
+  const h = /^#{1,6} +(.*)$/.exec(line);
+  if (h) return `<b>${inline(h[1])}</b>`;
+  // left to right, a `code` span or a whole [link](target) is one token, so a link's text can hold code
+  // and a code span's text never turns into a link
+  return esc(line).split(/(`[^`]+`|\[(?:[^\]`]|`[^`]*`)+\]\([^)\s]+\))/).map((part, i) => {
+    if (i % 2 === 0) return bold(part);
+    if (part.startsWith("`")) return `<code>${part.slice(1, -1)}</code>`;
+    // a link shows its text; the target (often a local path) is its tooltip, never a navigation
+    const at = part.lastIndexOf("](");
+    return `<span class="mdlink" title="${part.slice(at + 2, -1)}">${codeAndBold(part.slice(1, at))}</span>`;
+  }).join("");
+}
+const bold = (text: string): string => text.replace(/\*\*([^*]+?)\*\*/g, "<b>$1</b>");
+function codeAndBold(text: string): string {
+  return text.split(/(`[^`]+`)/).map((part, i) => (i % 2 ? `<code>${part.slice(1, -1)}</code>` : bold(part))).join("");
+}
+
+/** HTML for a reply so far. A fence still open (the text is streaming) is a code block to the end. */
+export function md(text: string): string {
+  const out: string[] = [];
+  let code: string[] | null = null;
+  for (const line of text.split("\n")) {
+    if (/^ {0,3}```/.test(line)) {
+      if (code) {
+        out.push(`<pre class="code">${code.join("\n")}</pre>`);
+        code = null;
+      } else {
+        code = [];
+      }
+      continue;
+    }
+    if (code) code.push(esc(line));
+    else out.push(inline(line) + "\n");
+  }
+  if (code) out.push(`<pre class="code open">${code.join("\n")}</pre>`);
+  return out.join("").replace(/\n$/, "");
+}

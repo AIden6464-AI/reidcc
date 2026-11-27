@@ -2,13 +2,17 @@
 //! files as reid.py (vision\Spec\SPEC-rust-rewrite.md, stage 0). Python behaviour that shows in
 //! output is mirrored in `py` and `pyjson`.
 
+pub mod changes;
 pub mod engines;
+pub mod handoff;
+pub mod locks;
 pub mod memory;
 pub mod profile;
 pub mod proxy;
 pub mod py;
 pub mod pyjson;
 pub mod session;
+pub mod stream;
 pub mod term;
 pub mod win;
 
@@ -56,7 +60,9 @@ pub struct Ctx {
 
 impl Ctx {
     pub fn new() -> Ctx {
-        Ctx::at(&home_dir())
+        let ctx = Ctx::at(&home_dir());
+        apply_locations(&peek_config(&ctx));
+        ctx
     }
 
     pub fn at(home: &str) -> Ctx {
@@ -102,6 +108,31 @@ impl Default for Ctx {
     }
 }
 
+/// reid.json as it is on disk, without load_config's first-run write or checks ({} if missing or bad).
+pub fn peek_config(ctx: &Ctx) -> Obj {
+    match py::read_text(&ctx.config, false).ok().and_then(|t| pyjson::loads(&t).ok()) {
+        Some(Value::Object(o)) => o,
+        _ => Obj::new(),
+    }
+}
+
+/// The settings page's location choices, for this process and everything it starts: `temp_dir` ->
+/// TMPDIR (gettempdir looks there first), `ai_temp_dir` -> CLAUDE_CODE_TMPDIR (Claude Code's scratch
+/// folder). A key that's gone, or not a folder, puts back what the environment had at start.
+pub fn apply_locations(cfg: &Obj) {
+    static ORIG: std::sync::OnceLock<[Option<String>; 2]> = std::sync::OnceLock::new();
+    let orig = ORIG.get_or_init(|| [std::env::var("TMPDIR").ok(), std::env::var("CLAUDE_CODE_TMPDIR").ok()]);
+    for (i, (key, var)) in [("temp_dir", "TMPDIR"), ("ai_temp_dir", "CLAUDE_CODE_TMPDIR")].into_iter().enumerate() {
+        match cfg.get(key).and_then(Value::as_str).filter(|d| py::isdir(d)) {
+            Some(d) => std::env::set_var(var, d),
+            None => match &orig[i] {
+                Some(v) => std::env::set_var(var, v),
+                None => std::env::remove_var(var),
+            },
+        }
+    }
+}
+
 /// The Reidcc data folder: REIDCC_HOME, else the nearest folder above this exe with a reid.json
 /// (E:\reidcc for rs\target\release\reid.exe and for app\reid.exe), else %USERPROFILE%\Reidcc (an installed copy).
 pub fn home_dir() -> String {
@@ -110,6 +141,11 @@ pub fn home_dir() -> String {
             return py::abspath(&h);
         }
     }
+    default_home_dir()
+}
+
+/// Where this copy keeps its data when REIDCC_HOME isn't set (settings: `local data` back to the default).
+pub fn default_home_dir() -> String {
     let exe = std::env::current_exe().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
     let exe_dir = py::dirname(&py::abspath(&exe));
     let mut d = exe_dir.clone();
@@ -178,21 +214,25 @@ pub fn show_path(path: &str) -> String {
 
 // ---------------------------------------------------------------- config ---
 pub fn default_config() -> Value {
-    serde_json::json!({"default": "main", "memory_file": "reidcc_memory.md",
-                       "profiles": {"main": {"model": "opus", "memory": true}}})
+    // no memory_file: reidcc_memory.md is its default, and a setting at its default isn't written
+    serde_json::json!({"default": "main", "profiles": {"main": {"model": "opus", "memory": true}}})
 }
 
 /// json.dump(indent=2, ensure_ascii=False) to a temp file, then replace.
 pub fn save_json(path: &str, data: &Value) -> std::io::Result<()> {
     let tmp = format!("{path}.{}.tmp", std::process::id()); // per process: two writers never share a temp file
-    py::write_text(&tmp, &pyjson::dumps(data, Some(2), false), false)?;
-    std::fs::rename(&tmp, path)
+    let written = py::write_text(&tmp, &pyjson::dumps(data, Some(2), false), false).and_then(|()| std::fs::rename(&tmp, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp); // a refused swap must not leave reid.json.<pid>.tmp behind
+    }
+    written
 }
 
 pub fn load_config(ctx: &Ctx) -> R<Obj> {
     if !py::exists(&ctx.config) {
         let _ = std::fs::create_dir_all(&ctx.home); // first run of an installed copy: %USERPROFILE%\Reidcc
-        save_json(&ctx.config, &default_config()).map_err(|e| ReidError(e.to_string()))?;
+        save_json(&ctx.config, &default_config()).map_err(|e| ReidError(format!(
+            "Can't make the Reidcc folder {} ({e}). Set REIDCC_HOME to a folder you can write to.", ctx.home)))?;
     }
     let bad = |e: String| ReidError(format!("reid.json has an error ({e}). Fix it, then try again."));
     let text = py::read_text(&ctx.config, false).map_err(bad)?;
@@ -204,6 +244,11 @@ pub fn load_config(ctx: &Ctx) -> R<Obj> {
         Some(Value::Object(_)) | None => {}
         Some(v) if !pyjson::truthy(v) => {}
         _ => return Err(bad("profiles isn't an object".into())),
+    }
+    // every caller may then take a profile as an object (the TUI's prof_mut did, and panicked)
+    let not_object = cfg.get("profiles").and_then(Value::as_object).and_then(|p| p.iter().find(|(_, v)| !v.is_object()));
+    if let Some((name, _)) = not_object {
+        return Err(bad(format!("profile {name} isn't an object")));
     }
     if !has {
         cfg.insert("profiles".into(), default_config()["profiles"].clone());
@@ -232,10 +277,10 @@ pub fn load_state(ctx: &Ctx) -> Obj {
         .and_then(|v| if let Value::Object(m) = v { Some(m) } else { None }).unwrap_or_default()
 }
 
-/// Folder history always; the resume record (`last`) only for sessions `resume` can reopen.
-pub fn remember_session(ctx: &Ctx, name: &str, cwd: &str, sid: Option<&str>, last: bool) -> std::io::Result<()> {
+/// Folder history and the resume record (`last`, with the engine its id belongs to).
+pub fn remember_session(ctx: &Ctx, name: &str, cwd: &str, sid: Option<&str>, engine: &str) -> std::io::Result<()> {
     let lock = take_lock(&format!("{}.lock", ctx.state), 5.0, 10.0);
-    let res = remember_locked(ctx, name, cwd, sid, last);
+    let res = remember_locked(ctx, name, cwd, sid, engine);
     if let Some(l) = lock {
         let _ = std::fs::remove_file(l);
     }
@@ -265,14 +310,24 @@ pub fn take_lock(path: &str, wait: f64, stale: f64) -> Option<String> {
     }
 }
 
-fn remember_locked(ctx: &Ctx, name: &str, cwd: &str, sid: Option<&str>, last: bool) -> std::io::Result<()> {
+/// The id `resume` hands a profile of `engine`: the last session's if it was the same engine, else
+/// "-c" (the engine's own "last one in this folder"). A record without an engine is Claude's.
+pub fn resume_id(last: &Obj, engine: &str) -> String {
+    let same = last.get("engine").and_then(Value::as_str).unwrap_or("claude") == engine;
+    let sid = text(last, "sid");
+    if same && !sid.is_empty() { sid } else { "-c".into() }
+}
+
+/// Local time as `2026-11-26T14:05:09`, the form reid_state.json and the lock records use.
+pub fn now_iso() -> String {
+    let (year, month, day, hour, minute, second) = py::now_local();
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}")
+}
+
+fn remember_locked(ctx: &Ctx, name: &str, cwd: &str, sid: Option<&str>, engine: &str) -> std::io::Result<()> {
     let mut st = load_state(ctx);
-    if last {
-        let (y, mo, d, h, mi, s) = py::now_local();
-        st.insert("last".into(), serde_json::json!({
-            "profile": name, "cwd": cwd, "sid": sid,
-            "at": format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}")}));
-    }
+    st.insert("last".into(), serde_json::json!({
+        "profile": name, "cwd": cwd, "sid": sid, "engine": engine, "at": now_iso()}));
     let mut dirs = vec![Value::String(cwd.into())];
     if let Some(Value::Array(old)) = st.get("recent_dirs") {
         dirs.extend(old.iter().filter(|d| py::normcase(&pyjson::py_str(d)) != py::normcase(cwd)).cloned());
@@ -423,6 +478,19 @@ mod tests {
                    vec!["--add-dir", r"D:\Shared Work", "-v"]);
         assert_eq!(args(&prof(serde_json::json!({"args": ["--a", "b c"]}))), vec!["--a", "b c"]);
         assert!(args(&prof(serde_json::json!({}))).is_empty());
+    }
+
+    #[test]
+    fn a_profile_that_is_not_an_object_is_named_not_loaded() {
+        let home = std::env::temp_dir().join(format!("reid_cfg_{}", std::process::id()));
+        std::fs::create_dir_all(&home).unwrap();
+        let ctx = Ctx::at(&home.to_string_lossy());
+        std::fs::write(&ctx.config, r#"{"profiles": {"main": {}, "work": null}}"#).unwrap();
+        let err = load_config(&ctx).unwrap_err().0;
+        assert!(err.contains("profile work isn't an object"), "{err}");
+        std::fs::write(&ctx.config, r#"{"profiles": {"main": {}}}"#).unwrap();
+        assert!(load_config(&ctx).is_ok());
+        let _ = std::fs::remove_dir_all(home);
     }
 
     #[test]

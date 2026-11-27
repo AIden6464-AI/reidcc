@@ -173,6 +173,7 @@ pub fn getkey() -> Result<String, Interrupt> {
         let code = getwch();
         return Ok(match code {
             0x48 => "up", 0x50 => "down", 0x4b => "left", 0x4d => "right", 0x47 => "home", 0x4f => "end",
+            0x49 => "pgup", 0x51 => "pgdn",
             _ => "",
         }.into());
     }

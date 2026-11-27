@@ -1,15 +1,7 @@
+@import "./tokens.css";
 /* The launcher's look, 1:1 with python\reid_gui.py: tokens from vision\reidcc-palette.md (`C`),
    fonts and pixel sizes from `_fonts`, sizes measured off the Tk window at 1000x880. */
-:root {
-  --canvas: #040404; --s1: #0E0D0C; --s2: #171513; --stone: #292723;
-  --line: #2A2724; --line2: #4A4540; --linework: #928A82;
-  --text: #D6D0C8; --text2: #9F978E; --text3: #746F69;
-  --emerald: #00C463; --bronze: #C99A45; --oxide: #C0584B;
-  --ui: Inter, Geist, "Segoe UI Variable Text", "Segoe UI", Helvetica, "Lucida Sans Unicode", sans-serif;
-  --mono: "Geist Mono", "JetBrains Mono", "Cascadia Mono", Consolas, Menlo, monospace;
-  --pad: 40px;
-  color-scheme: dark;
-}
+:root { --pad: 40px; }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--canvas); color: var(--text); overflow: hidden; }
 body { font-family: var(--ui); -webkit-user-select: none; user-select: none; cursor: default; }
@@ -32,36 +24,66 @@ button, input { font: inherit; color: inherit; margin: 0; }
 .c-text { color: var(--text); } .c-text2 { color: var(--text2); } .c-text3 { color: var(--text3); }
 .c-emerald { color: var(--emerald); } .c-oxide { color: var(--oxide); } .c-bronze { color: var(--bronze); }
 
-#root { display: flex; flex-direction: column; height: 100%; }
+/* the 1 px hairline frame, as a session window's (borderless window, SPEC-one-look Part 3) */
+#root { display: flex; flex-direction: column; height: 100%; border: 1px solid var(--line); }
+/* Docked beside a session (SPEC-one-window), the session's own frame line is the seam */
+body[data-docked="beside"] #root { border-right: 0; }
+
+/* The launcher's bar: 36 px, like the session window's Telemetry Bar */
+#lbar {
+  order: -1; flex: none; height: 36px; display: flex; align-items: center; gap: 12px;
+  padding-left: 14px; border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden;
+}
+#lmark { flex: none; font: 600 12px/16px var(--mono); letter-spacing: 0.06em; color: var(--linework); }
+#lbar .ltitle { flex: none; font: 12px/16px var(--mono); color: var(--text2); }
+#lbar .lback {
+  display: none; flex: none; height: 24px; padding: 0 8px; margin-left: -8px; border: 0; background: transparent;
+  color: var(--text); font: 12px/16px var(--mono); transition: color 120ms var(--ease), background-color 120ms var(--ease);
+}
+#lbar .lback:hover { background: var(--s2); }
+#lbar .ldrag { flex: 1 1 auto; align-self: stretch; }
+#lbar .lset {
+  flex: none; height: 24px; padding: 0 8px; border: 0; background: transparent; color: var(--text2);
+  font: 12px/16px var(--mono); transition: color 120ms var(--ease), background-color 120ms var(--ease);
+}
+#lbar .lset:hover { color: var(--text); background: var(--s2); }
+body[data-view="settings"] #lbar .lset { display: none; }
+#lctl { flex: none; display: flex; height: 100%; }
+#lctl button {
+  width: 44px; height: 100%; border: 0; background: transparent; color: var(--text3);
+  font: 14px/1 var(--ui); padding: 0; transition: color 120ms var(--ease), background-color 120ms var(--ease);
+}
+#lctl button:hover { color: var(--text); background: var(--s2); }
+#lctl #lclose:hover { color: var(--oxide); }
+body[data-docked] #lbar .lback { display: inline-block; }
+body[data-docked] #lbar .ltitle { display: none; }
+body[data-docked] #lclose { display: none; }
+body[data-docked="beside"] #lmark, body[data-docked="beside"] #lctl { display: none; }
 #footer { order: 3; flex: none; }
 #msgbar { order: 2; flex: none; height: 34px; display: flex; align-items: center; overflow: hidden; }
 #main { order: 1; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 
 .hair { height: 1px; background: var(--line); flex: none; }
 
-/* tk.Button: flat, 34 px tall, a 1 px ring that Tk on Windows paints in the button's own colour; with
-   focus it draws a dotted rectangle in the text colour just inside it (dots from the corner's next pixel) */
+/* tk.Button: flat, 34 px tall, a 1 px ring in the button's own colour */
 .btn {
   height: 34px; padding: 0; border: 1px solid transparent; background: var(--s1); color: var(--text);
   font: 13px/17px var(--ui); white-space: pre; flex: none; overflow: hidden; cursor: pointer;
   display: flex; align-items: center; justify-content: center; position: relative;
 }
 .btn:hover, .btn:active { background: var(--s2); }
-.btn:focus::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  --h: repeating-linear-gradient(to right, transparent 0 1px, currentColor 1px 2px);
-  --v: repeating-linear-gradient(to bottom, transparent 0 1px, currentColor 1px 2px);
-  background: var(--h) left top / 100% 1px no-repeat, var(--h) left bottom / 100% 1px no-repeat,
-    var(--v) left top / 1px 100% no-repeat, var(--v) right top / 1px 100% no-repeat;
-}
+.btn:focus { border-color: var(--line2); } /* SPEC-one-look Part 1.6: a 1 px ring, not Tk's dotted box */
 .btn.primary { background: var(--text); color: var(--canvas); }
 .btn.primary:hover, .btn.primary:active { background: var(--linework); }
 .btn.dim { color: var(--text3); }
+/* SPEC-one-look 1.5: destructive in oxide text; disabled is text-3 on canvas (open gate while not ready) */
+.btn.danger { color: var(--oxide); }
+.btn.off, .btn.primary.off, .btn.off:hover, .btn.primary.off:hover { background: var(--canvas); color: var(--text3); border-color: var(--line); }
 
 /* tk.Entry: s1 field, 1 px ring, mono */
 .entry {
   height: 26px; border: 1px solid var(--line); background: var(--s1); color: var(--text); caret-color: var(--text);
-  font: 12px/16px var(--mono); letter-spacing: var(--ls12); padding: 2px 2px 0; min-width: 0; -webkit-user-select: text; user-select: text;
+  font: 400 12px/16px var(--mono); letter-spacing: var(--ls12); padding: 2px 2px 0; min-width: 0; -webkit-user-select: text; user-select: text;
 }
 .entry:focus { border-color: var(--line2); }
 .entry::selection { background: var(--stone); color: var(--text); }
@@ -71,20 +93,19 @@ button, input { font: inherit; color: inherit; margin: 0; }
 .combo.short { height: 26px; }
 .combo.focus { border-color: var(--line2); }
 .combo input {
-  position: absolute; left: 0; top: 0; bottom: 0; right: 12px; width: calc(100% - 12px); border: 0; background: transparent;
-  font: 12px/16px var(--mono); letter-spacing: var(--ls12); color: var(--text); padding: 2px 0 0 9px; caret-color: var(--text);
+  position: absolute; left: 0; top: 0; bottom: 0; right: 18px; width: calc(100% - 18px); border: 0; background: transparent;
+  font: 400 12px/16px var(--mono); letter-spacing: var(--ls12); color: var(--text); padding: 2px 0 0 9px; caret-color: var(--text);
 }
 .combo.readonly input { cursor: default; -webkit-user-select: none; user-select: none; }
 .combo input::selection { background: var(--stone); color: var(--text); }
 .combo.readonly input::selection { background: var(--s1); }
-.combo .arrow { position: absolute; right: 0; top: 0; bottom: 0; width: 12px; border-left: 1px solid var(--line); }
-.combo.focus .arrow { border-left-color: var(--line2); }
-.combo:not(.disabled):hover .arrow { background: var(--s2); }
-.combo .arrow i { position: absolute; left: 2px; top: calc(50% - 2px); width: 7px; height: 4px; background: var(--text3);
-  clip-path: polygon(0 0, 7px 0, 7px 1px, 6px 1px, 6px 2px, 5px 2px, 5px 3px, 4px 3px, 4px 4px, 3px 4px, 3px 3px, 2px 3px, 2px 2px, 1px 2px, 1px 1px, 0 1px); }
-.combo:not(.disabled):hover .arrow i { background: var(--text); }
+/* one hairline chevron, not a grey box (SPEC-one-look 4.1) */
+.combo .arrow { position: absolute; right: 0; top: 0; bottom: 0; width: 18px; }
+.combo .arrow i { position: absolute; left: 5px; top: calc(50% - 5px); width: 6px; height: 6px;
+  border-right: 1px solid var(--text3); border-bottom: 1px solid var(--text3); transform: rotate(45deg); }
+.combo:not(.disabled):hover .arrow i { border-color: var(--text); }
 .combo.disabled input { color: var(--text3); }
-.combo.disabled .arrow i { background: var(--line2); }
+.combo.disabled .arrow i { border-color: var(--line2); }
 
 /* the combobox's drop-down list and the open recent menu */
 .popdown { position: fixed; z-index: 50; border: 1px solid var(--line); background: var(--s2); display: flex; }
@@ -95,24 +116,30 @@ button, input { font: inherit; color: inherit; margin: 0; }
 .menu .item { font: 12px/16px var(--mono); letter-spacing: var(--ls12); padding: 2px 20px 2px 20px; white-space: pre; color: var(--text); }
 .menu .item:not(.off):hover { background: var(--stone); }
 .menu .item.off { color: var(--text3); }
+/* the tune popover: a profile's effort, MCP servers and plugins */
+.tunepop { padding: 8px 12px; max-width: 460px; overflow-y: auto; scrollbar-width: thin; display: flex; flex-direction: column; gap: 4px; }
+.tunepop .tunerow { display: flex; flex-wrap: wrap; gap: 2px 14px; margin-bottom: 6px; }
+.tunepop .check { white-space: nowrap; }
 
 /* tk.Listbox + ttk scrollbar */
 .lb { flex: 1; min-width: 0; position: relative; overflow: hidden; background: var(--s1); border: 1px solid var(--line); }
 .lb:focus { border-color: var(--line2); }
 .lb .rows { position: absolute; left: 0; right: 0; top: 0; }
-.sb { width: 15px; flex: none; position: relative; background: var(--s1); border: 1px solid var(--line); }
-.sb .up, .sb .down { position: absolute; left: -1px; right: -1px; height: 15px; background: var(--s2); border: 1px solid var(--line); }
-.sb .up { top: -1px; } .sb .down { bottom: -1px; }
-.sb .up i, .sb .down i { position: absolute; left: 2px; width: 9px; height: 5px; background: var(--text3); }
-.sb .up i { top: 4px; clip-path: polygon(4px 0, 5px 0, 5px 1px, 6px 1px, 6px 2px, 7px 2px, 7px 3px, 8px 3px, 8px 4px, 9px 4px, 9px 5px, 0 5px, 0 4px, 1px 4px, 1px 3px, 2px 3px, 2px 2px, 3px 2px, 3px 1px, 4px 1px); }
-.sb .down i { top: 4px; clip-path: polygon(0 0, 9px 0, 9px 1px, 8px 1px, 8px 2px, 7px 2px, 7px 3px, 6px 3px, 6px 4px, 5px 4px, 5px 5px, 4px 5px, 4px 4px, 3px 4px, 3px 3px, 2px 3px, 2px 2px, 1px 2px, 1px 1px, 0 1px); }
-.sb .thumb { position: absolute; left: -1px; right: -1px; background: var(--s2); border: 1px solid var(--line); }
-.sb .thumb:hover, .sb .up:hover, .sb .down:hover { background: var(--stone); }
+/* a thin scrollbar like the terminal's (SPEC-one-look 4.1): no arrow boxes */
+.sb { width: 9px; flex: none; position: relative; margin-left: -9px; z-index: 1; }
+.sb .thumb { position: absolute; left: 2px; right: 2px; background: var(--line); }
+.sb .thumb:hover { background: var(--line2); }
+.sb.none .thumb { display: none; }
 
 /* ttk Checkbutton / Radiobutton (clam) */
 .check { display: flex; align-items: center; height: 23px; padding: 2px 0; font: 13px/17px var(--ui); color: var(--text); white-space: pre; flex: none; }
-.check .ind { width: 11px; height: 11px; flex: none; margin: 0 4px 0 1px; }
+.check .ind { width: 11px; height: 11px; flex: none; margin: 0 5px 0 1px; font: 12px/11px var(--mono); text-align: center; color: var(--text3); }
+.check.on .ind { color: var(--text); }
+.check.radio .ind { width: 9px; height: 9px; margin: 0 6px 0 2px; border: 1px solid var(--line2); border-radius: 50%; }
+.check.radio.on .ind { background: var(--text); border-color: var(--text); }
 .check.disabled { color: var(--text3); }
+.check.disabled .ind { color: var(--line2); }
+.check.radio.disabled.on .ind { background: var(--line2); border-color: var(--line2); }
 .check .txt { padding: 0; border: 1px solid transparent; margin-right: -1px; } /* Tk: 1 px focus pad left, none right */
 .check:focus .txt { border-color: var(--line2); }
 
@@ -120,6 +147,10 @@ button, input { font: inherit; color: inherit; margin: 0; }
 #gate, #emblem { position: fixed; inset: 0; z-index: 100; opacity: 0; pointer-events: none; display: none; }
 #gate.solid, #emblem.solid { background: #030202; pointer-events: auto; }
 #gate canvas, #emblem canvas { position: absolute; left: 0; top: 0; }
+#gate:not(.solid) canvas, #emblem:not(.solid) canvas { filter: grayscale(1); } /* the ghost's ring isn't a second emerald */
+#gate:not(.solid), #emblem:not(.solid) { -webkit-mask-image: var(--ghostmask, none); mask-image: var(--ghostmask, none); }
+/* one emerald per screen (SPEC-one-look 1.3): the hero's rests in linework; the footer's ● ready is the lit one */
+#banner { filter: grayscale(1); }
 #gate .gtxt, #emblem .gtxt { position: absolute; white-space: pre; }
 
 /* small (vision v1 §1): a fold of the same window, below the size the form fits in */
@@ -162,32 +193,41 @@ body[data-size="medium"] #settings { padding: 0 20px; }
 .fsub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #medium .btn { height: 26px; }
 /* the scrollbar sits in the right edge's gutter, so the right edges line up whether it shows or not */
-.fbody { padding-bottom: 0; margin-right: -9px; scrollbar-gutter: stable; }
+.sbody.fbody { padding-bottom: 0; padding-right: 0; margin-right: -9px; scrollbar-gutter: stable; } /* not .sbody's 16 px: the fields end where the bar's buttons do */
 .fgrid { display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; row-gap: 8px; align-items: center; }
 .fgrid > .lbl { grid-column: 1; }
 .fgrid > .fwide { grid-column: 2 / 4; }
 .fbtns { display: flex; gap: 6px; margin-left: 12px; }
 .fcell { display: flex; min-width: 0; }
 .fcell > .combo, .fcell > .entry { flex: 1; min-width: 0; }
+.fcell > .slink { flex: none; align-self: center; margin-left: 12px; white-space: nowrap; }
+.fprof .fbtns { flex: none; }
 #medium .check { font: 14px/19px var(--ui); height: 26px; }
 #medium .combo .entry { height: auto; }
 .fbar { display: flex; justify-content: flex-end; gap: 6px; margin: 12px 0; flex: none; }
 
-/* settings page (vision "Direction from Reid", 2026-11-21): takes the launcher's place; app-wide choices only */
+/* settings page (vision\Spec\SPEC-one-look.md Part 5): takes the launcher's place; app-wide choices only.
+   Two columns: the section title in bone on the left, its control (help under it) on the right. */
 #settings { order: 1; flex: 1 1 auto; min-height: 0; display: none; flex-direction: column; padding: 0 var(--pad); }
-body[data-view="settings"] #main, body[data-view="settings"] #small, body[data-view="settings"] #medium { display: none; }
+body[data-view="settings"] #main, body[data-view="settings"] #small, body[data-view="settings"] #medium,
+body[data-view="settings"] #footer { display: none; }
 body[data-view="settings"] #settings { display: flex; }
 body[data-size="small"] #settings { padding: 0 16px; }
-.shead { display: flex; align-items: center; margin: 18px 0 12px; flex: none; }
-.sbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 12px; }
-.ssec { display: flex; flex-direction: column; padding: 14px 0 12px; border-bottom: 1px solid var(--line); }
-.ssec > .lbl:first-child { margin-bottom: 6px; }
-.srow { display: flex; align-items: center; min-height: 34px; }
-.snote { margin-top: 2px; }
+.shead { display: flex; align-items: center; gap: 14px; margin: 18px 0 12px; flex: none; }
+.sbody { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 0 16px 12px 0; }
+.ssec { display: grid; grid-template-columns: 180px minmax(0, 1fr); column-gap: 24px; padding: 16px 0 14px; border-bottom: 1px solid var(--line); }
+.ssec > .lbl:first-child { padding-top: 8px; }
+.sctl { min-width: 0; }
+body[data-size="small"] .ssec { grid-template-columns: minmax(0, 1fr); }
+body[data-size="small"] .ssec > .lbl:first-child { padding-top: 0; }
+.srow { display: flex; align-items: center; flex-wrap: wrap; min-height: 34px; }
+.snote { margin-top: 2px; white-space: normal; }
 .spath { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; margin-right: 12px; }
+.slink { cursor: pointer; } .slink:hover { color: var(--text); }
 .slist { display: flex; flex-direction: column; }
 .slist .mrow { cursor: default; padding: 0; }
 .slist .mrow:hover { background: none; color: var(--text2); }
+.slist .dim, .slist .sep { color: var(--text3); }
 .sbody::-webkit-scrollbar, #small::-webkit-scrollbar { width: 9px; }
 .sbody::-webkit-scrollbar-track, #small::-webkit-scrollbar-track { background: transparent; }
 .sbody::-webkit-scrollbar-thumb, #small::-webkit-scrollbar-thumb { background: var(--line); border: 2px solid var(--canvas); }

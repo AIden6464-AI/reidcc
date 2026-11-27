@@ -9,7 +9,7 @@ type Row = {
   rc: number | null; context: number | null; limit: number | null;
 };
 
-const C = { emerald: "#00C463", oxide: "#C0584B", text3: "#746F69" };
+const C = { emerald: "#00C463", oxide: "#C0584B", text3: "#7F7A73" };
 const MARK: Record<string, string> = { claude: "CL", codex: "CX", opencode: "OC" };
 const $ = (id: string) => document.getElementById(id)!;
 const cap = $("cap"), dock = $("dock"), usage = $("usage");

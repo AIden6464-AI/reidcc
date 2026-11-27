@@ -219,7 +219,8 @@ fn group_tiles(window: &Window, panes: &Panes) -> Option<(Rect, Vec<(u32, Rect)>
     let size = window.inner_size().ok()?;
     let scale = window.scale_factor().ok()?;
     let gap = scale.round().max(1.0) as i32;
-    let area: Rect = (gap, (BAR * scale).round() as i32 + gap, size.width as i32 - gap, size.height as i32 - gap).into();
+    let left = crate::panel::reserve(window); // the docked launcher's column (SPEC-one-window.md)
+    let area: Rect = (left + gap, (BAR * scale).round() as i32 + gap, size.width as i32 - gap, size.height as i32 - gap).into();
     let mut tiles = vec![];
     panes.tiles(area, gap, &mut tiles);
     Some((area, tiles))
@@ -229,11 +230,18 @@ fn layout(window: &Window, panes: &Panes) {
     let Some((area, tiles)) = group_tiles(window, panes) else { return };
     let app = window.app_handle();
     if let Some(header) = header_label(window).and_then(|label| app.get_webview(&label)) {
-        let _ = bounds(&header, (area.l, area.l, area.r, area.t).into());
+        let gap = window.scale_factor().unwrap_or(1.0).round().max(1.0) as i32; // as in group_tiles
+        let _ = bounds(&header, (area.l, gap, area.r, area.t).into());
     }
     for (id, r) in tiles {
         if let Some(view) = pane(app, id) { let _ = bounds(&view, r); }
     }
+}
+
+/// Lay a frame out again (the docked launcher came or went).
+pub fn relayout(window: &Window) {
+    let tree = dock(window.app_handle()).groups.lock().unwrap().get(window.label()).cloned();
+    if let Some(tree) = tree { layout(window, &tree); }
 }
 
 #[derive(Clone, Serialize)]
@@ -302,6 +310,7 @@ fn create_group(app: &AppHandle, target: Rect, scale: f64) -> tauri::Result<Wind
 
 fn fuse(source: Frame, target: Frame, side: Side) -> Option<Frame> {
     let app = source.window.app_handle();
+    for w in [&source.window, &target.window] { crate::panel::leaving(app, w); } // its column would hide in the old window
     for expected in [&source, &target] {
         if !visible(&expected.window) || frame(app, expected.window.clone())?.panes != expected.panes { return None; }
     }
@@ -367,6 +376,7 @@ fn remove_from_group(app: &AppHandle, group: &Window, id: u32) {
     let before = state.groups.lock().unwrap().get(group.label()).cloned();
     match before.and_then(|tree| tree.without(id)) {
         Some(Panes::One(last)) => {
+            crate::panel::leaving(app, group);
             if rect(group).and_then(|r| restore(app, last, r)).is_some() {
                 state.groups.lock().unwrap().remove(group.label());
                 let _ = group.destroy();
@@ -380,6 +390,7 @@ fn remove_from_group(app: &AppHandle, group: &Window, id: u32) {
             layout(group, &tree);
         }
         None => {
+            crate::panel::leaving(app, group);
             state.groups.lock().unwrap().remove(group.label());
             let _ = group.destroy();
         }
@@ -394,7 +405,10 @@ pub fn close_pane(app: &AppHandle, id: u32) {
             remove_from_group(app, &group, id);
         }
     }
-    if let Some(window) = home(app, id) { let _ = window.destroy(); }
+    if let Some(window) = home(app, id) {
+        crate::panel::leaving(app, &window);
+        let _ = window.destroy();
+    }
 }
 
 pub fn window_event(window: &Window, event: &WindowEvent) {
@@ -607,7 +621,10 @@ pub fn dock_control(webview: Webview, action: &str) {
             if window.is_maximized().unwrap_or(false) { let _ = window.unmaximize(); }
             else { let _ = window.maximize(); }
         }
-        "close" if window.label().starts_with(GROUP) && webview.label().starts_with(HEADER) => { let _ = window.destroy(); }
+        "close" if window.label().starts_with(GROUP) && webview.label().starts_with(HEADER) => {
+            crate::panel::leaving(webview.app_handle(), &window);
+            let _ = window.destroy();
+        }
         _ => {}
     }
 }
@@ -668,7 +685,7 @@ pub fn rig_frame(app: &AppHandle, saved: &Value, at: (i32, i32, i32, i32)) -> Op
     let n = rig_leaves(saved)?.len() as u32;
     let tree = Panes::from_json(saved, &mut (0..n))?;
     let at = Rect::from(at).inside(work_area(at.into()));
-    let scale = app.get_webview_window("main").and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+    let scale = crate::panel::launcher_window(app).and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
     let group = create_group(app, at, scale).ok()?;
     let Some((_, mut tiles)) = group_tiles(&group, &tree) else { let _ = group.destroy(); return None };
     tiles.sort_by_key(|(id, _)| *id);

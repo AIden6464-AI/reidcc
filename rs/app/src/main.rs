@@ -3,10 +3,13 @@
 
 #![windows_subsystem = "windows"]
 
+mod chat;
 mod dock;
 mod fonts;
 mod gate;
 mod model;
+mod panel;
+mod recolor;
 mod rig;
 mod session;
 mod settings;
@@ -52,6 +55,27 @@ fn asset(name: &str) -> Option<String> {
         }
         d = d.parent()?.to_path_buf();
     }
+}
+
+/// The pages' own origin on Windows (Tauri 2 serves WebviewUrl::App at http://tauri.localhost).
+/// gate.ts fetch()es frames from reid.localhost, so this one origin needs the CORS header.
+const APP_ORIGIN: &str = "http://tauri.localhost";
+
+/// A reid:// request path -> the file under `root` (the assets folder), or None.
+/// Only plain names below assets/ pass: no root, drive, `..`, `.` or `:`, and the resolved
+/// file must still sit inside `root` after symlinks are followed.
+fn served_asset(root: &std::path::Path, path: &str) -> Option<std::path::PathBuf> {
+    use std::path::{Component, Path};
+    let rel = path.trim_start_matches('/').strip_prefix("assets/")?;
+    let rel_path = Path::new(rel);
+    let plain = !rel.is_empty() && !rel.contains(':') && !rel.contains('\\')
+        && rel_path.components().all(|part| matches!(part, Component::Normal(_)));
+    if !plain {
+        return None;
+    }
+    let root = root.canonicalize().ok()?;
+    let file = root.join(rel_path).canonicalize().ok()?;
+    (file.starts_with(&root) && file.is_file()).then_some(file)
 }
 
 /// argv prefix that runs reid in a console: reid.exe next to this exe.
@@ -102,6 +126,8 @@ struct Init {
     test: bool,
     /// the smallest size the main layout fits in (logical px); below it the page folds to medium (the form)
     main_min: (f64, f64),
+    /// the bar's title: "Reidcc 0.2.5" (" dev" on a dev build)
+    title: String,
 }
 
 #[tauri::command]
@@ -115,7 +141,7 @@ fn init(app: AppHandle, st: S) -> Init {
     let (gate, emblem) = (meta("assets\\gate.json"), meta("assets\\emblem.json"));
     let folder = m.folder.clone();
     let main_min = *sizes::MAIN_MIN.get().unwrap_or(&(960.0, 820.0));
-    Init { ops: done(&app, &mut m), folder, gate, emblem, test: st.test, main_min }
+    Init { ops: done(&app, &mut m), folder, gate, emblem, test: st.test, main_min, title: app_title() }
 }
 
 #[tauri::command]
@@ -136,6 +162,25 @@ fn select(app: AppHandle, st: S, name: String, typed: String) -> Vec<Op> {
 fn apply(app: AppHandle, st: S, vars: Vars) -> Vec<Op> {
     let mut m = st.m.lock().unwrap();
     m.apply(&vars);
+    done(&app, &mut m)
+}
+
+/// The tune popover's choices for the selected profile: its effort, MCP servers and plugins.
+/// Async: Codex's server list runs `codex mcp list`.
+#[tauri::command]
+async fn profile_tuning(st: S<'_>) -> Result<Value, String> {
+    let (cfg, name, folder) = {
+        let mut m = st.m.lock().unwrap();
+        let folder = m.real_folder();
+        (m.cfg().ok_or("reid.json didn't load")?, m.current.clone().ok_or("no profile selected")?, folder)
+    };
+    Ok(chat::tuning_json(&cfg, &name, &folder))
+}
+
+#[tauri::command]
+fn profile_tune(app: AppHandle, st: S, changes: reidcc::Obj) -> Vec<Op> {
+    let mut m = st.m.lock().unwrap();
+    m.tune(&changes);
     done(&app, &mut m)
 }
 
@@ -172,8 +217,14 @@ fn open_persona(st: S, persona: String) -> Vec<Op> {
     m.take()
 }
 
-fn parent(app: &AppHandle) -> Option<tauri::WebviewWindow> {
-    app.get_webview_window("main")
+/// The window the launcher is in now (home, or the session window it's docked in): file pickers belong to it.
+fn parent(app: &AppHandle) -> Option<tauri::Window> {
+    panel::launcher_window(app)
+}
+
+/// "Reidcc 0.2.5", and " dev" on a dev build (REIDCC_DEV set at build time), so the two copies tell apart.
+pub fn app_title() -> String {
+    format!("Reidcc {}{}", env!("CARGO_PKG_VERSION"), if option_env!("REIDCC_DEV").is_some() { " dev" } else { "" })
 }
 
 #[tauri::command]
@@ -283,10 +334,6 @@ fn go_now(app: &AppHandle, st: &App, sessions: &session::Sessions, resume: bool,
     let say = |m: &mut Model, text: &str, kind: &str, actions: Vec<(String, String)>, seconds: Option<f64>| {
         m.ops.push(Op::Say { text: text.into(), kind: kind.into(), actions, seconds, focus: None });
     };
-    if resume && engine != "claude" {
-        say(&mut m, "Resume is for Claude profiles for now. open gate starts a new Codex session.", "info", vec![], Some(5.0));
-        return ops(&mut m);
-    }
     if is_codex(&prof) && !reidcc::on(&prof, "settings").is_some() && codex::login_cached(&m.ctx).as_deref() == Some("not signed in") {
         // signed in from a terminal since? (about a second, so without the lock: clicks keep working)
         let home = m.ctx.home.clone();
@@ -335,7 +382,7 @@ fn go_now(app: &AppHandle, st: &App, sessions: &session::Sessions, resume: bool,
                                    persona: reidcc::profile::persona_name(&prof), elapsed_ms: 0 };
         // Without the lock: making the window waits on the main thread, whose commands take this lock.
         drop(m);
-        let sf = app.get_webview_window("main").and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+        let sf = panel::launcher_window(app).and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
         let rect = sizes::session_rect(session::visible_rect(gate::main_hwnd() as isize), sf); // main's size at least
         let opened = sessions.open(app, info, &cwd, &cmd, rect, None);
         m = st.m.lock().unwrap();
@@ -350,6 +397,8 @@ fn go_now(app: &AppHandle, st: &App, sessions: &session::Sessions, resume: bool,
         if !gate_ok {
             let _ = w.show();
             let _ = w.set_focus();
+            let h = app.clone();
+            let _ = app.run_on_main_thread(move || panel::go_home(&h, false)); // docked: done here (fix 4)
             say(&mut m, &note, "quiet", vec![], Some(4.0));
             return ops(&mut m);
         }
@@ -439,6 +488,10 @@ fn gate_finish(app: AppHandle, st: S) {
     };
     gate::fine_timer(false);
     gate::lock_foreground(false);
+    // opened from the docked launcher: the new window is in front now, so the launcher goes home (hidden)
+    if panel::docked_in(&app).is_some() {
+        panel::go_home(&app, false);
+    }
     if restart {
         start_watch(&app, &st.gate); // skipped before the window appeared: keep watching to bring it forward
     }
@@ -464,6 +517,7 @@ fn main() {
     let test = std::env::var("REIDCC_GUI_TEST").is_ok_and(|v| v == "1");
     let mut ctx = Ctx::new();
     ctx.cli = cli_command();
+    recolor::set_from(&reidcc::peek_config(&ctx));
     let args: Vec<String> = std::env::args().collect();
     let cwd = args.iter().position(|a| a == "--cwd").and_then(|i| args.get(i + 1)).cloned();
     let state = reidcc::load_state(&ctx);
@@ -489,20 +543,26 @@ fn main() {
     tauri::Builder::default()
         .manage(app_state)
         .manage(session::Sessions::default())
+        .manage(chat::Chats::default())
         .manage(dock::Dock::default())
+        .manage(panel::Panel::default())
         .manage(update::Updates::default())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .on_window_event(|w, e| {
+            panel::window_event(w, e); // before dock's: a closing window gives the launcher back first
             dock::window_event(w, e);
             sizes::window_event(w, e);
+            if let (Some(id), tauri::WindowEvent::Destroyed) = (w.label().strip_prefix(chat::PREFIX).and_then(|n| n.parse().ok()), e) {
+                w.app_handle().state::<chat::Chats>().end(id);
+            }
         })
         .register_uri_scheme_protocol("reid", |_ctx, req| {
             // reid://localhost/assets/... : the gate frames and the banner, straight from assets\
-            let path = req.uri().path().trim_start_matches('/').replace('/', "\\");
-            let body = (!path.contains("..")).then(|| asset(&path)).flatten().and_then(|p| std::fs::read(p).ok());
+            let body = asset("assets").and_then(|root| served_asset(std::path::Path::new(&root), req.uri().path()))
+                .and_then(|file| std::fs::read(file).ok());
             match body {
                 Some(b) => tauri::http::Response::builder().header("Content-Type", "image/png")
-                    .header("Access-Control-Allow-Origin", "*").body(b).unwrap(),
+                    .header("Access-Control-Allow-Origin", APP_ORIGIN).body(b).unwrap(),
                 None => tauri::http::Response::builder().status(404).body(vec![]).unwrap(),
             }
         })
@@ -513,18 +573,22 @@ fn main() {
                 let s = m.scale_factor();
                 ((m.size().width as f64 / s) as i32, (m.size().height as f64 / s) as i32)
             }).unwrap_or((1920, 1080));
-            let h = 880.min(sh - 140); // leave room for the title bar and the taskbar
-            let _ = sizes::MAIN.set((1000.0, h as f64));
-            let _ = sizes::MAIN_MIN.set((960.0, 820.min(h) as f64));
+            let h = 880.min(sh - 140); // leave room for the taskbar
+            let bar = sizes::BAR as i32; // the page's own bar, inside the window
+            let _ = sizes::MAIN.set((1000.0, (h + bar) as f64));
+            let _ = sizes::MAIN_MIN.set((960.0, (820.min(h) + bar) as f64));
             // Settings → start size (reid.json "start_size"); the page lays itself out for whatever size it gets
             let start = app.state::<App>().m.lock().unwrap().cfg().and_then(|c| c.get("start_size").map(reidcc::pyjson::py_str));
             let (ww, wh) = match sizes::start_size(&start.unwrap_or_default()) {
                 "medium" => (sizes::MEDIUM.0 as i32, (sizes::MEDIUM.1 as i32).min(sh - 140)),
                 "small" => (sizes::SMALL.0 as i32, sizes::SMALL.1 as i32),
-                _ => (1000, h),
+                _ => (1000, h + bar),
             };
-            let mut b = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
-                .title(concat!("Reidcc ", env!("CARGO_PKG_VERSION")))
+            // A window plus a page, not one webview window, so the page can move into a session window
+            // (SPEC-one-window.md). Borderless: the page draws the 36 px bar (SPEC-one-look Part 3).
+            let mut b = tauri::Window::builder(app, "main")
+                .title(app_title())
+                .decorations(false)
                 .inner_size(ww as f64, wh as f64)
                 .min_inner_size(sizes::MIN.0, sizes::MIN.1) // medium and small below main's size (vision v1 §1)
                 // Place it ourselves: Windows' cascade can push the bottom bar under the taskbar.
@@ -532,15 +596,13 @@ fn main() {
                 .background_color(tauri::window::Color(4, 4, 4, 255))
                 .theme(Some(tauri::Theme::Dark))
                 .visible(false);
-            if let Some(d) = WEBVIEW_DIR.get() {
-                b = b.data_directory(d.clone());
-            }
             if let Some(ico) = asset("reidcc.ico").and_then(|p| std::fs::read(p).ok()) {
                 if let Ok(img) = tauri::image::Image::from_bytes(&ico) {
                     b = b.icon(img.to_owned())?;
                 }
             }
             let w = b.build()?;
+            panel::make_launcher(&w).ok_or("the launcher's page couldn't start")?;
             update::start(app.handle(), update_now);
             if let Ok(h) = w.hwnd() {
                 gate::MAIN.store(h.0 as isize, std::sync::atomic::Ordering::Relaxed);
@@ -549,11 +611,14 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            init, folder_text, select, apply, rename, action, open_persona, pick_folder, browse_persona, recent,
+            init, folder_text, select, apply, profile_tuning, profile_tune, rename, action, open_persona, pick_folder, browse_persona, recent,
             set_folder, go, gate_handover, gate_skip, gate_finish, test_login, show, metrics,
             session::sess_attach, session::sess_write, session::sess_resize, session::sess_meters, session::sess_close,
             session::clip_text, session::sess_list, session::sess_focus, sizes::set_size, sizes::pod_fold, sizes::pod_unfold, sizes::pod_fit, sizes::pod_drag, dock::dock_drag, dock::dock_control, dock::dock_grouped, rig::rig_list, rig::rig_save, rig::rig_delete, rig::rig_open, update::update_foot, update::update_install,
-            update::update_check, settings::settings_get, settings::settings_set, settings::settings_plugins, settings::settings_open
+            update::update_check, settings::settings_get, settings::settings_set, settings::settings_plugins, settings::settings_open, settings::settings_change,
+            panel::panel, panel::launcher_control, session::sess_back, session::sess_shrink,
+            chat::chat_open, chat::chat_info, chat::chat_send, chat::chat_stop, chat::chat_changed, chat::chat_file_diff,
+            chat::chat_holder, chat::chat_terminal, chat::chat_focus, chat::chat_handoff, chat::chat_tuning
         ])
         .run(tauri::generate_context!())
         .expect("Reidcc couldn't start");
@@ -562,7 +627,7 @@ fn main() {
 /// The page is drawn: show the window (no white flash before the first paint).
 #[tauri::command]
 fn show(app: AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
+    if let Some(w) = panel::home(&app) {
         let _ = w.show();
         let _ = w.set_focus();
     }
@@ -572,4 +637,30 @@ fn show(app: AppHandle) {
 #[tauri::command]
 fn metrics() -> fonts::Fonts {
     fonts::fonts()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::served_asset;
+
+    #[test]
+    fn asset_paths_stay_inside_assets() {
+        let base = std::env::temp_dir().join(format!("reidcc_asset_test_{}", std::process::id()));
+        let root = base.join("assets");
+        std::fs::create_dir_all(root.join("gate_open")).unwrap();
+        std::fs::write(root.join("banner.png"), b"png").unwrap();
+        std::fs::write(root.join("gate_open").join("f1.png"), b"png").unwrap();
+        std::fs::write(base.join("secret.json"), b"key").unwrap();
+
+        assert!(served_asset(&root, "/assets/banner.png").is_some());
+        assert!(served_asset(&root, "/assets/gate_open/f1.png").is_some());
+        let secret = base.join("secret.json").to_string_lossy().replace('\\', "/");
+        for bad in ["/assets/../secret.json", "/assets/gate_open/../../secret.json", "/assets/./banner.png",
+                    "/assets/..\\secret.json", "/json/api.json", "/secret.json", "/assets/", "/assets/missing.png",
+                    "/assets/gate_open", &format!("/assets/{secret}"), "/assets/C:/Windows/win.ini",
+                    "/assets//etc/passwd", "/C:/Users/you/Reidcc/json/api.json"] {
+            assert!(served_asset(&root, bad).is_none(), "{bad} should be refused");
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

@@ -4,9 +4,11 @@
 use super::{apply_env, claude_only_on, io, is_claude_model, need, Launch};
 use crate::{err, environ, memory, on, on_by_default, py, pyjson, show_path, text, Ctx, Env, Obj, R};
 use serde_json::{Number, Value};
+use std::collections::HashSet;
 use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 pub const STATUS_LINE: [&str; 5] = ["model-with-reasoning", "current-dir", "context-used", "five-hour-limit", "weekly-limit"];
 pub const LOGIN: &str = "codex login";
@@ -37,6 +39,11 @@ pub fn find_codex() -> R<(String, Vec<(String, String)>)> {
     }
     if let Some(exe) = py::which("codex.exe") {
         return Ok((exe, vec![]));
+    }
+    // shortcut: a wrapper we can't see through (pnpm, volta, scoop, a .cmd of your own) runs as is, like
+    // find_claude; cmd.exe may re-parse odd quotes in its arguments. Look inside more wrappers if one breaks.
+    if let Some(shim) = py::which("codex") {
+        return Ok((shim, vec![]));
     }
     err("Can't find Codex. Install it (npm install -g @openai/codex), then try again.")
 }
@@ -135,7 +142,7 @@ pub fn toml_str(s: &str) -> String {
     pyjson::quote(s, false).replace('\x7f', "\\u007f")
 }
 
-fn toml_key(k: &str) -> String {
+pub(crate) fn toml_key(k: &str) -> String {
     if !k.is_empty() && k.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
         k.to_string()
     } else {
@@ -297,7 +304,7 @@ pub fn prompt_path(ctx: &Ctx, name: &str) -> String {
 /// model call). Cached in codex\prompts\.base-<key>.md until Codex, the settings or
 /// ~/.codex/config.toml change. None if it can't be read.
 fn base_prompt(ctx: &Ctx, exe: &str, env: &Env, pre: &[String], cwd: Option<&str>) -> Option<String> {
-    let home = env.get("CODEX_HOME").filter(|h| !h.is_empty()).cloned().unwrap_or_else(|| py::expanduser("~/.codex"));
+    let home = codex_home(env);
     let conf = py::join(&home, &["config.toml"]);
     let meta = std::fs::metadata(exe).ok()?;
     let mtime = py::getmtime(exe)?;
@@ -346,6 +353,77 @@ fn base_prompt(ctx: &Ctx, exe: &str, env: &Env, pre: &[String], cwd: Option<&str
     Some(base)
 }
 
+/// Codex's own folder for a launch: CODEX_HOME, else ~/.codex.
+pub(crate) fn codex_home(env: &Env) -> String {
+    env.get("CODEX_HOME").filter(|h| !h.is_empty()).cloned().unwrap_or_else(|| py::expanduser("~/.codex"))
+}
+
+/// Codex's thread files: sessions\YYYY\MM\DD\rollout-<time>-<thread id>.jsonl.
+fn thread_files(env: &Env) -> Vec<PathBuf> {
+    let mut level = vec![PathBuf::from(py::join(&codex_home(env), &["sessions"]))];
+    for _ in 0..3 {
+        level = level.iter().filter_map(|d| std::fs::read_dir(d).ok()).flatten().flatten()
+            .filter(|e| e.file_type().is_ok_and(|t| t.is_dir())).map(|e| e.path()).collect();
+    }
+    level.iter().filter_map(|d| std::fs::read_dir(d).ok()).flatten().flatten().map(|e| e.path())
+        .filter(|p| p.file_name().is_some_and(|n| { let n = n.to_string_lossy(); n.starts_with("rollout-") && n.ends_with(".jsonl") }))
+        .collect()
+}
+
+pub fn thread_exists(env: &Env, id: &str) -> bool {
+    !id.is_empty() && thread_files(env).iter().any(|p| p.to_string_lossy().ends_with(&format!("-{id}.jsonl")))
+}
+
+/// The thread a running Codex writes: a thread file changed since `since` and held open by `root` or a
+/// process under it, so two windows in one folder each find their own (never "the newest thread").
+/// Subagent threads (guardian…) are skipped. `skip` keeps files already known to be someone else's.
+pub fn thread_of(env: &Env, root: u32, since: SystemTime, skip: &mut HashSet<PathBuf>) -> Option<String> {
+    for p in thread_files(env) {
+        if skip.contains(&p) || std::fs::metadata(&p).and_then(|m| m.modified()).map_or(true, |m| m < since) {
+            continue;
+        }
+        if !crate::win::file_holders(&p.to_string_lossy()).iter().any(|&h| crate::win::descends_from(h, root)) {
+            skip.insert(p); // another session's (or a finished one's): it never becomes ours
+            continue;
+        }
+        let pl = session_meta(&p)?;
+        if helper_thread(&pl) {
+            skip.insert(p);
+            continue;
+        }
+        return pl.get("id").and_then(Value::as_str).map(str::to_string);
+    }
+    None
+}
+
+/// The thread a Codex that already exited made, when thread_of never saw it (a message, then Ctrl+C
+/// within the second between looks): the one thread file in `cwd` created since `since` that nothing holds
+/// open. Created, not changed: a window that just quit there touched its own old thread. thread_of's skip
+/// list isn't used, since it may hold this one (seen while Codex had it closed). Two candidates: none.
+pub fn thread_left(env: &Env, cwd: &str, since: SystemTime) -> Option<String> {
+    let same = |a: &str, b: &str| py::normcase(a.trim_end_matches('\\')) == py::normcase(b.trim_end_matches('\\'));
+    let mut found = thread_files(env).into_iter()
+        .filter(|p| std::fs::metadata(p).and_then(|m| m.created()).is_ok_and(|m| m >= since))
+        .filter(|p| crate::win::file_holders(&p.to_string_lossy()).is_empty())
+        .filter_map(|p| session_meta(&p))
+        .filter(|pl| !helper_thread(pl) && pl.get("cwd").and_then(Value::as_str).is_some_and(|c| same(c, cwd)))
+        .filter_map(|pl| pl.get("id").and_then(Value::as_str).map(str::to_string));
+    let id = found.next()?;
+    found.next().is_none().then_some(id)
+}
+
+/// A thread file's first line: {"type":"session_meta","payload":{"id":…,"cwd":…}}.
+fn session_meta(path: &Path) -> Option<Value> {
+    let mut first = String::new();
+    let _ = std::io::BufRead::read_line(&mut std::io::BufReader::new(std::fs::File::open(path).ok()?), &mut first);
+    pyjson::loads(&first).ok()?.get("payload").cloned()
+}
+
+/// {"source": {"subagent": …}}: a helper thread (guardian…), not the session's own.
+fn helper_thread(payload: &Value) -> bool {
+    payload.get("source").is_some_and(Value::is_object)
+}
+
 /// Codex's command. `prepare` writes the prompt file (and may read Codex's own prompt, ~1 s the
 /// first time); previews pass false and get the same command without touching anything.
 pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd: Option<&str>, prepare: bool) -> R<Launch> {
@@ -380,9 +458,6 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
         if a == "-C" || a == "--cd" || a.starts_with("--cd=") || (a.starts_with("-C") && a.chars().count() > 2) {
             return err("Leave -C / --cd out of the extra args: Codex opens in the folder you picked.");
         }
-    }
-    if let Some(first) = args.first().filter(|a| *a == "resume" || *a == "fork") {
-        return err(format!("Leave {first} out of the extra args: a Codex profile starts a new session."));
     }
     for k in config_keys(&args) {
         if prompt_on && (k == "model_instructions_file" || k == "developer_instructions") {
@@ -424,6 +499,7 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
     for s in if on_by_default(prof, "statusline") { &ui[..] } else { &ui[1..] } {
         argv.extend(["-c".into(), s.clone()]); // before the extra args, so a -c of your own there still wins
     }
+    argv.extend(super::tuning::codex_args(prof, &codex_home(&env)));
     if prompt_on {
         let mut pfile = Some(prompt_path(ctx, name));
         let mut setting = format!("model_instructions_file={}", toml_str(&pfile.as_ref().unwrap().replace('\\', "/")));
@@ -452,4 +528,32 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
     }
     argv.extend(args);
     Ok(Launch { argv, env, temps: vec![] })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thread_left_finds_the_one_unheld_thread_in_the_folder() {
+        let home = std::env::temp_dir().join(format!("reid_codex_threads_{}", std::process::id()));
+        let day = home.join("sessions").join("2026").join("11").join("26");
+        std::fs::create_dir_all(&day).unwrap();
+        let work = home.join("work").to_string_lossy().into_owned();
+        let write = |id: &str, cwd: &str, source: &str| {
+            let meta = serde_json::json!({"type": "session_meta", "payload": {"id": id, "cwd": cwd, "source": serde_json::from_str::<Value>(source).unwrap()}});
+            std::fs::write(day.join(format!("rollout-2026-11-26T20-00-00-{id}.jsonl")), format!("{meta}\n")).unwrap();
+        };
+        let env: Env = [("CODEX_HOME".to_string(), home.to_string_lossy().into_owned())].into_iter().collect();
+        let since = SystemTime::now() - Duration::from_secs(2);
+        write("t-other", r"C:\elsewhere", "\"cli\"");
+        write("t-helper", &work, "{\"subagent\": \"guardian\"}");
+        assert_eq!(thread_left(&env, &work, since), None);
+        write("t-mine", &format!("{work}\\"), "\"cli\"");
+        assert_eq!(thread_left(&env, &work, since).as_deref(), Some("t-mine"));
+        // a second candidate in the folder: can't tell which was ours
+        write("t-mine-too", &work, "\"cli\"");
+        assert_eq!(thread_left(&env, &work, since), None);
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }

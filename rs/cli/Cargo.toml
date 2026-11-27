@@ -11,4 +11,4 @@ path = "src/main.rs"
 reidcc-core = { path = "../core" }
 serde_json = { version = "=1.0.154", features = ["preserve_order"] }
 flate2 = "=1.1.11"
-windows-sys = { version = "=0.59.0", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Console"] }
+windows-sys = { version = "=0.59.0", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Console", "Win32_System_Threading"] }

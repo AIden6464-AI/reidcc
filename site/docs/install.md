@@ -11,10 +11,6 @@ Reidcc runs on Windows 10 and 11. It's in beta.
 
 ## The installer
 
-::: tip
-The installer comes with the first release on the [releases page](https://github.com/AIden6464-AI/reidcc/releases). Until it's out, [build from source](./build-from-source).
-:::
-
 1. Download `Reidcc_<version>_x64-setup.exe` from the [latest release](https://github.com/AIden6464-AI/reidcc/releases/latest) and run it. It installs for your account only, so it needs no admin rights.
 2. It isn't code-signed yet, so SmartScreen may say *Windows protected your PC*. Click *More info*, then *Run anyway*.
 3. Open **Reidcc** from the Start menu or the desktop, or type `reid` in a new terminal.
@@ -28,4 +24,4 @@ The installer comes with the first release on the [releases page](https://github
 
 The installer also adds the program folder to your user PATH, adds Start menu and desktop shortcuts, and adds the `/reid` slash command to Claude Code if `~\.claude` exists and has none yet. Uninstalling undoes all of it except your own folder.
 
-Next: [your first session](./first-session).
+Next: [your first session](./first-session). To talk to Claude Code or Codex without a terminal, use **open chat**, beside resume ([chat](./chat)).

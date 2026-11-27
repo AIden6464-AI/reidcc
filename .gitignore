@@ -13,6 +13,8 @@
 /mds/
 # ACA has its own repo (AIden6464-AI/aca); aca/ is an untracked local copy
 /aca/
+# Claude's copied notes and scratch work: names private repos and key locations
+/vision/claude/
 
 # Proxy captures (your prompts and traffic) and logs
 proxy/claude_audit/

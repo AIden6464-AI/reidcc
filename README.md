@@ -60,21 +60,41 @@ Pick a folder, pick a profile, **open gate**. The profile list and every field o
 stay on one screen, and changes save as you make them.
 
 - **Window:** `Enter` on the list opens the gate · `Ctrl+Enter` from anywhere · `Ctrl+O` picks a folder ·
-  `Ctrl+R` resumes · `Alt+1` / `Alt+2` / `Alt+3` switch between full, medium and the mini pod.
-- **Terminal (TUI):** `↵ open gate · r resume · e edit · n new · x delete · d default · w pick folder · m memory · q quit`
-- **Inside a session:** `/reid` comes back to Reidcc with the conversation kept (`r` resumes it with any
-  profile) · `/exit` leaves as usual.
+  `Ctrl+R` resumes · `Alt+1` main · `Alt+2` small · `Alt+3` the pod. Drag the window narrow for medium.
+- **Terminal (TUI):** `↵ open gate · r resume · c chat · e edit · n new · x delete · d default · w pick folder · m memory · q quit`
+- **Inside a session:** click **RC** on the bar and Reidcc opens beside the terminal; again for full, again
+  to close (`Alt+2` beside, `Alt+1` full). `/reid` turns the window into Reidcc with the conversation kept
+  (`r` resumes it with any profile) · `/exit` leaves as usual.
+- **Inside a Codex session:** Codex has no `/reid`, so `/quit` (or any clean exit) is the way back. The
+  window turns into Reidcc at once, with the Codex thread recorded: **resume** (`r` in the TUI) reopens
+  that exact thread. A chat's **open terminal** works the same way: `/quit` and the chat carries on.
+
+### Chat
+
+**open chat**, beside resume, is one composer over Claude Code and Codex in the launcher's folder.
+Each turn streams its text and tool lines, and `stop` ends it. After a turn that edits files, a
+**changed** block opens to each file's diff. Pick another profile and `send` becomes `switch → <engine>`:
+the next engine gets a handoff with what changed. **open terminal** continues the same session in a
+session window. In a terminal: `reid --chat [profile]`.
+
+**tune**, beside the model, sets a profile's effort and turns single MCP servers and plugins off or on.
+In a chat, tune changes them for that chat only.
 
 ```text
-reid                    the TUI in a terminal, the window when started as an app
-reid <profile> [args]   start that profile in the current folder
-reid --resume           resume the last Claude session
-reid --dry <profile>    show the exact command without running it
-reid -l                 list profiles
-reid --edit / --mem     open reid.json / your memory file
-reid --update           install the latest release
-reid -h                 full help
+reid                      the TUI in a terminal, the window when started as an app
+reid <profile> [args]     start that profile in the current folder
+reid --resume [profile]   resume the last session (Claude or Codex)
+reid --resume <profile> --id ID   resume that session, in this folder
+reid --chat [profile]     chat with Claude Code and Codex, in the terminal
+reid --dry <profile>      show the exact command without running it
+reid -l                   list profiles
+reid --edit / --mem       open reid.json / your memory file
+reid --version            show the version
+reid --update             install the latest release
+reid -h                   full help
 ```
+
+See [CHANGELOG.md](CHANGELOG.md) for what each release changed.
 
 ### Profiles
 

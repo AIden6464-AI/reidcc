@@ -36,12 +36,12 @@ pub fn rig_save(app: AppHandle, webview: Webview, st: S, sessions: State<'_, ses
         return Err("Name the rig first.".into());
     }
     let rig = dock::rig_of(&app, webview.window(), &|id| sessions.leaf(id)).ok_or("Couldn't read this frame's layout.")?;
-    let mut m = st.m.lock().unwrap();
+    let m = st.m.lock().unwrap();
     let mut cfg = reidcc::load_config(&m.ctx).map_err(|e| e.0)?;
     let mut all = rigs(&cfg);
     all.insert(name.clone(), rig);
     cfg.insert("rigs".into(), Value::Object(all));
-    m.save(&cfg);
+    m.try_save(&cfg)?;
     drop(m);
     let _ = app.emit_to("main", "rigs-changed", ());
     Ok(format!("Saved as rig {name}."))
@@ -54,7 +54,7 @@ pub fn rig_delete(app: AppHandle, st: S, name: String) {
     let mut all = rigs(&cfg);
     if all.remove(&name).is_some() {
         cfg.insert("rigs".into(), Value::Object(all));
-        m.save(&cfg);
+        if !m.save(&cfg) { return; } // the error shows in the launcher; the rig list stays as saved
         drop(m);
         let _ = app.emit_to("main", "rigs-changed", ());
     }

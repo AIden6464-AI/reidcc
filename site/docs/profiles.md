@@ -14,6 +14,10 @@ A profile is a named setup: engine, model, sign-in, persona, memory and switches
 | **persona** | A Markdown file added to, or in place of, the engine's prompt. See [personas](./personas) |
 | **memory** | Adds your memory file to the session. See [memory](./memory) |
 | **args** | Extra arguments passed to the engine |
+| **proxy** | Runs the session through Reidcc's local proxy, to trim what's sent. See [proxy](./proxy) |
+| **tools** | `all`, or only the tools you tick (Claude Code) |
+| **mcp** | `your servers`, `none`, or an MCP file that replaces your servers. See [MCP servers](./reid-json#mcp-servers) |
+| **switches** | memory, Claude in Chrome, claude.ai connectors, and safe mode (no `CLAUDE.md`, none of your MCP servers) |
 
 Fields an engine can't use stay visible and greyed out, so nothing is hidden.
 

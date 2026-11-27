@@ -9,10 +9,10 @@ import { C, Check, Combo, Listbox, button, closePopups, el, entry, label, measur
 
 const PAD = 40;
 /** vision v1 §1: smaller than this (CSS px), the launcher folds into the mini pod */
-const POD_BELOW: [number, number] = [340, 240];
+const POD_BELOW: [number, number] = [340, 240 + 36]; // + the launcher's own 36 px bar
 const MODES: [string, string][] = [["append", "add to Claude Code's prompt"], ["replace", "replace Claude Code's prompt"]];
 /** Medium, the form (vision\Spec\SPEC-form.md): narrower or shorter than main, at least the old launcher's minsize. */
-const MEDIUM_MIN: [number, number] = [480, 720];
+const MEDIUM_MIN: [number, number] = [480, 720 + 36];
 /** The form's checkbox rows: each switch with a sentence saying what it does (what claude.rs does with it). */
 const SENTENCES: [string, string, string][] = [
   ["memory", "memory", "add your memory file to the session"],
@@ -44,6 +44,11 @@ interface Fields {
   engines: string[]; models: string[]; auths: string[]; personas: string[]; proxies: string[];
   tools_choices: string[]; mcps: string[];
 }
+/** profile_tuning's answer: what the tune popover offers and what the profile has now */
+interface Tuning {
+  efforts: string[]; mcp: string[]; plugins: { id: string; on: boolean }[];
+  own: { effort?: string; mcp_off?: string[]; plugins?: Record<string, boolean> };
+}
 interface Refresh {
   title: string; tags: string; mode_texts: [string, string]; mode_disabled: boolean;
   disabled: Record<string, boolean>; codex: boolean; ready: boolean; status: string; preview: string;
@@ -71,6 +76,8 @@ class App {
   /** the form's own widgets; the shared ones move in (`put`) and back (`unplace`) */
   undo: (() => void)[] = [];
   cells: Record<string, HTMLDivElement> = {};
+  /** Codex profiles only: points from the greyed Claude-only rows to tune, which holds Codex's servers and plugins */
+  tuneNote!: HTMLDivElement;
   folderBox!: HTMLDivElement;
   profCombo!: Combo;
   defCheck!: Check;
@@ -86,9 +93,15 @@ class App {
   mRigs!: HTMLDivElement;
   sessTimer = 0;
   foldTimer = 0;
+  /** SPEC-one-window: docked in a session window (beside / full), or at home ("") */
+  docked: "" | "beside" | "full" = "";
+  barTitle!: HTMLSpanElement;
+  bBack!: HTMLButtonElement;
+  foot: (f: { text: string; click: boolean }) => void = () => {};
 
   // widgets
   statusText!: HTMLDivElement;
+  where!: HTMLDivElement;
   statusDot!: HTMLDivElement;
   updateText!: HTMLDivElement;
   msgLabel!: HTMLDivElement;
@@ -109,9 +122,12 @@ class App {
   preview!: HTMLDivElement;
   bGo!: HTMLButtonElement;
   bResume!: HTMLButtonElement;
+  bChat!: HTMLButtonElement;
+  bFix!: HTMLButtonElement;
 
   constructor() {
     // Built in Tk's creation order, so Tab moves the way Tk's traversal does; `order` places them.
+    this.buildBar();
     this.buildFooter();
     this.buildMsgbar();
     this.buildMain();
@@ -120,10 +136,79 @@ class App {
     this.settings = new Settings(() => this.closeSettings());
     this.root.append(this.settings.root);
     this.keys();
-    new ResizeObserver(() => { this.fit(); this.wrapTexts(); }).observe(document.body);
+    new ResizeObserver(() => { this.fit(); this.wrapTexts(); this.showFolderEnd(); }).observe(document.body);
   }
 
   // ---------------------------------------------------------------- layout ---
+  /** The launcher's own 36 px bar (SPEC-one-look Part 3), like a session window's: RC, the title, and
+   *  docked (SPEC-one-window) `← claude · kiln` back to the session; – ☐ × at the right. No × while
+   *  docked: closing a session window ends the session, and that stays the session bar's ×. */
+  buildBar() {
+    const b = el("div");
+    b.id = "lbar";
+    const mark = el("span", "", "RC");
+    mark.id = "lmark";
+    this.barTitle = el("span", "ltitle", "Reidcc") as HTMLSpanElement;
+    this.bBack = el("button", "lback", "← session") as HTMLButtonElement;
+    this.bBack.tabIndex = -1;
+    this.bBack.title = "back to the session (Escape)";
+    this.bBack.addEventListener("click", () => this.leave());
+    const drag = el("div", "ldrag");
+    const ctl = el("div");
+    ctl.id = "lctl";
+    for (const [id, text, label] of [["lmin", "–", "minimise"], ["lmax", "▢", "maximise"], ["lclose", "×", "close"]]) {
+      const c = el("button", "", text) as HTMLButtonElement;
+      c.id = id;
+      c.tabIndex = -1;
+      c.setAttribute("aria-label", label);
+      c.addEventListener("click", () => invoke("launcher_control", { action: id.slice(1) }));
+      ctl.append(c);
+    }
+    b.addEventListener("pointerdown", (e) => {
+      if (e.button === 0 && !(e.target as Element).closest("button")) invoke("launcher_control", { action: "drag" });
+    });
+    b.addEventListener("dblclick", (e) => { if (!(e.target as Element).closest("button")) invoke("launcher_control", { action: "max" }); });
+    // settings: one place in every size, top-right (SPEC-one-look Part 4.4)
+    const set = el("button", "lset", "settings") as HTMLButtonElement;
+    set.tabIndex = -1;
+    set.addEventListener("click", () => this.openSettings());
+    b.append(mark, this.barTitle, this.bBack, drag, set, ctl);
+    this.root.append(b);
+  }
+
+  /** The backend moved this page (SPEC-one-window): into a session window `beside` it or `full`, or home. */
+  dock(mode: "beside" | "full" | null, session: string) {
+    const was = this.docked;
+    this.docked = mode ?? "";
+    if (mode) document.body.dataset.docked = mode; else delete document.body.dataset.docked;
+    this.bBack.textContent = `← ${session}`;
+    if (!mode) return;
+    if (!was && !REDUCED.matches) { // in from the left: 160 ms on the design curve
+      const o = { duration: 160, easing: "cubic-bezier(0.16, 1, 0.3, 1)" };
+      for (const v of this.slides()) v.animate([{ transform: "translateX(-24px)", opacity: 0 }, { transform: "none", opacity: 1 }], o);
+    }
+    if (!was) this.listFocus().focus();
+    // an event can be missed while the page moves: ask once for what one would have carried
+    invoke<{ text: string; click: boolean }>("update_foot").then(this.foot);
+    if (this.size === "small") { void this.drawRigs(); void this.drawSessions(); }
+  }
+
+  /** What slides when the page docks or leaves: everything under the bar. */
+  slides(): HTMLElement[] {
+    return [this.view(), document.getElementById("msgbar")!, document.getElementById("footer")!];
+  }
+
+  /** Back to the session: slide out, then the page goes home. */
+  leave() {
+    if (!this.docked) return;
+    closePopups();
+    const home = () => invoke("panel", { want: "home" });
+    if (REDUCED.matches) { home(); return; }
+    const o = { duration: 160, easing: "cubic-bezier(0.16, 1, 0.3, 1)", fill: "forwards" as FillMode };
+    const anims = this.slides().map((v) => v.animate([{ transform: "none", opacity: 1 }, { transform: "translateX(-24px)", opacity: 0 }], o));
+    anims[0].onfinish = () => { home(); setTimeout(() => anims.forEach((a) => a.cancel()), 50); };
+  }
+
   buildFooter() {
     const f = el("div");
     f.id = "footer";
@@ -135,7 +220,8 @@ class App {
     const spacer = el("div");
     spacer.style.flex = "1";
     this.statusDot.style.marginRight = "6px";
-    const hint = label("folder → profile → open gate", "text3", "mono");
+    // where you are: folder · profile · engine (SPEC-one-look Part 2's status bar)
+    const hint = this.where = label("", "text2", "mono");
     hint.classList.add("hint");
     // the updater's line takes the status's place while it has something to say (SPEC-github-repo.md 4a)
     this.updateText = label("", "text2", "mono");
@@ -149,6 +235,7 @@ class App {
       if (f.click) this.updateText.dataset.click = "1"; else delete this.updateText.dataset.click;
       for (const e of [this.statusDot, this.statusText]) e.style.display = f.text ? "none" : "";
     };
+    this.foot = foot;
     listen<{ text: string; click: boolean }>("update", (e) => foot(e.payload));
     invoke<{ text: string; click: boolean }>("update_foot").then(foot);
     f.append(row);
@@ -173,6 +260,7 @@ class App {
     banner.src = "http://reid.localhost/assets/banner.png";
     banner.style.cssText = "display:block;margin:14px auto 0;width:720px;height:176px;flex:none";
     banner.onerror = () => banner.remove();
+    banner.id = "banner";
     m.append(banner);
     const col = el("div");
     col.style.cssText = `flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding:0 ${PAD}px`;
@@ -205,6 +293,7 @@ class App {
     // 2. profile: list on the left, the selected profile's fields on the right
     const panel = el("div");
     panel.style.cssText = "display:flex;margin-top:12px;flex:1 0 auto;min-height:0";
+    panel.classList.add("fpanel");
     this.buildProfileList(panel);
     const div = el("div");
     div.style.cssText = `width:1px;background:${C.line};margin:0 18px;flex:none`;
@@ -222,17 +311,17 @@ class App {
     this.bGo = button("open gate", () => this.go(false), true);
     this.bResume = button("resume", () => this.go(true));
     this.bResume.style.marginRight = "8px";
+    // the chat window on this folder and profile (SPEC-unified-interface Part 6)
+    this.bChat = button("open chat", () => this.call("chat_open"));
+    this.bChat.style.marginRight = "8px";
     const bConfig = button("open reid.json", () => this.action("open_config"));
     bConfig.style.marginLeft = "8px";
     // DOM order = Tk's creation order (open gate before resume); placed with `order`
     const bMem = button("open memory", () => this.action("open_memory"));
-    // the way into the settings page (Reid, 2026-11-21): after open reid.json, same quiet style
-    const bSettings = button("settings", () => this.openSettings());
-    bSettings.style.marginLeft = "8px";
-    for (const [b, o] of [[bMem, 1], [bConfig, 2], [bSettings, 3], [this.bGo, 6], [this.bResume, 5]] as const) b.style.order = String(o);
+    for (const [b, o] of [[bMem, 1], [bConfig, 2], [this.bChat, 5], [this.bResume, 6], [this.bGo, 7]] as const) b.style.order = String(o);
     spacer.style.order = "4";
-    for (const b of [bMem, bConfig, bSettings, this.bGo, this.bResume]) b.style.height = "auto";
-    act.append(bMem, bConfig, bSettings, spacer, this.bGo, this.bResume);
+    for (const b of [bMem, bConfig, this.bGo, this.bResume, this.bChat]) b.style.height = "auto";
+    act.append(bMem, bConfig, spacer, this.bGo, this.bResume, this.bChat);
     col.append(h, act);
     this.root.append(m);
   }
@@ -253,6 +342,7 @@ class App {
     g.style.gridTemplateColumns = `${w}px ${w}px`;
     cmds.forEach(([t, fn], i) => {
       const b = button(t, fn);
+      if (t === "delete") b.classList.add("danger");
       b.style.width = "auto";
       b.style.margin = i % 2 === 0 ? "0 6px 6px 0" : "0 0 6px 0";
       g.append(b);
@@ -275,7 +365,7 @@ class App {
     form.style.cssText = "display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;flex:none";
     let r = 1;
     const row = (text: string, widget: HTMLElement, extra: HTMLElement[] = [], span = 1) => {
-      const l = label(text, "text3", "label");
+      const l = label(text, "text2", "label");
       l.style.cssText += `;grid-row:${r};grid-column:1;margin:2px 14px 2px 0;justify-self:start`;
       widget.style.gridRow = String(r);
       widget.style.gridColumn = `2 / span ${span}`;
@@ -295,7 +385,7 @@ class App {
     // engine: on the name row, right above model, so the form keeps its height
     const ef = el("div");
     ef.style.cssText = "display:flex;align-items:center";
-    const engLabel = label("engine", "text3", "label");
+    const engLabel = label("engine", "text2", "label");
     engLabel.style.marginRight = "8px";
     const combo = (key: string, readonly: boolean, short = false) => {
       const c = new Combo(readonly, short);
@@ -309,7 +399,8 @@ class App {
     row("name", this.eName, [ef]);
     ef.style.gridColumn = "3 / span 2";
     ef.style.justifySelf = "start";
-    row("model", combo("model", false).root);
+    const tune = button("tune", () => void this.openTune(tune));
+    row("model", combo("model", false).root, [tune]);
     row("sign-in", combo("auth", true).root);
     this.bBrowse = button("browse", () => this.browsePersona());
     this.bOpenPersona = button("open persona", () => this.openPersona());
@@ -326,7 +417,13 @@ class App {
     row("persona mode", mf, [], 3);
     row("proxy", combo("proxy", true).root);
     row("tools", combo("tools", false).root);
-    row("mcp", combo("mcp", true).root);
+    this.tuneNote = label("set in tune ›", "text3", "label");
+    this.tuneNote.classList.add("slink");
+    this.tuneNote.title = "Codex: MCP servers, plugins and effort are set in tune. tools, chrome, connectors and safe mode are Claude only.";
+    this.tuneNote.style.display = "none";
+    this.tuneNote.addEventListener("click", () => void this.openTune(this.tuneNote));
+    row("mcp", combo("mcp", true).root, [this.tuneNote]);
+    this.tuneNote.style.gridColumn = "3 / span 2";
     const sf = el("div");
     sf.style.cssText = "display:flex";
     for (const [k, txt] of [["memory", "memory"], ["chrome", "chrome"], ["connectors", "connectors"], ["safe", "safe mode"]]) {
@@ -346,7 +443,12 @@ class App {
     const cl = label("command", "text3", "label");
     cl.style.alignSelf = "flex-start";
     this.preview = label("", "text3", "tag");
-    cmdf.append(cl, this.preview);
+    this.bFix = button("copy codex login", () => {
+      void navigator.clipboard.writeText("codex login");
+      this.say("Copied. Run codex login in a terminal; Reidcc notices when you're signed in.", "quiet", [], 6);
+    });
+    this.bFix.style.cssText += ";align-self:flex-start;height:26px;margin-top:6px;display:none";
+    cmdf.append(cl, this.preview, this.bFix);
     right.append(head, form, cmdf);
     panel.append(right);
   }
@@ -364,7 +466,7 @@ class App {
     this.mSessions = el("div", "mlist");
     this.mCombos = el("div", "mlist mcombos");
     this.mRigs = el("div", "mlist");
-    m.append(head("sessions"), this.mSessions, el("div", "hair"), head("combos"), this.mCombos, el("div", "hair"), head("rigs"), this.mRigs);
+    m.append(head("sessions"), this.mSessions, el("div", "hair"), head("profiles"), this.mCombos, el("div", "hair"), head("rigs"), this.mRigs);
     this.root.append(m);
   }
 
@@ -379,7 +481,7 @@ class App {
     const sub = label("Folder. Profile. Gate.", "text2", "body");
     sub.classList.add("fsub");
     hl.append(el("div", "wordmark", "Reidcc"), sub);
-    head.append(hl, button("settings", () => this.openSettings()));
+    head.append(hl);
 
     const grid = el("div", "fgrid");
     const cell = (key: string) => (this.cells[key] = el("div", "fcell"));
@@ -396,7 +498,7 @@ class App {
     arrow.addEventListener("mousedown", (e) => { if (e.button === 0) { e.preventDefault(); this.openRecent(this.folderBox); } });
     this.folderBox.append(arrow);
     this.eFolder.addEventListener("focus", () => this.folderBox.classList.add("focus"));
-    this.eFolder.addEventListener("blur", () => this.folderBox.classList.remove("focus"));
+    this.eFolder.addEventListener("blur", () => { this.folderBox.classList.remove("focus"); this.showFolderEnd(); });
     this.fPick = button("browse", () => this.pickFolder());
     row("folder", this.folderBox, [this.fPick]);
 
@@ -405,13 +507,20 @@ class App {
       const i = this.names.indexOf(this.profCombo.value);
       if (i >= 0 && i !== this.lb.sel) { this.lb.select(i); this.lb.see(i); this.lb.onSelect(i); }
     };
-    row("profile", this.profCombo.root, [button("new", () => this.action("new")), button("delete", () => this.action("delete"))]);
-    row("name", cell("name"), [button("duplicate", () => this.action("dup"))]);
+    const del = button("delete", () => this.action("delete"));
+    del.classList.add("danger");
+    const prow = el("div", "fcell fprof");
+    const pb = el("div", "fbtns");
+    pb.append(button("new", () => this.action("new")), button("duplicate", () => this.action("dup")), del);
+    prow.append(this.profCombo.root, pb);
+    row("profile", prow);
+    row("name", cell("name"));
     this.defCheck = new Check("the profile reid uses when you don't name one");
     this.defCheck.onClick = () => { if (!this.defCheck.on) this.action("default"); }; // default moves, it can't be unset
     row("default", this.defCheck.root);
     row("engine", cell("engine"));
-    row("model", cell("model"));
+    const ftune = button("tune", () => void this.openTune(ftune));
+    row("model", cell("model"), [ftune]);
     row("sign-in", cell("auth"));
     row("persona", cell("persona"), [button("browse", () => this.browsePersona()), button("edit", () => this.openPersona())]);
     this.promptCombo = new Combo(true, true);
@@ -426,11 +535,16 @@ class App {
     for (const [k, text] of SENTENCES) row(text, cell(k));
     row("extra args", cell("args"));
 
+    // the right-side buttons get one width (SPEC-one-look 4.5)
+    const side = [...grid.querySelectorAll<HTMLButtonElement>(".fbtns .btn")];
+    const sw = Math.max(...side.map((b) => parseFloat(b.style.width) || 0));
+    side.forEach((b) => { b.style.width = sw + "px"; });
     // no command preview here (Reid, 2026-11-22: "can we remove this"); the wide layout keeps its own
     const body = el("div", "sbody fbody");
     body.append(grid);
     this.fBar = el("div", "fbar");
-    this.fBar.append(button("open memory", () => this.action("open_memory")), button("open reid.json", () => this.action("open_config")));
+    // short labels: with open chat the bar must fit one line in the 500 px dock (Reid, 2026-11-26)
+    this.fBar.append(button("memory", () => this.action("open_memory")), button("reid.json", () => this.action("open_config")));
     f.append(head, body, this.fBar);
     this.root.append(f);
   }
@@ -453,6 +567,7 @@ class App {
     this.put(this.eFolder, this.folderBox);
     this.put(this.eName, c.name);
     for (const k of ["engine", "model", "auth", "persona", "proxy", "tools", "mcp"]) this.put(this.cb[k].root, c[k], "short");
+    this.put(this.tuneNote, c.mcp); // beside the mcp combo; hidden on Claude profiles, so the combo keeps the cell
     for (const [k, , sentence] of SENTENCES) {
       const ch = this.checks[k], old = ch.txt.textContent || "";
       this.put(ch.root, c[k]);
@@ -460,6 +575,7 @@ class App {
       this.undo.push(() => { ch.text = old; });
     }
     this.put(this.eArgs, c.args);
+    this.put(this.bChat, this.fBar);
     this.put(this.bResume, this.fBar);
     this.put(this.bGo, this.fBar);
   }
@@ -474,7 +590,8 @@ class App {
   fit() {
     // Dragged smaller than the pod threshold: fold into the mini pod once the drag ends.
     clearTimeout(this.foldTimer);
-    if (innerWidth < POD_BELOW[0] || innerHeight < POD_BELOW[1]) this.foldTimer = window.setTimeout(() => this.foldWhenLetGo(), 350);
+    // docked, a column never turns into the pod (SPEC-one-window 5.5)
+    if (!this.docked && (innerWidth < POD_BELOW[0] || innerHeight < POD_BELOW[1])) this.foldTimer = window.setTimeout(() => this.foldWhenLetGo(), 350);
     const size = this.sizeFor(), keyed = performance.now() < this.targetUntil;
     if (size === this.size || (keyed && size !== this.target)) return;
     if (keyed && !this.settings?.isOpen) this.push(this.view(), RANK[size] > RANK[this.size] ? 1 : -1, () => this.layout(size));
@@ -496,6 +613,7 @@ class App {
       this.sessTimer = window.setInterval(() => this.drawSessions(), 1000);
     } else if (size === "medium") this.placeForm();
     this.wrapTexts();
+    requestAnimationFrame(() => this.showFolderEnd());
   }
 
   /** The view on screen: settings, or the launcher's layout for the size. */
@@ -618,6 +736,18 @@ class App {
     }));
   }
 
+  /** Small cuts a long folder from the left (`…/my-project` shows), not the right. */
+  showFolderEnd() {
+    if (this.size === "small" && document.activeElement !== this.eFolder) this.eFolder.scrollLeft = this.eFolder.scrollWidth;
+  }
+
+  paintWhere() {
+    const folder = this.eFolder.value.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || this.eFolder.value;
+    const prof = this.names[this.lb.sel] ?? "";
+    this.where.textContent = [folder, prof, prof ? this.cb.engine?.value : ""].filter(Boolean).join(" · ");
+    this.where.title = this.eFolder.value;
+  }
+
   paintModes() { this.radios.forEach((rb, i) => rb.set(MODES[i][0] === this.mode)); this.paintForm(); }
 
   wrapTexts() {
@@ -635,6 +765,12 @@ class App {
         this.opening.skip();
         return;
       }
+      // docked: Alt+1 full, Alt+2 beside (at home they resize the window)
+      if (this.docked && e.altKey && !e.ctrlKey && (e.code === "Digit1" || e.code === "Digit2")) {
+        e.preventDefault();
+        invoke("panel", { want: e.code === "Digit1" ? "full" : "beside" });
+        return;
+      }
       if (this.settings.isOpen) { // the launcher's keys stay with the launcher
         if (e.key === "Escape") { e.preventDefault(); this.closeSettings(); }
         else if (e.key === "Enter" && document.activeElement instanceof HTMLButtonElement) { e.preventDefault(); document.activeElement.click(); }
@@ -642,7 +778,11 @@ class App {
       }
       if (e.key === "Enter" && e.ctrlKey) { e.preventDefault(); this.go(false); }
       else if (e.key === "Enter") this.onReturn(e);
-      else if (e.key === "Escape") this.clearMsg();
+      else if (e.key === "Escape") {
+        // one layer back: a popup closes itself, then the message, then (docked) back to the session
+        if (document.querySelector(".popdown, .menu")) return;
+        if (this.docked && !this.msgText) this.leave(); else this.clearMsg();
+      }
       else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === "o") { e.preventDefault(); this.pickFolder(); }
       else if (e.ctrlKey && !e.shiftKey && !e.altKey && e.key === "r") { e.preventDefault(); this.go(true); }
       else if (e.altKey && !e.ctrlKey && (e.code === "Digit1" || e.code === "Digit2")) {
@@ -744,7 +884,7 @@ class App {
 
   setVar(key: string, value: string) {
     if (key === "auths") this.cb.auth.values = JSON.parse(value);
-    else if (key === "folder") { this.eFolder.value = value; }
+    else if (key === "folder") { this.eFolder.value = value; this.showFolderEnd(); this.paintWhere(); }
     else if (key === "name") this.eName.value = value;
     else if (key === "persona_set") { this.cb.persona.value = value; this.apply(); }
     else if (this.cb[key]) this.cb[key].value = value;
@@ -763,11 +903,17 @@ class App {
       this.cb[k].setReadonly(k !== "tools");
     }
     for (const k of ["safe", "chrome", "connectors"]) this.checks[k].setDisabled(r.disabled[k]);
-    this.bResume.classList.toggle("dim", r.codex);
+    for (const k of ["tools", "mcp"]) this.cb[k].root.title = r.disabled[k] ? "Claude only" : "";
+    for (const k of ["safe", "chrome", "connectors"]) this.checks[k].root.title = r.disabled[k] ? "Claude only" : "";
+    this.tuneNote.style.display = r.codex ? "" : "none";
+    this.bGo.classList.toggle("off", !r.ready); // SPEC-one-look 1.5: the disabled look while not ready
+    this.paintWhere();
     this.statusDot.style.color = r.ready ? C.emerald : C.oxide;
     this.statusText.textContent = r.status;
     this.previewText = r.preview;
-    this.preview.style.color = r.ready ? C.text3 : C.oxide;    this.wrapTexts();
+    this.preview.style.color = r.ready ? C.text3 : C.oxide;
+    this.bFix.style.display = !r.ready && r.preview.includes("codex login") ? "" : "none";
+    this.wrapTexts();
   }
 
   vars() {
@@ -785,6 +931,63 @@ class App {
   select(name: string) { return this.call("select", { name, typed: this.eName.value }); }
   rename() { return this.call("rename", { typed: this.eName.value }); }
   action(name: string) { return this.call("action", { name }); }
+
+  tunePop: { close: () => void } | null = null;
+  /** The tune popover (SPEC-unified-interface Milestone 2C): the selected profile's effort, MCP servers and
+   *  plugins. Each click saves, like the form's fields; a chat can still change them for its own turns. */
+  async openTune(anchor: HTMLElement) {
+    if (this.tunePop) { this.tunePop.close(); return; }
+    closePopups();
+    const t = await invoke<Tuning>("profile_tuning");
+    const own = { effort: t.own.effort ?? "", off: [...(t.own.mcp_off ?? [])], plugins: { ...(t.own.plugins ?? {}) } };
+    const save = (changes: Record<string, unknown>) => void this.call("profile_tune", { changes });
+    const pop = el("div", "menu tunepop");
+    const group = (title: string, checks: Check[], empty: string) => {
+      const box = el("div", "tunerow");
+      box.append(...checks.map((c) => c.root));
+      if (!checks.length) box.append(label(empty, "text3", "label"));
+      pop.append(label(title, "text3", "label"), box);
+    };
+    const efforts = ["", ...t.efforts].map((v) => {
+      const c = new Check(v || "default", true);
+      c.set(v === own.effort);
+      c.onClick = () => { efforts.forEach((r) => r.set(r === c)); save({ effort: v }); };
+      return c;
+    });
+    group("effort", efforts, "");
+    group("mcp servers", t.mcp.map((name) => {
+      const c = new Check(name);
+      c.set(!own.off.includes(name));
+      c.onClick = () => {
+        c.set(!c.on);
+        own.off = c.on ? own.off.filter((n) => n !== name) : [...own.off, name];
+        save({ mcp_off: own.off });
+      };
+      return c;
+    }), "none found");
+    group("plugins", t.plugins.map(({ id, on }) => {
+      const c = new Check(id);
+      c.set(on);
+      c.onClick = () => { c.set(!c.on); own.plugins[id] = c.on; save({ plugins: own.plugins }); };
+      return c;
+    }), "none found");
+    const r = anchor.getBoundingClientRect();
+    pop.style.top = r.bottom + 2 + "px";
+    pop.style.right = Math.max(8, window.innerWidth - r.right) + "px";
+    pop.style.maxHeight = Math.max(120, window.innerHeight - r.bottom - 12) + "px";
+    document.body.append(pop);
+    const outside = (e: MouseEvent) => { if (!pop.contains(e.target as Node) && !anchor.contains(e.target as Node)) close(); };
+    const keys = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); close(); } };
+    const close = () => {
+      pop.remove();
+      window.removeEventListener("mousedown", outside, true);
+      window.removeEventListener("keydown", keys, true);
+      this.tunePop = null;
+    };
+    window.addEventListener("mousedown", outside, true);
+    window.addEventListener("keydown", keys, true);
+    this.tunePop = { close };
+  }
   openPersona() { return this.call("open_persona", { persona: this.cb.persona.value }); }
 
   async pickFolder() {
@@ -850,6 +1053,15 @@ class App {
 
   calm() { this.gate?.calm(); this.emblem?.calm(); }
 
+  /** SPEC-one-look 4.2: the ghost drops to half its strength over the form, so the fields stay readable. */
+  ghostMask() {
+    const panel = document.querySelector<HTMLElement>(this.size === "medium" ? "#medium .fgrid" : "#main .fpanel");
+    if (!panel) return;
+    const r = panel.getBoundingClientRect(), w = innerWidth, h = innerHeight;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><path fill-rule="evenodd" fill="#fff" d="M0 0H${w}V${h}H0Z M${r.left} ${r.top}H${r.right}V${r.bottom}H${r.left}Z"/><rect x="${r.left}" y="${r.top}" width="${r.width}" height="${r.height}" fill="#fff" fill-opacity=".5"/></svg>`;
+    document.body.style.setProperty("--ghostmask", `url("data:image/svg+xml,${encodeURIComponent(svg)}")`);
+  }
+
   // ------------------------------------------------------------------ gate ---
   buildGate(meta: Meta | null, emblem: Meta | null) {
     const host = { say: (t: string, k: string, s?: number) => this.say(t, k, [], s), focusList: () => this.listFocus().focus() };
@@ -857,7 +1069,7 @@ class App {
     if (emblem) this.emblem = new Gate(emblem, host, "emblem");
     // the ghost is this size's opening; small has none, so there the buttons just open the session
     for (const [key, b] of [["go", this.bGo], ["resume", this.bResume]] as const) {
-      const on = (k: string) => this.opener()?.hover(k, true);
+      const on = (k: string) => { this.ghostMask(); this.opener()?.hover(k, true); };
       const off = (k: string) => { this.gate?.hover(k, false); this.emblem?.hover(k, false); };
       b.addEventListener("mouseenter", () => on(key + ":ptr"));
       b.addEventListener("mouseleave", () => off(key + ":ptr"));
@@ -872,9 +1084,13 @@ class App {
 async function start() {
   setMetrics(await invoke("metrics"));
   const app = new App();
-  const init = await invoke<{ ops: Op[]; folder: string; gate: Meta | null; emblem: Meta | null; test: boolean; main_min: [number, number] }>("init").catch(() => null);
+  const init = await invoke<{ ops: Op[]; folder: string; gate: Meta | null; emblem: Meta | null; test: boolean; main_min: [number, number]; title: string }>("init").catch(() => null);
   if (!init) return;
   app.mainMin = init.main_min;
+  app.barTitle.textContent = init.title;
+  document.title = init.title;
+  listen<{ mode: "beside" | "full" | null; session: string }>("panel", (e) => app.dock(e.payload.mode, e.payload.session));
+  listen("panel-leave", () => app.leave());
   app.fit();
   app.eFolder.value = init.folder;
   app.buildGate(init.gate, init.emblem);
@@ -933,6 +1149,11 @@ function testHooks(app: App) {
     combos: () => [...app.mCombos.children].map((r) => r.textContent),
     rigs: () => [...app.mRigs.children].map((r) => r.textContent),
     settings: () => ({ open: app.settings.isOpen, text: app.settings.root.innerText }),
+    docked: () => app.docked,
+    bar: () => (document.getElementById("lbar") as HTMLElement).innerText,
+    folder: () => app.eFolder.value,
+    setFolderText: (t: string) => { app.eFolder.value = t; },
+    focused: () => document.hasFocus() && document.activeElement !== document.body,
   };
 }
 

@@ -1,12 +1,7 @@
+@import "./tokens.css";
 /* The mini pod (vision\SPEC-vision-v1.md §1, "The mini pod's shape"): one capsule, fully round ends,
    surface-1 with a 1 px hairline edge, and the only rounded shape in it. Inside, a dock: slots split by
    hairlines, no chips or bubbles. The window is transparent outside the capsule. */
-:root {
-  --canvas: #040404; --s1: #0E0D0C; --s2: #171513; --line: #2A2724;
-  --text: #D6D0C8; --text2: #9F978E; --text3: #746F69; --emerald: #00C463; --oxide: #C0584B;
-  --mono: "Geist Mono", "JetBrains Mono", "Cascadia Mono", Consolas, Menlo, monospace;
-  color-scheme: dark;
-}
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
 body { font: 12px/16px var(--mono); color: var(--text); -webkit-user-select: none; user-select: none; cursor: default; }

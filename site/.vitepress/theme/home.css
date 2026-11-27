@@ -44,6 +44,9 @@
 .rc-home .hero p.lead { font-size: 17px; color: var(--text2); max-width: 30em; }
 .rc-home .hero .ctas { margin: 30px 0 18px; }
 .rc-home .hero .hint { font: 12px var(--mono); color: var(--text2); }
+.rc-home .hero .news { display: block; width: fit-content; margin: -6px 0 14px; font: 12px var(--mono); color: var(--text);
+  border-bottom: 1px solid var(--line2); transition: border-color var(--fast) var(--ease); }
+.rc-home .hero .news:hover { border-color: var(--linework); }
 .rc-home .hero .copy { will-change: opacity, transform; }
 .rc-home .scrollcue { color: var(--text3); transition: opacity var(--fast) var(--ease); }
 .rc-home .hero.moved .scrollcue { opacity: 0; }
@@ -89,6 +92,16 @@
 .rc-home .tele b { font-weight: 400; color: var(--text); }
 .rc-home .tele .lim { transition: color var(--fast) var(--ease); }
 .rc-home .tele .lim.warn, .rc-home .tele .lim.warn b { color: var(--bronze); }
+.rc-home .frame.wide { margin-top: 36px; }
+.rc-home .after { margin-top: 22px; }
+.rc-home .mono.after a { border-bottom: 1px solid var(--line2); transition: border-color var(--fast) var(--ease), color var(--fast) var(--ease); }
+.rc-home .mono.after a:hover { color: var(--text); border-color: var(--linework); }
+/* the four sizes: each grows by its own width, so they stay to scale with each other */
+.rc-home .sizes { display: flex; align-items: flex-end; gap: 28px; margin-top: 36px; }
+.rc-home .sizes figure { flex: 1 1 0; min-width: 0; }
+.rc-home .sizes img { width: 100%; border: 1px solid var(--line); }
+.rc-home .sizes figcaption { margin-top: 10px; font-size: 13px; color: var(--text2); }
+.rc-home .sizes figcaption b { font-weight: 500; color: var(--text); margin-right: 6px; }
 .rc-home .install { background: var(--s1); border: 1px solid var(--line); padding: 20px 22px; font: 13px/1.9 var(--mono); color: var(--text2); overflow-x: auto; }
 .rc-home .install > div { white-space: nowrap; }
 .rc-home .install .p { color: var(--text3); user-select: none; }
@@ -137,12 +150,22 @@
 @media (max-width: 900px) {
   .rc-home .wrap { padding: 0 16px; }
   .rc-home .hero .wrap, .rc-home .split { grid-template-columns: 1fr; min-height: 0; }
-  .rc-home .hero h1 { font-size: 34px; }
+  /* phone: the art first, so the hand and the gate play in the first screen; the copy tight under it */
+  .rc-home .hero .wrap { gap: 22px; padding-top: 16px; padding-bottom: 40px; }
+  .rc-home .hero .gate { order: -1; }
+  .rc-home .hero h1 { font-size: clamp(26px, 7.6vw, 34px); margin: 10px 0 10px; }
+  .rc-home .hero h1 br { display: none; }
+  .rc-home .hero .copy > .tag { display: none; } /* the art's own tag says ready / opening right above */
+  .rc-home .hero p.lead { font-size: 16px; }
+  .rc-home .hero .ctas { margin: 20px 0 14px; }
   .rc-home .steps { grid-template-columns: 1fr; }
   .rc-home .steps > div + div { padding-left: 0; border-top: 1px solid var(--line); margin-top: 22px; }
   .rc-home .steps > div + div::before { display: none; }
   .rc-home footer .wrap { flex-wrap: wrap; }
-  .rc-home footer .links { margin-left: 0; }
+  .rc-home footer .links { margin-left: 0; flex-wrap: wrap; gap: 10px 22px; }
+  /* two by two, still to scale: main + medium (750 px) fill the first row, small + pod keep the same scale */
+  .rc-home .sizes { flex-wrap: wrap; gap: 24px 16px; }
+  .rc-home .sizes figure { flex-basis: calc((100% - 16px) * var(--w) / 750); flex-grow: 0 !important; }
 }
 @media (prefers-reduced-motion: reduce) {
   .rc-home.js [data-reveal]:not(.in) [style*="--i"] { opacity: 1; transform: none; }

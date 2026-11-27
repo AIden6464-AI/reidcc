@@ -10,6 +10,7 @@ When a newer release is out, the footer shows `update <version> · install`. Cli
 
 - **settings → updates → check for updates** checks right away. Reidcc also checks every 6 hours.
 - In a terminal: `reid --update`.
+- What each release changed: the [changelog](/changelog).
 
 Updates are signed, and Reidcc checks the signature before it installs anything.
 

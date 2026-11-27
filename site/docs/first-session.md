@@ -24,4 +24,5 @@ The command it will run is shown under the profile before you press it, so nothi
 
 - `/reid` inside Claude Code ends the session and returns to Reidcc with the conversation kept.
 - **resume** (`Ctrl+R`) picks the last Claude session up again, with any profile.
+- **open chat**, beside resume, opens one composer over Claude Code and Codex in the same folder and profile ([chat](./chat)).
 - `/exit` leaves as usual.

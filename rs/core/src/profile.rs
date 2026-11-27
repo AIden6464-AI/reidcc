@@ -53,6 +53,10 @@ pub fn summary(ctx: &Ctx, cfg: &Obj, name: &str) -> String {
             bits.push(words.into());
         }
     }
+    let claude_only = engines::claude_only_on(p);
+    if cx && !claude_only.is_empty() {
+        bits.push(format!("won't start: {} {} Claude only", claude_only.join(", "), if claude_only.len() > 1 { "are" } else { "is" }));
+    }
     bits.join(" · ")
 }
 

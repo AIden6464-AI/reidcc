@@ -6,12 +6,18 @@
 
 ```text
 reid                      open the Reidcc TUI (pick, edit, open gate, resume)
-reid <profile> [args]     start a session with that profile; extra args go to claude
-reid -c / reid "do X"     anything that isn't a profile goes to claude (default profile)
+reid <profile> [args]     start a session with that profile; extra args go to its engine
+reid -c / reid "do X"     anything that isn't a profile goes to the default profile's engine
+reid --resume [profile]   continue the last session (that profile, or the one it had)
+reid --resume <profile> --id ID   continue that session, in this folder
 reid -l                   list profiles
+reid --chat [profile]     chat with Claude Code and Codex in this folder, in the terminal
+reid --stream <profile> [--read-only] [--resume ID] [--with JSON] [--switch-from P] PROMPT
+                          one headless turn, its events as JSON lines
 reid --version            show the Reidcc version
 reid --update             install the latest Reidcc (installed copies only)
 reid --dry [profile]      print what would run, don't run it
+reid --dry -v [profile]   ... and the prompt and settings files it adds
 reid --edit / --mem       open reid.json / the memory file
 reid --tui / --gui        force the TUI or the window
 ```
@@ -20,8 +26,17 @@ reid --tui / --gui        force the TUI or the window
 
 | Command | Does |
 |---|---|
-| `/reid` | Ends the session and returns to the TUI. The conversation is kept: press `r` there to resume it, with any profile |
+| `/reid` | Ends the session and returns to Reidcc: the TUI in a terminal, the launcher in a session window. The conversation is kept: press `r` there to resume it, with any profile |
 | `/exit` | Leaves as usual, back to your shell |
+
+## Inside Codex
+
+Codex has no `/reid`, so its own exit is the way back.
+
+| Command | Does |
+|---|---|
+| `/quit` (or a clean exit) | Ends the session and returns to Reidcc, like `/reid`: the TUI shows `Back from Codex. r resumes it.`, a session window turns into the launcher at once. Reidcc found the Codex thread while it ran (or, after a very quick exit such as Ctrl+C twice right after sending, from the one thread file it made in the folder), so `r` / **resume** reopens that exact thread |
+| A non-zero exit | Stays on screen: `Codex ended with code <n>. See the output above.` |
 
 ## Examples
 
@@ -29,4 +44,10 @@ reid --tui / --gui        force the TUI or the window
 cd ~/projects/kiln
 reid main            # start main in this folder
 reid --dry review    # show the exact command review would run
+reid --dry -v review # ... and the persona / memory prompt and settings it adds
+reid --dry --resume  # what reid --resume would run, and in which folder
+reid --resume main --verbose   # continue the last session with main; extra args go along
 ```
+
+A dry run of a Codex profile writes its prompt file (`codex\prompts\<profile>.md`) and asks Codex for its
+sign-in, because the prompt file's size depends on Codex's own prompt. Claude dry runs write nothing that stays.

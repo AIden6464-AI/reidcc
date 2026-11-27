@@ -125,6 +125,60 @@ pub fn running_in(dir: &str, names: &[&str]) -> usize {
     n
 }
 
+/// Is `pid` the process `root` or one started under it (cmd → node → codex.exe)?
+pub fn descends_from(pid: u32, root: u32) -> bool {
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::*;
+    let mut parent = std::collections::HashMap::new();
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if snap as isize == -1 {
+            return false;
+        }
+        let mut e: PROCESSENTRY32W = std::mem::zeroed();
+        e.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+        let mut more = Process32FirstW(snap, &mut e) != 0;
+        while more {
+            parent.insert(e.th32ProcessID, e.th32ParentProcessID);
+            more = Process32NextW(snap, &mut e) != 0;
+        }
+        CloseHandle(snap);
+    }
+    let mut p = pid;
+    for _ in 0..16 { // a reused parent pid can make a loop
+        if p == root {
+            return true;
+        }
+        match parent.get(&p) {
+            Some(&q) if q != 0 && q != p => p = q,
+            _ => return false,
+        }
+    }
+    false
+}
+
+/// The processes that have `path` open, by Windows' Restart Manager.
+pub fn file_holders(path: &str) -> Vec<u32> {
+    use windows_sys::Win32::System::RestartManager::*;
+    let mut out = vec![];
+    unsafe {
+        let (mut h, mut key) = (0u32, [0u16; CCH_RM_SESSION_KEY as usize + 1]);
+        if RmStartSession(&mut h, 0, key.as_mut_ptr()) != 0 {
+            return out;
+        }
+        let p = wide(path);
+        let files = [p.as_ptr()];
+        if RmRegisterResources(h, 1, files.as_ptr(), 0, std::ptr::null(), 0, std::ptr::null()) == 0 {
+            let mut infos: [RM_PROCESS_INFO; 8] = std::mem::zeroed();
+            let (mut need, mut n, mut why) = (0u32, infos.len() as u32, 0u32);
+            if RmGetList(h, &mut need, &mut n, infos.as_mut_ptr(), &mut why) == 0 {
+                out = infos[..n as usize].iter().map(|i| i.Process.dwProcessId).collect();
+            }
+        }
+        RmEndSession(h);
+    }
+    out
+}
+
 pub fn local_time() -> (u16, u16, u16, u16, u16, u16) {
     use windows_sys::Win32::System::SystemInformation::GetLocalTime;
     let mut t = unsafe { std::mem::zeroed() };
