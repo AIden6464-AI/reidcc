@@ -38,6 +38,9 @@ pub enum Event {
     Started { session_id: String },
     TextDelta { text: String },
     ToolCall { name: String, summary: String },
+    /// The end of a tool's output (`transcript::tool_tail`), for the chat's transcript only: `run` keeps it
+    /// out of the stream. `tool` is its call's place among the turn's tool calls.
+    ToolOutput { tool: usize, text: String },
     /// None means the engine didn't say: shown as unknown, never as 0%.
     Usage { context_pct: Option<u8>, cost_usd: Option<f64>, tokens: Option<Tokens> },
     Done { exit_code: i32 },
@@ -84,6 +87,7 @@ impl Event {
             Event::Started { session_id } => json!({"type": "started", "session_id": session_id}),
             Event::TextDelta { text } => json!({"type": "text_delta", "text": text}),
             Event::ToolCall { name, summary } => json!({"type": "tool_call", "name": name, "summary": summary}),
+            Event::ToolOutput { tool, text } => json!({"type": "tool_output", "tool": tool, "text": text}),
             Event::Usage { context_pct, cost_usd, tokens } => json!({"type": "usage", "context_pct": context_pct, "cost_usd": cost_usd,
                 "tokens": tokens.as_ref().map(Tokens::to_json)}),
             Event::Done { exit_code } => json!({"type": "done", "exit_code": exit_code}),
@@ -187,12 +191,15 @@ pub struct Parser {
     /// OpenCode: the turn's token and cost totals so far (each step_finish is one request)
     steps: (Tokens, f64),
     started: bool,
+    /// the ids of the turn's tool calls, in order: an output finds its call by id (parallel calls can
+    /// finish in any order)
+    tools: Vec<String>,
 }
 
 impl Parser {
     pub fn new(engine: &str, folder: &str) -> Parser {
         Parser { engine: engine.into(), folder: folder.into(), context_tokens: None,
-                 steps: (Tokens { input: 0, cached: Some(0), output: 0 }, 0.0), started: false }
+                 steps: (Tokens { input: 0, cached: Some(0), output: 0 }, 0.0), started: false, tools: vec![] }
     }
 
     pub fn line(&mut self, line: &str) -> Vec<Event> {
@@ -200,7 +207,7 @@ impl Parser {
         let mut events = match self.engine.as_str() {
             "claude" => self.claude_line(&json),
             "opencode" => self.opencode_line(&json),
-            _ => codex_line(&json),
+            _ => codex_line(&json, &mut self.tools),
         };
         for event in &mut events {
             if let Event::ToolCall { summary, .. } = event {
@@ -223,8 +230,19 @@ impl Parser {
                     self.context_tokens = Some(tokens("input_tokens") + tokens("cache_creation_input_tokens") + tokens("cache_read_input_tokens"));
                 }
                 json["message"]["content"].as_array().into_iter().flatten().filter(|block| block["type"] == "tool_use")
-                    .map(|block| Event::ToolCall { name: text_of(&block["name"]), summary: summary(&block["input"]) }).collect()
+                    .map(|block| {
+                        self.tools.push(text_of(&block["id"]));
+                        Event::ToolCall { name: text_of(&block["name"]), summary: summary(&block["input"]) }
+                    }).collect()
             }
+            "user" => json["message"]["content"].as_array().into_iter().flatten().filter(|block| block["type"] == "tool_result")
+                .filter_map(|block| {
+                    let content = &block["content"]; // a string, or text blocks
+                    let text = content.as_str().map(String::from).unwrap_or_else(|| {
+                        content.as_array().into_iter().flatten().map(|b| text_of(&b["text"])).collect::<Vec<_>>().join("\n")
+                    });
+                    tool_output(&self.tools, &text_of(&block["tool_use_id"]), &text)
+                }).collect(),
             "result" => {
                 let window = json["modelUsage"].as_object().into_iter().flat_map(|models| models.values())
                     .filter_map(|model| model["contextWindow"].as_u64()).max().filter(|size| *size > 0);
@@ -253,7 +271,15 @@ impl Parser {
                 vec![Event::Started { session_id: text_of(&json["sessionID"]) }]
             }
             "text" => vec![Event::TextDelta { text: text_of(&part["text"]) }],
-            "tool_use" => vec![Event::ToolCall { name: text_of(&part["tool"]), summary: summary(&part["state"]["input"]) }],
+            "tool_use" => {
+                let state = &part["state"];
+                self.tools.push(text_of(&part["id"]));
+                let output = [&state["output"], &state["error"]].into_iter().map(text_of).find(|t| !t.is_empty()).unwrap_or_default();
+                let text = transcript::tool_tail(&output);
+                let mut out = vec![Event::ToolCall { name: text_of(&part["tool"]), summary: summary(&state["input"]) }];
+                out.extend((!text.is_empty()).then(|| Event::ToolOutput { tool: self.tools.len() - 1, text }));
+                out
+            }
             "step_finish" => {
                 let t = &part["tokens"];
                 if !t.is_object() {
@@ -280,9 +306,20 @@ impl Parser {
     }
 }
 
-fn codex_line(json: &Value) -> Vec<Event> {
+/// The end of tool call `id`'s output as an event; None for a call this turn didn't make, or no output.
+fn tool_output(tools: &[String], id: &str, output: &str) -> Option<Event> {
+    let tool = tools.iter().position(|t| t == id).filter(|_| !id.is_empty())?;
+    let text = transcript::tool_tail(output);
+    (!text.is_empty()).then_some(Event::ToolOutput { tool, text })
+}
+
+fn codex_line(json: &Value, tools: &mut Vec<String>) -> Vec<Event> {
     let item = &json["item"];
-    let event = match (json["type"].as_str().unwrap_or_default(), item["type"].as_str().unwrap_or_default()) {
+    let kind = (json["type"].as_str().unwrap_or_default(), item["type"].as_str().unwrap_or_default());
+    if matches!(kind, ("item.started", "command_execution" | "file_change" | "mcp_tool_call") | ("item.completed", "web_search")) {
+        tools.push(text_of(&item["id"])); // every tool call, so an output's place counts right
+    }
+    let event = match kind {
         ("thread.started", _) => Event::Started { session_id: text_of(&json["thread_id"]) },
         ("item.completed", "agent_message") => Event::TextDelta { text: text_of(&item["text"]) },
         ("item.started", "command_execution") => Event::ToolCall {
@@ -299,6 +336,7 @@ fn codex_line(json: &Value) -> Vec<Event> {
             summary: summary(&item["arguments"]),
         },
         ("item.completed", "web_search") => Event::ToolCall { name: "web_search".into(), summary: text_of(&item["query"]) },
+        ("item.completed", "command_execution") => return tool_output(tools, &text_of(&item["id"]), &text_of(&item["aggregated_output"])).into_iter().collect(),
         // exec --json has token counts (the thread's total so far), but no context window or cost
         ("turn.completed", _) => Event::Usage { context_pct: None, cost_usd: None, tokens: Tokens::from_codex(&json["usage"]) },
         ("turn.failed", _) => Event::Error(EngineError::Engine { message: text_of(&json["error"]["message"]) }),
@@ -355,7 +393,9 @@ pub fn run(ctx: &Ctx, cfg: &Obj, turn: &Turn, emit: &mut dyn FnMut(&Event)) -> R
             save(&[transcript::ask_record(turn.profile, engine, model, turn.prompt)], emit);
         }
         said.push(e);
-        emit(e)
+        if !matches!(e, Event::ToolOutput { .. }) {
+            emit(e)
+        }
     });
     launch.remove_temps();
     if said.ran {
@@ -839,6 +879,7 @@ mod tests {
         assert_eq!(ev, vec![
             Event::Started { session_id: "ses_ab".into() },
             Event::ToolCall { name: "read".into(), summary: "a.txt".into() },
+            Event::ToolOutput { tool: 0, text: "x".into() },
             Event::ToolCall { name: "edit".into(), summary: "b.txt".into() },
             Event::Usage { context_pct: None, cost_usd: Some(0.25), tokens: Some(Tokens { input: 11271, cached: Some(1664), output: 40 }) },
             Event::TextDelta { text: "Done.".into() },
@@ -847,6 +888,35 @@ mod tests {
             Event::Error(EngineError::Engine { message: "Variant unavailable".into() }),
         ]);
         assert!(own_guards("--agent=build", "opencode") && own_guards("--auto", "opencode") && !own_guards("--auto", "claude"));
+    }
+
+    #[test]
+    fn tool_output_finds_its_call() {
+        // Claude: two calls in one message, results back in the other order (real shape, 2026-11-27)
+        let ev = run("claude", &[
+            r#"{"type":"assistant","message":{"content":[{"type":"tool_use","id":"tu_a","name":"Bash","input":{"command":"npm test"}},{"type":"tool_use","id":"tu_b","name":"Read","input":{"file_path":"C:\\w\\a.txt"}}]}}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"tool_use_id":"tu_b","type":"tool_result","content":[{"type":"text","text":"line one"}]}]}}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"tool_use_id":"tu_a","type":"tool_result","content":"FAIL x.test\n1 failed","is_error":true}]}}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"tool_use_id":"tu_gone","type":"tool_result","content":"not this turn's"}]}}"#,
+        ]);
+        assert_eq!(ev[2..], [Event::ToolOutput { tool: 1, text: "line one".into() }, Event::ToolOutput { tool: 0, text: "FAIL x.test\n1 failed".into() }]);
+        // Codex: the output on item.completed, a profile's escapes gone; an empty output is no event
+        let ev = run("codex", &[
+            r#"{"type":"item.completed","item":{"id":"w","type":"web_search","query":"rust"}}"#,
+            r#"{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"cargo test","aggregated_output":"","status":"in_progress"}}"#,
+            r#"{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"cargo test","aggregated_output":"\u001bP0;0;0q\"1;1#0~-\u001b\\\u001b[100m   \u001b[m\r\ntest result: FAILED\r\n","exit_code":101,"status":"completed"}}"#,
+            r#"{"type":"item.started","item":{"id":"item_3","type":"command_execution","command":"true"}}"#,
+            r#"{"type":"item.completed","item":{"id":"item_3","type":"command_execution","command":"true","aggregated_output":"","exit_code":0}}"#,
+        ]);
+        assert_eq!(ev, vec![
+            Event::ToolCall { name: "web_search".into(), summary: "rust".into() },
+            Event::ToolCall { name: "shell".into(), summary: "cargo test".into() },
+            Event::ToolOutput { tool: 1, text: "test result: FAILED".into() },
+            Event::ToolCall { name: "shell".into(), summary: "true".into() },
+        ]);
+        // OpenCode: a failed tool keeps its error
+        let ev = run("opencode", &[r#"{"type":"tool_use","part":{"id":"c1","tool":"shell","state":{"status":"error","input":{"command":"x"},"error":"not found"}}}"#]);
+        assert_eq!(ev[1], Event::ToolOutput { tool: 0, text: "not found".into() });
     }
 
     #[test]

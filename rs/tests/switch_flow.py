@@ -16,6 +16,8 @@ whole conversation it never saw.
   9  (debug build) an engine that won't resume the carried session: the turn runs once more as a new
      session with the conversation as text, the chat only ever sees the new id, and the next turn
      resumes it
+ 10  a tool's output goes along: Codex runs a command whose output is random and only says "done"; after a
+     switch Claude names that output (the end of each tool's output is in the transcript, never in --stream)
 
 Reidcc runs on a temp REIDCC_HOME; the engine sessions it makes are deleted afterwards.
 
@@ -238,6 +240,20 @@ try:
                 evs, rc, err = turn(dst, "Say the codeword again, nothing else.", "--resume", started[0], chat_id=dead)
                 check(f"{name}: the next turn resumes the new session", [e["session_id"] for e in of(evs, "started")] in ([started[0]], [])
                       and not of(evs, "note") and "DEADEND-12" in said_in(evs) and rc == 0, (evs[:2], said_in(evs), err[-300:]))
+    # 10 the end of a tool's output is carried
+    tail_chat = str(uuid.uuid4())
+    evs, rc, err = turn("cx", "Run this exact shell command once: python -c \"import secrets;print('TAIL-'+secrets.token_hex(4).upper())\"\n"
+                        "Don't repeat what it prints. Reply with just: done.", chat_id=tail_chat)
+    recs = [json.loads(l) for l in open(os.path.join(home, "chats", tail_chat + ".jsonl"), encoding="utf-8")]
+    outputs = [p.get("output", "") for r in recs for p in r.get("parts", []) if p.get("tool")]
+    word = next((w for o in outputs for w in o.split() if w.startswith("TAIL-")), None)
+    check("10 codex ran it; the transcript keeps its output", rc == 0 and of(evs, "tool_call") and word, (outputs, err[-300:]))
+    check("10 its reply didn't repeat it", word and word not in said_in(evs), said_in(evs))
+    tools_out = of(evs, "tool_output")
+    evs, rc, err = turn("cl", "What exactly did the command print? Answer with it only.", "--switch-from", "cx", chat_id=tail_chat)
+    check("10 after a switch, claude knows what it printed", word and word in said_in(evs) and rc == 0
+          and [e["text"] for e in of(evs, "note")] == [carried(1, "claude")], (word, said_in(evs), of(evs, "note"), err[-300:]))
+    check("10 tool output stays out of --stream", not tools_out and not of(evs, "tool_output"))
 finally:
     opencode = shutil.which("opencode")
     claude_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")

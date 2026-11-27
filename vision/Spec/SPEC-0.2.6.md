@@ -157,9 +157,12 @@ built as specced. On top of it:
 
 Where the build differs from the spec:
 - The transcript is written at turn end, only for a turn that ran (a refused one leaves nothing). Records are
-  `{role, profile, engine, model, text}` and `{role:"assistant", …, parts:[{text}|{tool, summary}]}`.
-  shortcut: tool lines only (name and summary), no tool output or exit code; add them to `ToolCall` per engine
-  when a carried turn needs a tool's result.
+  `{role, profile, engine, model, text}` and `{role:"assistant", …, parts:[{text}|{tool, summary, output}]}`.
+  `output` is the end of the tool's output: terminal escapes out (a shell profile's colours and sixel logo
+  reach Codex's output), each line as last redrawn, the last 2 KB cut on a char boundary. It goes along
+  indented under its `[ran in …]` line. No `→ exit 0 · 12 lines`: the end of a failed run shows the failure,
+  and the engines report exit codes three ways. Each engine's output finds its call by id (Claude's
+  parallel calls answer in any order); it's kept out of `--stream`.
 - The native writers live in `transcript.rs` with the transcript, not in `handoff.rs`.
 - The window is per engine, not per model: Claude 200k, Codex 272k, OpenCode 128k (tokens).
 - The fallback covers a session that can't be written, one the engine doesn't list after writing, and one it
@@ -185,7 +188,7 @@ Part 4 at build:
 6. Not checked (cosmetic).
 
 Part 5 at build:
-1-3. `switch_flow` 44/44: every direction, a three-engine chat, 240-message sessions, a transcript over
+1-3. `switch_flow` 48/48: every direction, a three-engine chat, 240-message sessions, a transcript over
    OpenCode's 60% with the gap line.
 4. The write fallback is a unit test (a writer that fails). The resume fallback is end-to-end: `switch_flow`
    part 9 (debug build, `REIDCC_TEST_DEAD_RESUME`) for Claude and Codex.

@@ -17,6 +17,7 @@ Every Reidcc release. Newest first. Everything is beta.
   own and answers from everything said so far, by any engine.
 - Long chats keep the first turn and the newest that fit in 60% of the next engine's window.
 - If an engine won't take the session, or won't resume it, the conversation goes along as text, and the chat says so.
+- Tool calls go along with the end of their output (2 KB), so the next engine sees why a test run failed.
 - Each chat's transcript is kept in Reidcc's `chats\` folder.
 
 ## 0.2.5 beta · 2026-11-27: one chat over Claude Code and Codex

@@ -75,6 +75,11 @@ impl Recorder {
                 _ => self.parts.push(json!({"text": text})),
             },
             Event::ToolCall { name, summary } => self.parts.push(json!({"tool": name, "summary": summary})),
+            Event::ToolOutput { tool, text } => {
+                if let Some(part) = self.parts.iter_mut().filter(|p| p.get("tool").is_some()).nth(*tool) {
+                    part["output"] = json!(text);
+                }
+            }
             _ => {}
         }
     }
@@ -83,6 +88,54 @@ impl Recorder {
     pub fn reply_record(self, profile: &str, engine: &str, model: &str) -> Value {
         record("assistant", profile, engine, model, ("parts", Value::Array(self.parts)))
     }
+}
+
+/// How much of a tool's output the transcript keeps: the end, where the errors and failed tests are.
+pub const TOOL_TAIL: usize = 2048;
+
+/// A tool's output for the transcript: terminal escapes (colours, a shell profile's sixel logo) and control
+/// characters out, each line as it was last redrawn (`\r` progress bars), then its last TOOL_TAIL bytes, cut
+/// on a char boundary.
+pub fn tool_tail(output: &str) -> String {
+    let mut plain = String::new();
+    let mut chars = output.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '\u{1b}' => match chars.next() {
+                Some('[') => {
+                    for c in chars.by_ref() {
+                        if ('@'..='~').contains(&c) {
+                            break; // a CSI ends on its final byte
+                        }
+                    }
+                }
+                Some(']' | 'P' | 'X' | '^' | '_') => {
+                    // a string (OSC, DCS: sixel): up to BEL or ST (ESC \)
+                    while let Some(c) = chars.next() {
+                        if c == '\u{7}' || (c == '\u{1b}' && chars.next_if_eq(&'\\').is_some()) {
+                            break;
+                        }
+                    }
+                }
+                _ => {}
+            },
+            '\n' | '\r' | '\t' => plain.push(c),
+            c if c.is_control() => {}
+            c => plain.push(c),
+        }
+    }
+    let lines: Vec<&str> = plain.split('\n')
+        .map(|line| line.strip_suffix('\r').unwrap_or(line).rsplit('\r').next().unwrap_or_default().trim_end()).collect();
+    let text = lines.join("\n");
+    let text = text.trim();
+    if text.len() <= TOOL_TAIL {
+        return text.to_string();
+    }
+    let mut cut = text.len() - TOOL_TAIL;
+    while !text.is_char_boundary(cut) {
+        cut += 1;
+    }
+    format!("…{}", text[cut..].trim_start())
 }
 
 /// A turn to carry: what was asked, and the reply as text another engine can read.
@@ -106,7 +159,12 @@ pub fn turns(records: &[Value]) -> Vec<Turn> {
                             reply += &format!("\n{}", t.trim());
                             said = true;
                         }
-                        (_, Some(tool)) => reply += &format!("\n[ran in {engine}] {tool}: {}", part["summary"].as_str().unwrap_or_default()),
+                        (_, Some(tool)) => {
+                            reply += &format!("\n[ran in {engine}] {tool}: {}", part["summary"].as_str().unwrap_or_default());
+                            for line in part["output"].as_str().unwrap_or_default().lines() {
+                                reply += &format!("\n    {line}"); // its output's end, indented under it
+                            }
+                        }
                         _ => {}
                     }
                 }
@@ -364,6 +422,7 @@ mod tests {
         let mut rec = Recorder::default();
         for e in [Event::Started { session_id: "s".into() }, Event::TextDelta { text: "Look".into() },
                   Event::TextDelta { text: "ing.".into() }, Event::ToolCall { name: "shell".into(), summary: "npm test".into() },
+                  Event::ToolOutput { tool: 0, text: "12 passed\n0 failed".into() }, Event::ToolOutput { tool: 5, text: "no such call".into() },
                   Event::TextDelta { text: "Passes.".into() }] {
             rec.push(&e);
         }
@@ -376,7 +435,7 @@ mod tests {
     #[test]
     fn transcript_turns_label_the_source_and_keep_tools_as_text() {
         assert_eq!(turns(&records()), vec![
-            turn("run the tests", "[codex · gpt-5.5]\nLooking.\n[ran in codex] shell: npm test\nPasses."),
+            turn("run the tests", "[codex · gpt-5.5]\nLooking.\n[ran in codex] shell: npm test\n    12 passed\n    0 failed\nPasses."),
             turn("and now?", "[claude]\n(no reply text)"),
             turn("stopped one", "(no reply: the turn was stopped)"),
         ]);
@@ -384,6 +443,24 @@ mod tests {
         let odd = [json!({"role": "assistant", "engine": "opencode", "model": "", "parts": [{"text": "  "}, {"tool": "read"}]}),
                    json!({"role": "system", "text": "ignored"})];
         assert_eq!(turns(&odd), vec![turn("", "[opencode]\n[ran in opencode] read: \n(no reply text)")]);
+    }
+
+    #[test]
+    fn tool_output_keeps_its_plain_end() {
+        assert_eq!(tool_tail(""), "");
+        assert_eq!(tool_tail("\u{1b}[31mred\u{1b}[0m ok\r\n"), "red ok");
+        assert_eq!(tool_tail("\u{1b}]0;title\u{7}a\u{1b}P0;0q\"1#0~-\u{1b}\\b\u{0}\u{8}"), "ab");
+        assert_eq!(tool_tail("10%\r50%\r100%\ndone"), "100%\ndone"); // a progress bar as last drawn
+        // long: the end, cut on a char boundary, whatever the bytes around the cut are
+        for pad in 0..4 {
+            let out = format!("{}{}{}", "x".repeat(pad), "─é".repeat(1000), "\nFAILED: 1 test");
+            let tail = tool_tail(&out);
+            assert!(tail.starts_with('…') && tail.ends_with("FAILED: 1 test"), "{pad}");
+            assert!(tail.len() <= TOOL_TAIL + '…'.len_utf8() && tail.len() > TOOL_TAIL - 4, "{pad}: {}", tail.len());
+        }
+        // an escape cut off at the end eats nothing after it, and never panics
+        assert_eq!(tool_tail("ok\u{1b}["), "ok");
+        assert_eq!(tool_tail("ok\u{1b}P unterminated"), "ok");
     }
 
     #[test]

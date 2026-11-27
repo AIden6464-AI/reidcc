@@ -88,6 +88,8 @@ they are "Reid's tools" (voice §1, 11-23).
   plugin install / switch, the size rename, the Reddit post.
 - **Beta, built 11-23:** rigs (save a snapped frame, open it from medium).
 - **Ideas:** headless mode, the command center.
+- **0.2.7:** archive the built specs.
+  > "keep rolling on SPEC-0.2.6 and save spec archiving for 0.2.7" (Reid, 2026-11-27)
 
 **Flag:** the things that block a public launch (trial fixes 1–4 are about an hour; the review fixes;
 the stale screenshots) are the oldest unbuilt items. New specs keep landing ahead of them. Thread 1 can
