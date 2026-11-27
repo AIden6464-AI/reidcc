@@ -180,8 +180,8 @@ Part 4 at build:
 3. Verified: `session import` of an export-shaped file (it needs the folder's project id, read from a
    throwaway `session.create`), then `run --session` answers from it.
 4. Verified: Claude resumes a hand-built 240-message session with `[ran in …]` text.
-5. Verified: Codex `exec resume` of a 240-message rollout. Not checked: the interactive `codex resume <id>`
-   on a hand-built thread.
+5. Verified: Codex `exec resume` of a 240-message rollout, and interactive `codex resume <id>` of a thread
+   built from a switch, in a Reidcc session window (`codex_resume_flow` D): it answers from the Claude turn.
 6. Not checked (cosmetic).
 
 Part 5 at build:
@@ -189,9 +189,10 @@ Part 5 at build:
    OpenCode's 60% with the gap line.
 4. The write fallback is a unit test (a writer that fails). The resume fallback is end-to-end: `switch_flow`
    part 9 (debug build, `REIDCC_TEST_DEAD_RESUME`) for Claude and Codex.
-5. OpenCode through `reid --stream` (`opencode_flow` 18/18) and in a session window (`session_flow`). The GUI
-   chat wasn't driven with an OpenCode profile.
-6. `cargo test --workspace`, `milestone1_flow` 31/31, `chat_flow` 46/46, `tui_chat_flow` 43/43.
+5. OpenCode through `reid --stream` (`opencode_flow` 18/18), in a session window (`session_flow`) and in the
+   GUI chat (`chat_flow` 5): a carried switch, a write without a shell, an answer from a turn it never saw.
+6. `cargo test --workspace`, `milestone1_flow` 31/31, `chat_flow` 53/53, `tui_chat_flow` 43/43,
+   `codex_resume_flow` 14/14.
 7. Docs done.
 
 ## Part 6: left out

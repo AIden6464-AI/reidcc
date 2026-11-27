@@ -8,8 +8,10 @@
   4  open terminal resumes the Claude session (--resume <id>) in a session window; the composer then
      refuses: Codex writing ("A Reidcc window is open in this folder.", send read-only runs it read-only)
      and Claude ("in terminal", cleared once the terminal lets go)
+  5  switch -> opencode, writing (SPEC-0.2.6): the chat is carried, OpenCode edits without a shell and
+     answers from a turn it never saw (the stopped one's ask)
 
-Real Claude (haiku) and Codex: needs both signed in (Codex in ~/.codex). Reidcc runs on a temp home;
+Real Claude (haiku), Codex and OpenCode: needs all three signed in (Codex in ~/.codex). Reidcc runs on a temp home;
 the Claude sessions and Codex threads it makes are deleted afterwards. Kills only processes it started.
 
     python rs\\tests\\chat_flow.py
@@ -24,7 +26,7 @@ import session_flow as sf
 
 CODEX_HOME = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
 CLAUDE_PROJECTS = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude"), "projects")
-CL, CX = "m2cl", "m2cx"
+CL, CX, OC = "m2cl", "m2cx", "m2oc"
 results = []
 
 
@@ -103,6 +105,7 @@ def main():
     cfg.pop("open_in", None)
     cfg["profiles"][CL] = {"model": "haiku"}
     cfg["profiles"][CX] = {"engine": "codex"}
+    cfg["profiles"][OC] = {"engine": "opencode"}
     json.dump(cfg, open(cfgp, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     bin_ = os.path.join(home, "bin")
     os.makedirs(bin_)
@@ -308,6 +311,23 @@ def main():
         carried = c.js("[...document.querySelectorAll('.carried')].map(e => e.textContent).join('|')")
         check("once the terminal lets go, the switch runs and carries the chat",
               "context carried:" in carried and c.st()["cur"] == CL and not c.st()["note"], (carried, c.st()))
+
+        # ---- 5: switch -> opencode, writing ----------------------------------------------------------
+        c.js("__chat.pick('%s')" % OC)
+        check("picking opencode turns send into switch → opencode", c.st()["primary"] == "switch → opencode", c.st()["primary"])
+        cap = c.js("document.getElementById('cap').textContent")
+        check("a writing OpenCode turn: edits · no shell", cap == "edits · no shell", cap)
+        r = c.turn("Create a file named oc.txt containing exactly the text: oc\n"
+                   "Then reply with just the number I once asked you to count up to.")
+        carried = c.js("[...document.querySelectorAll('.carried')].map(e => e.textContent)")
+        check("the switch carries the chat into a new OpenCode session",
+              carried and carried[-1].startswith("context carried:") and carried[-1].endswith("in a new opencode session"), carried)
+        on_disk = open(os.path.join(work, "oc.txt"), encoding="utf-8").read().strip() if os.path.exists(os.path.join(work, "oc.txt")) else None
+        check("OpenCode wrote oc.txt; changed (from git) lists it", on_disk == "oc" and "oc.txt" in r.get("changed", []), (on_disk, r))
+        check("and answers from the stopped turn it never saw (300)", "300" in r.get("text", ""), r.get("text"))
+        check("its tool lines are relative, the meta line ends in edits", r.get("tools") and not any(
+            work.lower() in x.lower() for x in r["tools"]) and r["meta"].endswith("edits"), (r.get("tools"), r["meta"]))
+        check("the conversation is with opencode now", c.st()["cur"] == OC and bool(c.st()["sids"].get(OC)) and not c.st()["note"], c.st())
     finally:
         sids.update((c.st()["sids"] if c else {}) or {})
         if t:
@@ -336,6 +356,8 @@ def main():
                     os.rmdir(os.path.dirname(f))
                 except OSError:
                     pass
+        if sids.get(OC):
+            gone += subprocess.run([shutil.which("opencode") or "opencode", "session", "delete", sids[OC]], capture_output=True).returncode == 0
         print("      removed %d test session file(s)" % gone)
         guihome.remove_home(root)
         now = {f: os.path.getmtime(os.path.join(guihome.REIDCC, f)) for f in real}

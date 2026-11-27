@@ -7,6 +7,8 @@
      is there so a "most recent thread" lookup can't pass by accident.
   C  a fresh window sent a message and left with Ctrl+C twice at once: back in Reidcc, its new thread
      recorded
+  D  a chat switched from Claude to Codex (SPEC-0.2.6): the thread Reidcc built from the transcript opens
+     in a Reidcc window with interactive `codex resume`, and knows a word only the Claude turn was told
 
 Real Codex: it needs the sign-in in ~/.codex (the other tests use a temp CODEX_HOME with none), runs
 a few tiny turns, and deletes the threads it made afterwards (only files whose cwd is its temp
@@ -15,7 +17,7 @@ never touched. Kills only processes it started.
 
     python rs\\tests\\codex_resume_flow.py
 """
-import os, sys, json, time, glob, random, string, shutil, subprocess
+import os, sys, json, time, glob, random, string, shutil, subprocess, uuid
 import psutil
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -146,6 +148,7 @@ def main():
     cfg = json.load(open(cfgp, encoding="utf-8"))
     cfg.pop("open_in", None)
     cfg["profiles"][PROFILE] = {"engine": "codex"}
+    cfg["profiles"]["swcl"] = {"model": "haiku"}  # D's Claude turn
     json.dump(cfg, open(cfgp, "w", encoding="utf-8"), indent=2, ensure_ascii=False)
     bin_ = os.path.join(home, "bin")
     os.makedirs(bin_)
@@ -229,6 +232,44 @@ def main():
         made = sorted(set(threads_in(work)) - known)
         check("a quick Ctrl+C exit comes back and records its new thread",
               len(made) == 1 and state(home).get("sid") == made[0], (made, state(home).get("sid"), t.js("__reid.state().msg")))
+
+        # ---- D: a chat switched from Claude: the built thread in interactive codex resume ----------
+        lime, chat = word("LIME"), str(uuid.uuid4())
+
+        def turn(profile, prompt, *extra):
+            p = subprocess.run([os.path.join(bin_, "reid.exe"), "--stream", profile, "--chat", chat, *extra, prompt],
+                               env=env, cwd=work, capture_output=True, text=True, encoding="utf-8", timeout=300,
+                               stdin=subprocess.DEVNULL)
+            evs = [json.loads(l) for l in p.stdout.splitlines() if l.startswith("{")]
+            return evs, p.returncode, p.stderr
+
+        evs, rc, err = turn("swcl", "Remember the word %s. Reply with just: noted." % lime)
+        check("a Claude turn in a chat", rc == 0, err[-300:])
+        evs, rc, err = turn(PROFILE, "Reply with just: ok.", "--switch-from", "swcl")
+        notes = [e["text"] for e in evs if e.get("type") == "note"]
+        started = [e["session_id"] for e in evs if e.get("type") == "started"]
+        built = started[0] if started else None
+        check("the switch carries the chat into a Codex thread Reidcc built",
+              rc == 0 and notes == ["context carried: 1 turn in a new codex session"] and state(home).get("sid") == built,
+              (notes, started, state(home).get("sid"), err[-300:]))
+        t.js("__reid.selectRow(%d)" % t.js("__reid.state().names").index(PROFILE))
+        time.sleep(0.4)
+        t.js("__reid.button('resume')")
+        w4 = Window(t, seen)
+        ok = w4.ready()
+        cmd = codex_cmdline(bin_)
+        check("resume opens the built thread in a Reidcc window", ok and any(("resume " + str(built)) in c for c in cmd), cmd)
+        # the answer is read from the thread, not the screen: a window behind the launcher repaints late
+        w4.type("What word did I ask you to remember? Reply with just the word.")
+        said, end = [], time.time() + 120
+        while time.time() < end and not said:
+            time.sleep(1)
+            lines = threads_in(work).get(built, ("", ""))[1].splitlines()
+            events = [json.loads(line) for line in lines if line.startswith("{") and line.endswith("}")]  # not a line still being written
+            said = [e["payload"].get("message", "") for e in events
+                    if e.get("type") == "event_msg" and e["payload"].get("type") == "agent_message"][1:]  # past the switch turn's
+        check("interactive Codex knows the word from the Claude turn", said and lime in said[-1], (lime, said))
+        quit_(w4, t)
     finally:
         for p in ours(bin_):
             try:
@@ -245,6 +286,9 @@ def main():
             except OSError:
                 pass
         print("      removed %d test thread(s) from %s" % (len(made), SESSIONS))
+        slug = "".join(c if c.isascii() and c.isalnum() else "-" for c in work)  # D's Claude session
+        for d in glob.glob(os.path.join(os.path.expanduser("~/.claude/projects"), glob.escape(slug[:200]) + "*")):
+            shutil.rmtree(d, ignore_errors=True)
         guihome.remove_home(root)
     after = {f: os.path.getmtime(os.path.join(guihome.REIDCC, f)) for f in ("reid.json", "reid_state.json")}
     check("real reid.json / reid_state.json untouched", real == after)
