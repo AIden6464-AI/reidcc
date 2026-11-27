@@ -18,7 +18,7 @@ hitting a wall, going public, or outside voices. That's the "why".
 | 11-23 | SPEC-user-trial (+ results) | "act like there new users [...] what can be pushed more like a custom cli that sits on top" | run · 13/13 fixes done on dev, not released |
 | 11-23 | SPEC-agent-cli | the trial plus his Discord poll: "The agent cli that sits on top of agent clis" | idea · Reid command center, a separate app on top of Reidcc · outside reviews added 11-25 (Part 7: plumbing, what Reidcc needs) · command center replaced by SPEC-unified-interface |
 | 11-25 | SPEC-unified-interface (+ `.html` page) | Reid's Rev 4 blueprint: one GUI + TUI straight over Claude Code and Codex, no boss AI ("no NVIDIA SLI") | draft vision · Step 0 (Codex resume both ways) and Milestone 1 (reid --stream, Switch, OS locks; core + CLI) built on dev 11-25, hardened 74e8484; Milestone 2 decisions (Part 6) and a design-pass mock (`unified-interface/mock/`) in, awaiting Reid; next: Milestone 2 UI |
-| 11-27 | SPEC-0.2.6 | "The handoff.md that's not a full context switch this is 02.6" · "O and the opencode engine" · "Deterministic but [...] just shove the context it self around" | spec · not built · native-session resume verified on Claude 2.1.332 and Codex 0.172.0 |
+| 11-27 | SPEC-0.2.6 | "The handoff.md that's not a full context switch this is 02.6" · "O and the opencode engine" · "Deterministic but [...] just shove the context it self around" | built on dev 11-27 · not released |
 
 **Why it moved this way:** every step came from using Codex inside Reidcc and finding the gap with Claude
 (greyed fields, then the refused proxy). Once Codex came close to Claude, the next question was more

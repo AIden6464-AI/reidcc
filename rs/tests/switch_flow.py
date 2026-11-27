@@ -7,6 +7,8 @@ whole conversation it never saw.
   2  each switch says "context carried: N turns" and starts a new session (never the profile's old one)
   3  the chat's transcript in REIDCC_HOME\\chats has both records of every turn, with its engine
   4  a refused turn leaves no record
+  5  long chats: 240 messages resume in Claude and Codex; a transcript over 60% of OpenCode's window keeps
+     the first turn, the newest and the gap line, and the turn still runs
 
 Reidcc runs on a temp REIDCC_HOME; the engine sessions it makes are deleted afterwards.
 
@@ -52,8 +54,8 @@ chat = str(uuid.uuid4())
 made = []  # (engine, session id)
 
 
-def turn(profile, prompt, *extra):
-    p = subprocess.run([REID, "--stream", profile, "--chat", chat, *extra, prompt], cwd=work, env=env, capture_output=True,
+def turn(profile, prompt, *extra, chat_id=None):
+    p = subprocess.run([REID, "--stream", profile, "--chat", chat_id or chat, *extra, prompt], cwd=work, env=env, capture_output=True,
                        text=True, encoding="utf-8", timeout=400, stdin=subprocess.DEVNULL)
     evs = events(p.stdout)
     made.extend((ENGINE[profile], e["session_id"]) for e in of(evs, "started"))
@@ -94,6 +96,38 @@ try:
     check("4 refused", [e for e in of(evs, "error") if e.get("kind") == "refused"], evs)
     after = sum(1 for _ in open(path, encoding="utf-8")) if os.path.exists(path) else 0
     check("4 no record for it", after == len(records), after)
+
+    # 5 long chats, written straight into the transcript
+    def fake_chat(n, filler, words):
+        cid = str(uuid.uuid4())
+        with open(os.path.join(home, "chats", cid + ".jsonl"), "w", encoding="utf-8") as f:
+            for i in range(n):
+                said = words.get(i, f"note {i}") + " " + filler
+                f.write(json.dumps({"role": "user", "profile": "cl", "engine": "claude", "model": "haiku", "text": said}) + "\n")
+                f.write(json.dumps({"role": "assistant", "profile": "cl", "engine": "claude", "model": "haiku",
+                                    "parts": [{"text": f"noted {i}"}]}) + "\n")
+        return cid
+
+    ask = "List every codeword I have given you in this conversation, one per line, nothing else."
+    long_chat = fake_chat(120, "", {0: "The first codeword is AMBER-1.", 60: "The middle codeword is VIOLET-60."})
+    for k, dst in enumerate(["cl", "cx"]):  # the claude turn joins the chat too: codex carries 121
+        evs, rc, err = turn(dst, ask, "--switch-from", "oc", chat_id=long_chat)
+        said = "".join(e["text"] for e in of(evs, "text_delta"))
+        notes = [e["text"] for e in of(evs, "note")]
+        check(f"5 {ENGINE[dst]} resumes a 240-message session", notes == [f"context carried: {120 + k} turns in a new {ENGINE[dst]} session"]
+              and "AMBER-1" in said and "VIOLET-60" in said, (notes, said, err[-300:]))
+    big = fake_chat(150, "x" * 3000, {0: "The first codeword is AMBER-1.", 149: "The newest codeword is CORAL-149."})
+    evs, rc, err = turn("oc", ask, "--switch-from", "cl", chat_id=big)
+    said = "".join(e["text"] for e in of(evs, "text_delta"))
+    notes = [e["text"] for e in of(evs, "note")]
+    started = [e["session_id"] for e in of(evs, "started")]
+    check("5 over 60% of OpenCode's window: still carried, the turn runs", notes == ["context carried: 150 turns in a new opencode session"]
+          and rc == 0 and "AMBER-1" in said and "CORAL-149" in said, (notes, said, err[-300:]))
+    exported = subprocess.run([shutil.which("opencode") or "opencode", "session", "export", started[0] if started else "none", "--standalone"],
+                              capture_output=True, text=True, encoding="utf-8", timeout=60, cwd=work, env=dict(os.environ, PWD=work)).stdout
+    check("5 the session has the gap line, the first and the newest turn",
+          "earlier turns left out" in exported and "AMBER-1" in exported and "CORAL-149" in exported and "note 5 " not in exported,
+          exported[:300])
 finally:
     opencode = shutil.which("opencode")
     claude_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")

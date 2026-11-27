@@ -1,6 +1,7 @@
 # SPEC: 0.2.6 beta (OpenCode as the third engine, and a full context switch)
 
-Status: SPEC, not built. Rev 1 2026-11-27. Builds on `SPEC-unified-interface.md` (chat, `--stream`, the
+Status: built on dev 2026-11-27 (OpenCode `d038f1a`, the switch `0dc93fb`), not released; see "Built" at
+the end. Rev 1 2026-11-27. Builds on `SPEC-unified-interface.md` (chat, `--stream`, the
 switch) and `SPEC-codex-opencode.md` (milestone 2: opening OpenCode in a session window).
 
 Asked by Reid 2026-11-27:
@@ -151,6 +152,41 @@ built as specced. On top of it:
    - `engines.md` (OpenCode);
    - `next.md` (moves to the changelog);
    - CHANGELOG `## 0.2.6 beta`.
+
+## Built (2026-11-27)
+
+Where the build differs from the spec:
+- The transcript is written at turn end, only for a turn that ran (a refused one leaves nothing). Records are
+  `{role, profile, engine, model, text}` and `{role:"assistant", …, parts:[{text}|{tool, summary}]}`.
+  shortcut: tool lines only (name and summary), no tool output or exit code; add them to `ToolCall` per engine
+  when a carried turn needs a tool's result.
+- The native writers live in `transcript.rs` with the transcript, not in `handoff.rs`.
+- The window is per engine, not per model: Claude 200k, Codex 272k, OpenCode 128k (tokens).
+- The fallback covers a session that can't be written or that the engine doesn't list after writing. A
+  session that's written and listed but then fails to resume isn't caught.
+- A writing switch takes the folder lock before it carries, so a busy folder refuses before a session is made.
+- OpenCode tune: effort only. MCP servers and plugins on or off for OpenCode aren't built.
+
+Part 4 at build:
+1. Verified: `run --format json` events (`step_start`, `text`, `tool_use`, `step_finish` with tokens and cost,
+   `error`; no end event), `--standalone` with `run`.
+2. Verified: a turn agent with `*: deny` plus read, glob, grep, list, lsp, webfetch and websearch refuses
+   writes and shell with Reid's own config loaded (`opencode_flow`).
+3. Verified: `session import` of an export-shaped file (it needs the folder's project id, read from a
+   throwaway `session.create`), then `run --session` answers from it.
+4. Verified: Claude resumes a hand-built 240-message session with `[ran in …]` text.
+5. Verified: Codex `exec resume` of a 240-message rollout. Not checked: the interactive `codex resume <id>`
+   on a hand-built thread.
+6. Not checked (cosmetic).
+
+Part 5 at build:
+1-3. `switch_flow` 28/28: every direction, a three-engine chat, 240-message sessions, a transcript over
+   OpenCode's 60% with the gap line.
+4. The fallback is a unit test (a writer that fails); no broken file forced end-to-end.
+5. OpenCode through `reid --stream` (`opencode_flow` 18/18) and in a session window (`session_flow`). The GUI
+   chat wasn't driven with an OpenCode profile.
+6. `cargo test --workspace`, `milestone1_flow` 31/31, `chat_flow` 46/46, `tui_chat_flow` 43/43.
+7. Docs done.
 
 ## Part 6: left out
 - Moving thinking or reasoning (it can't be moved, Part 2.1).

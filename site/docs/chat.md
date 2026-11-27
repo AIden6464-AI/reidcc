@@ -22,8 +22,16 @@ tool lines as they come.
 Pick another profile and **send** becomes `switch → <engine>`. Reidcc writes `.reid/handoff.md` in the
 folder (changed files, diff stat) and passes it to the next engine.
 
-The handoff carries what changed in the files, not the conversation: the next engine doesn't see what you
-and the last one said. A full context switch is planned for 0.2.6 ([what's next](./next)).
+The conversation goes along too. The chat's transcript becomes a new session of the next engine, so it
+answers from everything you and the other engines said. Each reply in it says which engine said it
+(`[codex · gpt-5.5]`), and tool calls come along as text lines (`[ran in codex] shell: npm test`). The chat
+shows `context carried: 5 turns in a new claude session`.
+
+- A chat longer than 60% of the next engine's window carries the first turn and the newest ones that fit,
+  with one line where the gap is.
+- If the engine won't take the session, the conversation goes in front of your message as text, and the
+  chat says `context passed as text`. The turn still runs.
+- The transcript stays in Reidcc's `chats\` folder, one file per chat. It keeps the tool lines, not their output.
 
 ## Open terminal
 

@@ -342,6 +342,39 @@ def codex_tui(t, bin_, seen):
         check("x ends the Codex session", not find(t.proc.pid, title) and not left, "window %s, running %s" % (find(t.proc.pid, title), left))
 
 
+def opencode_tui(t, bin_, seen):
+    """OpenCode's full-screen TUI in the window (SPEC-0.2.6 Part 3), with the user's own OpenCode setup;
+    nothing is typed, so no session is made."""
+    title = "opencode · win_oc"
+    press(t, "win_oc")
+    try:
+        page = Page(session_target(seen))
+    except RuntimeError as e:
+        check("OpenCode opens in a session window", False, "%s; launcher: %s" % (e, t.js("__reid.state().msg")))
+        return
+    text, end = "", time.time() + 40
+    while time.time() < end:
+        text = screen(page)
+        if len([l for l in text.splitlines() if l.strip()]) > 4:
+            time.sleep(3)
+            text = screen(page)
+            break
+        time.sleep(0.5)
+    check("OpenCode's TUI draws", len([l for l in text.splitlines() if l.strip()]) > 4, text[-400:])
+    print("      " + "\n      ".join(l for l in text.splitlines() if l.strip())[:1600])
+    h = find(t.proc.pid, title)
+    check("the window is titled %s" % title, bool(h))
+    if h:
+        guihome.client_shot(h).save(os.path.join(SHOTS, "opencode.png"))
+        procs = ours(bin_)
+        page.js("document.getElementById('close').click()")
+        end = time.time() + 5
+        while time.time() < end and (find(t.proc.pid, title) or any(p.is_running() for p in procs)):
+            time.sleep(0.1)
+        left = [p.pid for p in procs if p.is_running()]
+        check("x ends the OpenCode session", not find(t.proc.pid, title) and not left, "window %s, running %s" % (find(t.proc.pid, title), left))
+
+
 def main():
     real = {f: os.path.getmtime(os.path.join(guihome.REIDCC, f)) for f in ("reid.json", "reid_state.json")}
     root, home = guihome.make_home()
@@ -352,6 +385,7 @@ def main():
     cfg["profiles"]["win_ok"] = {"model": "opus", "args": ["--version"]}
     cfg["profiles"]["win_fail"] = {"model": "opus", "args": ["--no-such-flag"]}
     cfg["profiles"]["win_codex"] = {"engine": "codex"}
+    cfg["profiles"]["win_oc"] = {"engine": "opencode"}
     with open(cfgp, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
     bin_ = os.path.join(home, "bin")
@@ -371,6 +405,8 @@ def main():
         clicks_while_opening(t, bin_, seen)
         time.sleep(4.5)
         codex_tui(t, bin_, seen)
+        time.sleep(4.5)
+        opencode_tui(t, bin_, seen)
     finally:
         for p in ours(bin_):
             try:

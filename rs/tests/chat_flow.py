@@ -285,8 +285,10 @@ def main():
         c.js("__chat.click('#go')")
         c.wait_idle(60)
         st = c.st()
-        check("claude is refused while its session is in the terminal",
-              st["note"].startswith("in terminal") and "focus terminal" in st["note"] and st["cur"] == CX, st)
+        # a switch carries the chat into a new Claude session, so the held one doesn't matter: the
+        # terminal's window holds the folder (SPEC-0.2.6 Part 2)
+        check("switching back to claude is refused while the terminal holds the folder",
+              st["note"].startswith("locked") and "A Reidcc window is open in this folder." in st["note"] and st["cur"] == CX, st)
         check("a refused switch leaves no divider", c.js("document.querySelectorAll('.switch').length") == 1)
         check("and writes no handoff; the sidebar keeps the real one", open(hp, encoding="utf-8").read() == h0
               and c.js("document.getElementById('handoff').textContent").startswith("%s → %s" % (CL, CX)),
@@ -299,9 +301,13 @@ def main():
                     except psutil.Error:
                         pass
         end = time.time() + 10
-        while time.time() < end and c.st()["note"]:
+        while time.time() < end and any("--id" in q.cmdline() for q in ours(bin_) if q.name().lower() == "reid.exe"):
             time.sleep(0.3)
-        check("once the terminal lets go, the note clears", not c.st()["note"], c.st()["note"])
+        c.js("__chat.click('#go')")
+        c.wait_idle(240)
+        carried = c.js("[...document.querySelectorAll('.carried')].map(e => e.textContent).join('|')")
+        check("once the terminal lets go, the switch runs and carries the chat",
+              "context carried:" in carried and c.st()["cur"] == CL and not c.st()["note"], (carried, c.st()))
     finally:
         sids.update((c.st()["sids"] if c else {}) or {})
         if t:
