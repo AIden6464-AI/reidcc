@@ -180,7 +180,8 @@ def main():
         use = (of(evs, "usage") or [{}])[-1]
         check("claude write turn: started, tool calls, done 0", s1 and tools and of(evs, "done") == [{"type": "done", "exit_code": 0}] and rc == 0,
               (rc, tools, evs[-3:], err[-300:]))
-        check("claude usage: context % and cost", isinstance(use.get("context_pct"), int) and isinstance(use.get("cost_usd"), float), use)
+        check("claude usage: context % and cost, no token counts", isinstance(use.get("context_pct"), int) and isinstance(use.get("cost_usd"), float)
+              and use.get("tokens") is None, use)
         readme = open(os.path.join(r.work, "README.md"), encoding="utf-8").read()
         check("the repo changed (README.md edited, hello.txt made)", "edited by claude" in readme and os.path.exists(os.path.join(r.work, "hello.txt")), readme)
         check("reid --resume would continue it", r.state().get("sid") == s1 and r.state().get("engine") == "claude", r.state())
@@ -202,6 +203,10 @@ def main():
         check("codex read-only turn: started, text, done 0", s2 and text_of(evs) and of(evs, "done") == [{"type": "done", "exit_code": 0}],
               (rc, evs[-3:], err[-300:]))
         check("codex usage: context unknown (null), never 0", "context_pct" in use and use["context_pct"] is None, use)
+        tk = use.get("tokens") or {}
+        check("codex usage: real token counts (in/out ints, cached int or null)",
+              isinstance(tk.get("in"), int) and tk["in"] > 0 and isinstance(tk.get("out"), int)
+              and (tk.get("cached") is None or isinstance(tk["cached"], int)), use)
         after = r.files()
         changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
         check("codex read-only: 0 files modified", changed == [], changed)

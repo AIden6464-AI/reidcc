@@ -34,6 +34,9 @@ let cur = "";
 const sids: Record<string, string> = {};
 let turns = 0, readOnly = false, running = false, began = 0, tick = 0;
 let context: number | null | undefined, cost = 0;
+/** the last turn's token counts, when the engine reports them (Codex does; null otherwise, never zeros) */
+type Tokens = { in: number; cached: number | null; out: number };
+let tokens: Tokens | null = null;
 /** the held session the note is waiting on, and its poll */
 let waitSid = "", poll = 0;
 const engine = (p: string) => engines[p] ?? "claude";
@@ -42,6 +45,9 @@ const engine = (p: string) => engines[p] ?? "claude";
 const pad = (n: number) => String(n).padStart(2, "0");
 // context only when the engine reported it: Codex doesn't, and "context unknown" in three places said nothing
 const ctxText = (pct: number) => `context ${Math.round(pct)}%`;
+/** 5, 19.9k, 120k: the voice guide's short counts */
+const short = (n: number) => n < 1000 ? String(n) : n < 99_950 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n / 1000)}k`;
+const tokText = (tk: Tokens) => `${short(tk.in)} in · ${short(tk.out)} out`;
 const folderName = (path: string) => path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 function bar(): void {
   const where = $("where");
@@ -119,6 +125,7 @@ function onEvent(e: Ev, profile: string): void {
       case "usage":
         context = e.context_pct as number | null;
         if (typeof e.cost_usd === "number") cost = e.cost_usd;
+        tokens = (e.tokens as Tokens | null) ?? null;
         sideContext();
         bar();
         break;
@@ -228,6 +235,7 @@ function meta(stopped: boolean, rc: number): void {
   const bits = stopped ? ["stopped"] : [`${pad(Math.floor(s / 60))}:${pad(s % 60)}`];
   if (!stopped && context != null) bits.push(ctxText(context));
   if (!stopped && cost > 0) bits.push(`$${cost.toFixed(cost < 1 ? 3 : 2)}`);
+  if (!stopped && tokens) bits.push(tokText(tokens));
   if (!stopped) bits.push(t.ro ? "read-only" : "edits");
   if (!stopped && rc !== 0 && !t.reply.querySelector(".fail")) bits.push(`exit ${rc}`);
   t.reply.append(el("div", "meta", bits.join(" · ")));
@@ -303,6 +311,11 @@ function sideContext(): void {
   const rows: HTMLElement[] = [];
   if (context != null) rows.push(kv("context", `${Math.round(context)}%`));
   if (cost > 0) rows.push(kv("cost", `$${cost.toFixed(3)}`));
+  if (tokens) {
+    rows.push(kv("tokens in", short(tokens.in)));
+    if (tokens.cached != null) rows.push(kv("cached", short(tokens.cached)));
+    rows.push(kv("tokens out", short(tokens.out)));
+  }
   rows.push(kv("turns", String(turns)));
   $("context").replaceChildren(...rows);
 }
@@ -415,6 +428,7 @@ async function send(): Promise<void> {
   began = Date.now();
   context = undefined;
   cost = 0;
+  tokens = null;
   // a refused switch undoes itself: no divider, the sidebar's handoff as it was
   const prev = cur, side = [$("hsec").hidden, [...$("handoff").childNodes]] as const;
   const div = from ? divider(from, profile) : null;

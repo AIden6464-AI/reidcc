@@ -115,6 +115,8 @@ struct Chat {
     turn: Option<Turn>,
     context: Option<u8>,
     cost: f64,
+    /// "19.9k in · 5 out" when the engine reported token counts (Codex does), never zeros
+    tokens: Option<String>,
     scroll: i64,
     terminal: Option<Child>,
     flash: String,
@@ -292,6 +294,15 @@ fn mmss(elapsed: Duration) -> String {
     format!("{:02}:{:02}", secs / 60, secs % 60)
 }
 
+/// 5, 19.9k, 120k: the same short counts as the window's chat
+fn short_count(n: u64) -> String {
+    match n {
+        0..=999 => n.to_string(),
+        1_000..=99_949 => format!("{:.1}k", n as f64 / 1000.0),
+        _ => format!("{}k", (n as f64 / 1000.0).round()),
+    }
+}
+
 /// A string field of a `reid --stream` event, cleaned for the screen.
 fn field_of(event: &Value, key: &str) -> String {
     clean(event[key].as_str().unwrap_or_default())
@@ -338,7 +349,7 @@ impl Chat {
         }
         self.cur = profile.clone();
         self.blocks.push(Block::Ask { who: format!("{profile} · {}", self.engine(&profile)), text: prompt.clone() });
-        (self.context, self.cost, self.scroll) = (None, 0.0, 0);
+        (self.context, self.cost, self.tokens, self.scroll) = (None, 0.0, None, 0);
         let mut args = vec!["--stream".to_string(), profile.clone()];
         if self.read_only {
             args.push("--read-only".into());
@@ -435,6 +446,9 @@ impl Chat {
                 if let Some(cost) = event["cost_usd"].as_f64() {
                     self.cost = cost;
                 }
+                let tokens = &event["tokens"];
+                self.tokens = tokens["in"].as_u64().zip(tokens["out"].as_u64())
+                    .map(|(input, output)| format!("{} in · {} out", short_count(input), short_count(output)));
             }
             "error" if event["kind"] == "refused" => {
                 let message = field_of(event, "message");
@@ -494,6 +508,7 @@ impl Chat {
             if self.cost > 0.0 {
                 bits.push(if self.cost < 1.0 { format!("${:.3}", self.cost) } else { format!("${:.2}", self.cost) });
             }
+            bits.extend(self.tokens.clone());
             bits.push(if turn.read_only { "read-only" } else { "edits" }.into());
             if exit_code != 0 && !failed {
                 bits.push(format!("exit {exit_code}"));
@@ -843,7 +858,7 @@ pub(super) fn run(tui: &mut Tui, profile: &str) -> T<()> {
     let mut chat = Chat {
         folder: tui.cwd.clone(), cfg: cfg.clone(), tunes: HashMap::new(), choices: HashMap::new(), tuning: None,
         cur: profile.into(), pick, profiles: all, sids: HashMap::new(), turns: 0, read_only: false,
-        field: String::new(), blocks: vec![], note: Note::None, polled: Instant::now(), turn: None, context: None, cost: 0.0,
+        field: String::new(), blocks: vec![], note: Note::None, polled: Instant::now(), turn: None, context: None, cost: 0.0, tokens: None,
         scroll: 0, terminal: None, flash: String::new(),
     };
     chat.blocks.push(Block::Info(format!("{} · ask {profile} anything. Turns make edits, or only read with read-only on; ctrl+t opens a terminal for shell and tests.",
@@ -912,6 +927,11 @@ pub(super) fn run(tui: &mut Tui, profile: &str) -> T<()> {
 mod tests {
     use super::super::strip_sgr;
     use super::*;
+
+    #[test]
+    fn token_counts_stay_short() {
+        assert_eq!([5, 999, 19_881, 99_949, 99_999, 120_400].map(short_count), ["5", "999", "19.9k", "99.9k", "100k", "120k"]);
+    }
 
     #[test]
     fn replies_render_like_the_chat_window() {

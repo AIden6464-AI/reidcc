@@ -37,9 +37,34 @@ pub enum Event {
     TextDelta { text: String },
     ToolCall { name: String, summary: String },
     /// None means the engine didn't say: shown as unknown, never as 0%.
-    Usage { context_pct: Option<u8>, cost_usd: Option<f64> },
+    Usage { context_pct: Option<u8>, cost_usd: Option<f64>, tokens: Option<Tokens> },
     Done { exit_code: i32 },
     Error(EngineError),
+}
+
+/// One turn's token counts, as the engine reports them (Codex's turn.completed usage).
+#[derive(Debug, PartialEq)]
+pub struct Tokens {
+    /// everything sent, cached part included
+    pub input: u64,
+    /// the part of `input` served from the prompt cache, when the engine says
+    pub cached: Option<u64>,
+    pub output: u64,
+}
+
+impl Tokens {
+    /// Codex's `usage` object; None unless it has both input and output counts.
+    fn from_codex(usage: &Value) -> Option<Tokens> {
+        Some(Tokens {
+            input: usage["input_tokens"].as_u64()?,
+            cached: usage["cached_input_tokens"].as_u64(),
+            output: usage["output_tokens"].as_u64()?,
+        })
+    }
+
+    fn to_json(&self) -> Value {
+        json!({"in": self.input, "cached": self.cached, "out": self.output})
+    }
 }
 
 impl From<ReidError> for EngineError {
@@ -54,7 +79,8 @@ impl Event {
             Event::Started { session_id } => json!({"type": "started", "session_id": session_id}),
             Event::TextDelta { text } => json!({"type": "text_delta", "text": text}),
             Event::ToolCall { name, summary } => json!({"type": "tool_call", "name": name, "summary": summary}),
-            Event::Usage { context_pct, cost_usd } => json!({"type": "usage", "context_pct": context_pct, "cost_usd": cost_usd}),
+            Event::Usage { context_pct, cost_usd, tokens } => json!({"type": "usage", "context_pct": context_pct, "cost_usd": cost_usd,
+                "tokens": tokens.as_ref().map(Tokens::to_json)}),
             Event::Done { exit_code } => json!({"type": "done", "exit_code": exit_code}),
             Event::Error(EngineError::Engine { message }) => json!({"type": "error", "kind": "engine", "message": message}),
             Event::Error(EngineError::Refused { message }) => json!({"type": "error", "kind": "refused", "message": message}),
@@ -188,7 +214,7 @@ impl Parser {
                     .filter_map(|model| model["contextWindow"].as_u64()).max().filter(|size| *size > 0);
                 let context_pct = self.context_tokens.zip(window)
                     .map(|(used, size)| ((used as f64 * 100.0 / size as f64).round() as u64).min(100) as u8);
-                let mut out = vec![Event::Usage { context_pct, cost_usd: json["total_cost_usd"].as_f64() }];
+                let mut out = vec![Event::Usage { context_pct, cost_usd: json["total_cost_usd"].as_f64(), tokens: None }];
                 if json["is_error"].as_bool() == Some(true) {
                     let message = Some(text_of(&json["result"])).filter(|message| !message.is_empty())
                         .or_else(|| json["errors"].as_array().map(|errors| errors.iter().map(text_of).collect::<Vec<_>>().join("; ")))
@@ -221,8 +247,8 @@ fn codex_line(json: &Value) -> Vec<Event> {
             summary: summary(&item["arguments"]),
         },
         ("item.completed", "web_search") => Event::ToolCall { name: "web_search".into(), summary: text_of(&item["query"]) },
-        // exec --json has no context or cost figures
-        ("turn.completed", _) => Event::Usage { context_pct: None, cost_usd: None },
+        // exec --json has token counts, but no context window or cost
+        ("turn.completed", _) => Event::Usage { context_pct: None, cost_usd: None, tokens: Tokens::from_codex(&json["usage"]) },
         ("turn.failed", _) => Event::Error(EngineError::Engine { message: text_of(&json["error"]["message"]) }),
         ("error", _) => Event::Error(EngineError::Engine { message: text_of(&json["message"]) }),
         _ => return vec![],
@@ -463,11 +489,12 @@ mod tests {
             Event::Started { session_id: "s1".into() },
             Event::TextDelta { text: "Hi ".into() },
             Event::ToolCall { name: "Write".into(), summary: "hello.txt".into() },
-            Event::Usage { context_pct: Some(15), cost_usd: Some(0.0053) },
+            Event::Usage { context_pct: Some(15), cost_usd: Some(0.0053), tokens: None },
         ]);
         // no window size, no figure: unknown, never 0%
         let ev = run("claude", &[r#"{"type":"result","is_error":true,"subtype":"error_during_execution","errors":["boom"]}"#]);
-        assert_eq!(ev, vec![Event::Usage { context_pct: None, cost_usd: None }, Event::Error(EngineError::Engine { message: "boom".into() })]);
+        assert_eq!(ev, vec![Event::Usage { context_pct: None, cost_usd: None, tokens: None },
+                            Event::Error(EngineError::Engine { message: "boom".into() })]);
     }
 
     #[test]
@@ -479,7 +506,10 @@ mod tests {
             r#"{"type":"item.started","item":{"type":"command_execution","command":"pwsh -Command \"git diff\"","status":"in_progress"}}"#,
             r#"{"type":"item.started","item":{"type":"file_change","changes":[{"path":"C:\\w\\a.txt","kind":"add"}]}}"#,
             r#"{"type":"item.completed","item":{"type":"agent_message","text":"Looks fine."}}"#,
+            // codex-cli 0.172's real shape (2026-11-26)
+            r#"{"type":"turn.completed","usage":{"input_tokens":19881,"cached_input_tokens":15488,"cache_write_input_tokens":0,"output_tokens":5,"reasoning_output_tokens":0}}"#,
             r#"{"type":"turn.completed","usage":{"input_tokens":88905,"output_tokens":305}}"#,
+            r#"{"type":"turn.completed"}"#,
             r#"{"type":"turn.failed","error":{"message":"stream disconnected"}}"#,
         ]);
         assert_eq!(ev, vec![
@@ -487,10 +517,16 @@ mod tests {
             Event::ToolCall { name: "shell".into(), summary: "git diff".into() },
             Event::ToolCall { name: "patch".into(), summary: "add a.txt".into() },
             Event::TextDelta { text: "Looks fine.".into() },
-            Event::Usage { context_pct: None, cost_usd: None },
+            Event::Usage { context_pct: None, cost_usd: None, tokens: Some(Tokens { input: 19881, cached: Some(15488), output: 5 }) },
+            Event::Usage { context_pct: None, cost_usd: None, tokens: Some(Tokens { input: 88905, cached: None, output: 305 }) },
+            // no usage object: no counts, never zeros
+            Event::Usage { context_pct: None, cost_usd: None, tokens: None },
             Event::Error(EngineError::Engine { message: "stream disconnected".into() }),
         ]);
-        assert_eq!(Event::Usage { context_pct: None, cost_usd: None }.to_json().to_string(),
-                   r#"{"type":"usage","context_pct":null,"cost_usd":null}"#);
+        assert_eq!(Event::Usage { context_pct: None, cost_usd: None, tokens: None }.to_json().to_string(),
+                   r#"{"type":"usage","context_pct":null,"cost_usd":null,"tokens":null}"#);
+        let counted = Event::Usage { context_pct: None, cost_usd: None, tokens: Some(Tokens { input: 19881, cached: Some(15488), output: 5 }) };
+        assert_eq!(counted.to_json().to_string(),
+                   r#"{"type":"usage","context_pct":null,"cost_usd":null,"tokens":{"in":19881,"cached":15488,"out":5}}"#);
     }
 }
