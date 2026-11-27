@@ -1,6 +1,6 @@
 # SPEC: the website for 0.2.5 (landing page, changelog, shots)
 
-Status: SPEC, not built. Rev 1 2026-11-27. Updates the site that `SPEC-github-pages.md` built.
+Status: built on dev, not published (Rev 2 2026-11-27: decisions, roadmap, as built). Rev 1 2026-11-27. Updates the site that `SPEC-github-pages.md` built.
 
 Asked by Reid 2026-11-27:
 > "Well ok spec doc a update to the Website and pull for other website for details"
@@ -58,7 +58,7 @@ and `home.css`. Motion and reveals stay as they are (Part 2b of SPEC-github-page
 ### 2.1 What's new (Conductor)
 One mono line under the hero's buttons, read at build time like the version tag:
 
-> `0.2.5 beta · one chat over Claude Code and Codex ›` → `/changelog#_0-2-5-beta`
+> `0.2.5 beta · one chat over Claude Code and Codex ›` → `/changelog`
 
 The text after the version is the release's title (Part 3). When a release has no title, the line reads
 only `0.2.5 beta · what's new ›`.
@@ -164,14 +164,69 @@ and per-release downloads.
    hidden content.
 3. The what's-new line and the changelog's top entry match `rs/Cargo.toml`'s version.
 4. `dist\` scanned clean for personal paths, emails, keys and test profile names (`m2cl`, `m2cx`).
-5. Every link works, including `/changelog#_0-2-5-beta` from the what's-new line.
+5. Every link works, including `/changelog` from the what's-new line.
 6. Shots of the built pages at 1440 and 390, put in `vision/Spec/website-0.2.5/` for Reid.
 
 ## Part 9: going live
 The site deploys from main (`pages.yml` after `publish main`), so none of this is public until Reid
 publishes 0.2.5. Build it on dev, check it locally (`npm run preview`), and it goes out with the release.
 
-## Open questions
-1. Release title for 0.2.5: "one chat over Claude Code and Codex" is the draft.
-2. Release date: written into CHANGELOG.md on publish day.
-3. Should four sizes go before every session? The spec puts chat first because it's the bigger change.
+## Decisions (Reid, 2026-11-27)
+> "All three choices are approved: 1. Release title: 'one chat over Claude Code and Codex' 2. Release
+> date: set in CHANGELOG.md on publish day. 3. Section order: chat before sizes."
+
+1. Release title: **one chat over Claude Code and Codex**. It's in CHANGELOG.md's heading now.
+2. Release date: added on publish day, as `## 0.2.5 beta · YYYY-MM-DD: one chat over Claude Code and Codex`.
+   config.ts reads the heading with or without it.
+3. Section order: chat first, then every session, then four sizes.
+
+## Part 10: after 0.2.5 (roadmap)
+Asked by Reid 2026-11-27:
+> "Also record the post-0.2.5 roadmap in the spec (and add a short, plain Next / Roadmap note on the docs
+> or bottom of the site—zero hype, no dates)"
+
+| Release | What | On the site |
+|---|---|---|
+| 0.2.6 beta | OpenCode as a third native engine, wired into chat, `--stream`, resume, tune and `.reid/handoff.md` switching, the same as Claude Code and Codex | `docs/next.md`, one paragraph |
+| 0.2.7 | Cleanup under the hood: a symmetric Engine trait, a typed Profile model, retiring the legacy `python/` parity code and the tracked test shots | `docs/next.md`, two lines; not on the landing page |
+| 0.3.0 | The next major milestone, not announced | `docs/next.md` says only `Planned.` |
+
+The page is `site/docs/next.md` ("what's next"), linked from the sidebar's **releases** group, the changelog
+page and the landing page's footer. No dates, no adjectives. It says plans can change.
+
+## As built (2026-11-27, on dev, not published)
+- **Shots** (`site/public/shots/`, 185 KB in all):
+  - `launcher` 1000×916, `settings` 1000×652 (cut above the plugins row so no plugin list shows),
+    `chat` 1120×720, `session-window` 1000×514.
+  - `beside` 1120×384 (new).
+  - `size-main` 500×458, `size-medium` 250×418, `size-small` 190×218, `size-pod` 184×56.
+- **Session shot:** `session-window.webp` stays a plain session window. The RC-beside view is its own
+  shot, `beside.webp`, under the four sizes, captioned by the RC line.
+- **Sizes:** shot at half their real pixels, so the four stay to scale. At 390px they keep the same
+  scale: main and medium fill the first row.
+- **Chat fold:** the shot's fold reads `4 tool calls ›`, because the turn mixed reads and a write. The app
+  says `ran N commands ›` only when every line is a shell call. CHANGELOG.md now names both.
+- **What's-new link:** goes to `/changelog` with no anchor. VitePress makes the anchor from the whole
+  heading, so an anchor would break whenever a title or date is added.
+- **Footer:** docs · changelog · what's next · github · license.
+- **Capture script:** `rs/tests/site_shots.py`, not beside `make_assets.py`. It does the following:
+  - makes the demo project in `E:\projects\kiln` and empties it again afterwards;
+  - uses a fixed temp home at `%TEMP%\reidcc-demo`;
+  - shows the title as an installed copy would (no `dev`);
+  - removes the inherited `CLAUDE_CODE_*` variables;
+  - for the session shot only, runs `main` with `--setting-sources project,local --permission-mode default`,
+    so no user plugins, hooks or auto-mode dialog show;
+  - deletes the demo session files it made.
+  
+  Its supporting change: `guihome.Tauri` takes `cwd`.
+- **Measured:**
+  - first load: 281 KB at 1440 and 242 KB at 390;
+  - after load: the gate frames, as before;
+  - no sideways scroll at 390;
+  - nothing hidden under reduced motion;
+  - 37 internal links resolve;
+  - `dist\` is clean of personal paths, emails, keys and `m2cl`/`m2cx`.
+  
+  Page shots are in `website-0.2.5/`.
+- **Not done (Part 5):** the short-pitch sentence. It belongs in `reidcc-voice.md` (a vision note), the
+  README and the about screen together, and needs Reid's OK on the note first.

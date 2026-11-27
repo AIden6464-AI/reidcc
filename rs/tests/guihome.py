@@ -169,13 +169,14 @@ class Tauri:
     """Reidcc.exe (Rust) under test: started with the temp home, driven through WebView2's
     DevTools protocol (the page's own event paths, via window.__reid)."""
 
-    def __init__(self, root, port=9333, extra_env=None, exe=None):
+    def __init__(self, root, port=9333, extra_env=None, exe=None, cwd=None):
         import time, json as _json, urllib.request
         import websocket
         env = env_for(root)
         env.update(REIDCC_GUI_TEST="1", WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="--remote-debugging-port=%d" % port)
         env.update(extra_env or {})
-        self.proc = subprocess.Popen([exe or os.path.join(RELEASE, "Reidcc.exe")], env=env, cwd=os.path.join(root, "work"))
+        # cwd: the folder the launcher starts on (site_shots.py's demo project); root\work otherwise
+        self.proc = subprocess.Popen([exe or os.path.join(RELEASE, "Reidcc.exe")], env=env, cwd=cwd or os.path.join(root, "work"))
         self.hwnd = find_window(self.proc.pid)
         end = time.time() + 20
         while True:

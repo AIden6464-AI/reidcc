@@ -24,4 +24,4 @@ Reidcc runs on Windows 10 and 11. It's in beta.
 
 The installer also adds the program folder to your user PATH, adds Start menu and desktop shortcuts, and adds the `/reid` slash command to Claude Code if `~\.claude` exists and has none yet. Uninstalling undoes all of it except your own folder.
 
-Next: [your first session](./first-session).
+Next: [your first session](./first-session). To talk to Claude Code or Codex without a terminal, use **open chat**, beside resume ([chat](./chat)).

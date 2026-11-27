@@ -58,7 +58,7 @@ with the pod as a toggle (palette §5).
 | 11-17 | SPEC-app | a review of the .exe packaging | built |
 | 11-21 | SPEC-github-repo | "Spec out this as a GitHub repo and how it would be installed" | built through 0.2.x |
 | 11-21 | SPEC-github-pages | "a github pages website with docs and the feel that the Reidcc project/app feels" | built |
-| 11-27 | SPEC-website-0.2.5 | "spec doc a update to the Website and pull for other website for details" | spec · not built |
+| 11-27 | SPEC-website-0.2.5 | "spec doc a update to the Website and pull for other website for details" | built on dev · not published |
 | 11-22 | SPEC-review-0.2.1 | "ask Gemini 4 neon to reveiw" | 0/8 fixed |
 | 11-23 | SPEC-reddit | "post on Reddit about Reidcc the right way. Spec that" | nothing posted (Reid posts) |
 

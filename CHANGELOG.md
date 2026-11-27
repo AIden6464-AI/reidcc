@@ -2,7 +2,7 @@
 
 Every Reidcc release. Newest first. Everything is beta.
 
-## 0.2.5 beta
+## 0.2.5 beta: one chat over Claude Code and Codex
 
 ### Chat
 - **open chat**, beside resume: one composer over Claude Code and Codex, in the launcher's folder and
@@ -12,7 +12,7 @@ Every Reidcc release. Newest first. Everything is beta.
   (changed files, diff stat) and passes it to the next engine.
 - Turns read `edits` or `read-only`. The composer says what the next turn may do before you send:
   `edits · no shell` for Claude, `edits · shell` for Codex.
-- 3 or more tool lines in a row fold into one: `ran N commands ›`.
+- 3 or more tool lines in a row fold into one: `ran N commands ›`, or `N tool calls ›` when they aren't all shell.
 - Context and cost show only when the engine reports them. Codex reports neither, so they stay hidden;
   its real token counts show instead (the thread's total so far: `19.9k in · 5 out`, cached in the side panel).
 - **open terminal** resumes the chat's session in a session window.

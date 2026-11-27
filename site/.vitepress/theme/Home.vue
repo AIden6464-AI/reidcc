@@ -5,13 +5,26 @@ import { onMounted, onBeforeUnmount, ref } from "vue";
 import { useData, withBase } from "vitepress";
 
 const { theme } = useData();
-const { version, release, repo } = theme.value.reidcc as {
+const { version, release, repo, news } = theme.value.reidcc as {
   version: string; repo: string; release: { version: string; setup: string; url: string } | null;
+  news: { release: string; title: string } | null; // CHANGELOG.md's newest heading (config.ts)
 };
 const docs = withBase("/docs/install");
 const build = withBase("/docs/build-from-source");
 const flowSrc = withBase("/art/flow-1120.webp");
 const shotSrc = withBase("/shots/session-window.webp");
+const chatSrc = withBase("/shots/chat.webp");
+const besideSrc = withBase("/shots/beside.webp");
+const changes = withBase("/changelog");
+const next = withBase("/docs/next");
+const chatDoc = withBase("/docs/chat");
+// the launcher's four sizes, shot at half their real pixels so they stay to scale (rs\tests\site_shots.py)
+const sizes = [
+  { name: "main", key: "Alt+1", w: 500, h: 458 },
+  { name: "medium", key: "drag it narrow", w: 250, h: 418 },
+  { name: "small", key: "Alt+2", w: 190, h: 218 },
+  { name: "pod", key: "Alt+3", w: 184, h: 56 },
+].map((z) => ({ ...z, src: withBase(`/shots/size-${z.name}.webp`) }));
 const emblemSrc = withBase("/art/emblem-144.webp");
 const firstFrame = withBase("/frames/r00.webp");
 
@@ -234,7 +247,8 @@ onBeforeUnmount(() => stop());
             <a class="btn primary" id="open" href="#download">{{ release ? "download for windows" : "build from source" }}</a>
             <a class="btn" :href="docs">read the docs</a>
           </div>
-          <div class="hint" style="--i:4">folder <span class="sep">→</span> profile <span class="sep">→</span> open gate <span class="scrollcue">· scroll to open</span></div>
+          <a class="news" v-if="news" :href="changes" style="--i:4">{{ news.release }} · {{ news.title || "what's new" }} <span class="sep">›</span></a>
+          <div class="hint" style="--i:5">folder <span class="sep">→</span> profile <span class="sep">→</span> open gate <span class="scrollcue">· scroll to open</span></div>
         </div>
         <div class="frame gate" data-measure>
           <canvas id="gate" width="800" height="704" role="img" aria-label="The gate: an engraved stone arch with lion doors and one emerald point"></canvas>
@@ -256,8 +270,21 @@ onBeforeUnmount(() => stop());
       <div class="steps" id="steps">
         <div style="--i:4"><span class="tag">01 · folder</span><h3>pick folder</h3><p>Or open a recent one. <span class="mono">ctrl+o</span></p></div>
         <div style="--i:5"><span class="tag">02 · profile</span><h3>pick a profile</h3><p>Engine, model, sign-in, persona, memory and switches, saved in <code>reid.json</code>.</p></div>
-        <div style="--i:6"><span class="tag">03 · open gate</span><h3>open gate</h3><p>The session starts in its own window with your setup in place. <span class="mono">ctrl+↵</span></p></div>
+        <div style="--i:6"><span class="tag">03 · open gate</span><h3>open gate</h3><p>The session starts in its own window with your setup in place. <span class="mono">ctrl+↵</span> Or open chat.</p></div>
       </div>
+    </div></section>
+
+    <section class="band" data-reveal><div class="wrap">
+      <span class="tag" style="--i:0">chat</span>
+      <h2 style="--i:1">One chat over Claude Code and Codex.</h2>
+      <p class="sub" style="--i:2">Each turn streams its text and tool lines. After a turn that edits files, you see which files changed, and each one opens to its diff. Pick the other engine and it picks up from a handoff.</p>
+      <div class="frame wide" style="--i:3" data-measure><img :src="chatSrc" alt="Reidcc's chat after a Claude turn that wrote a file: the reply, the changed block and the composer" width="1120" height="720" loading="lazy"></div>
+      <div class="steps">
+        <div style="--i:4"><span class="tag">switch → codex</span><p>The next turn gets <code>.reid/handoff.md</code>: the changed files and the diff stat.</p></div>
+        <div style="--i:5"><span class="tag">read-only</span><p>Each engine's own guards. Claude loses its write tools and every MCP tool.</p></div>
+        <div style="--i:6"><span class="tag">tune</span><p>Effort, servers and plugins for this chat only. Or type <code>/effort high</code>.</p></div>
+      </div>
+      <p class="mono after" style="--i:7"><a :href="chatDoc">c in the TUI, or reid --chat ›</a></p>
     </div></section>
 
     <section class="band" data-reveal><div class="wrap split">
@@ -268,6 +295,19 @@ onBeforeUnmount(() => stop());
         <div class="tele" style="--i:3"><span>~/kiln</span><span>PROFILE · <b>MAIN</b></span><span>context <b data-count="42">42</b><b>%</b></span><span class="lim">limit <b data-count="81">81</b><b>%</b></span></div>
       </div>
       <div class="frame" style="--i:2" data-measure><img :src="shotSrc" alt="A Reidcc session window" width="1000" height="514" loading="lazy"></div>
+    </div></section>
+
+    <section class="band" data-reveal><div class="wrap">
+      <span class="tag" style="--i:0">one window</span>
+      <h2 style="--i:1">One launcher, four sizes.</h2>
+      <div class="sizes" style="--i:2">
+        <figure v-for="z in sizes" :key="z.name" :style="{ flexGrow: z.w, '--w': z.w }">
+          <img :src="z.src" :alt="`The launcher at ${z.name} size`" :width="z.w" :height="z.h" loading="lazy">
+          <figcaption><b>{{ z.name }}</b> <span class="mono">{{ z.key }}</span></figcaption>
+        </figure>
+      </div>
+      <p class="sub after" style="--i:3">Click <b>RC</b> on a session window and the launcher opens beside it. Again: full. Again: closed.</p>
+      <div class="frame wide" style="--i:4"><img :src="besideSrc" alt="A session window with the launcher open beside the terminal" width="1120" height="384" loading="lazy"></div>
     </div></section>
 
     <section class="band" data-reveal><div class="wrap">
@@ -314,7 +354,7 @@ onBeforeUnmount(() => stop());
     <footer data-reveal><div class="wrap">
       <img style="--i:0" :src="emblemSrc" alt="" width="72" height="72" loading="lazy">
       <div style="--i:1"><div>Only the essentials, all in sight.</div><div class="tag" style="margin-top:4px">reidcc v{{ version }} beta · built on claude code and codex</div></div>
-      <div class="links" style="--i:2"><a :href="docs">docs</a><a :href="`${repo}/releases`">changelog</a><a :href="repo">github</a><a :href="`${repo}/blob/main/LICENSE.md`">license</a></div>
+      <div class="links" style="--i:2"><a :href="docs">docs</a><a :href="changes">changelog</a><a :href="next">what's next</a><a :href="repo">github</a><a :href="`${repo}/blob/main/LICENSE.md`">license</a></div>
     </div></footer>
   </div>
 </template>

@@ -7,6 +7,11 @@ import { defineConfig } from "vitepress";
 const REPO = "https://github.com/AIden6464-AI/reidcc";
 const cargo = readFileSync(new URL("../../rs/Cargo.toml", import.meta.url), "utf8");
 const version = cargo.match(/^version\s*=\s*"([^"]+)"/m)?.[1] ?? "";
+// the newest release in CHANGELOG.md (`## 0.2.5 beta · date: title`, date and title optional) is the landing
+// page's what's-new line; site\changelog.md shows the whole file
+const changelog = readFileSync(new URL("../../CHANGELOG.md", import.meta.url), "utf8");
+const top = changelog.match(/^## (\d+\.\d+\.\d+(?: beta)?)(?: · [^:\n]+)?(?:: (.+))?$/m);
+const news = top ? { release: top[1], title: top[2]?.trim() ?? "" } : null;
 
 /** The latest release's installer, or null before the first release (or offline). */
 async function latest(): Promise<{ version: string; setup: string; url: string } | null> {
@@ -45,12 +50,12 @@ export default async () => {
     ],
     themeConfig: {
       // values the landing page reads (Home.vue, via useData().theme)
-      ...({ reidcc: { version, release, repo: REPO } } as object),
+      ...({ reidcc: { version, release, repo: REPO, news } } as object),
       logo: { src: "/art/logo-52.webp", alt: "" },
       nav: [
         { text: "docs", link: "/docs/install" },
         { text: "download", link: "/#download" },
-        { text: "changelog", link: `${REPO}/releases` },
+        { text: "changelog", link: "/changelog" },
       ],
       socialLinks: [{ icon: "github", link: REPO }],
       search: { provider: "local", options: { translations: { button: { buttonText: "search", buttonAriaLabel: "search" } } } },
@@ -81,6 +86,10 @@ export default async () => {
           { text: "reid in a terminal", link: "/docs/cli" },
           { text: "folders and files", link: "/docs/files" },
           { text: "troubleshooting", link: "/docs/troubleshooting" },
+        ] },
+        { text: "releases", items: [
+          { text: "changelog", link: "/changelog" },
+          { text: "what's next", link: "/docs/next" },
         ] },
         { text: "extras", items: [
           { text: "build from source", link: "/docs/build-from-source" },
