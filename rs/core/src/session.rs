@@ -168,7 +168,7 @@ pub fn run(ctx: &Ctx, cfg: &Obj, name: &str, cwd: &str, extra: &[String], resume
         loop {
             if let Some(s) = child.try_wait().map_err(engines::io)? {
                 if !claude && sid.is_none() {
-                    sid = engines::codex::thread_left(&launch.env, cwd, since, &skip);
+                    sid = engines::codex::thread_left(&launch.env, cwd, since);
                 }
                 return Ok((s.code().unwrap_or(1), false));
             }

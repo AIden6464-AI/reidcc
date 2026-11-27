@@ -5,6 +5,8 @@
   B  two fresh Codex windows in one folder, each told a different word; the headless runner
      continues the thread Reidcc recorded for window 1 and gets window 1's word. The second window
      is there so a "most recent thread" lookup can't pass by accident.
+  C  a fresh window sent a message and left with Ctrl+C twice at once: back in Reidcc, its new thread
+     recorded
 
 Real Codex: it needs the sign-in in ~/.codex (the other tests use a temp CODEX_HOME with none), runs
 a few tiny turns, and deletes the threads it made afterwards (only files whose cwd is its temp
@@ -76,10 +78,13 @@ class Window:
         self.id = int(target["url"].split("id=")[1])
         self.page = Page(target)
 
+    def write(self, data):
+        self.page.js("window.__TAURI_INTERNALS__.invoke('sess_write', {id: %d, data: %s})" % (self.id, json.dumps(data)))
+
     def type(self, text):
         # Codex reads fast input as a paste, where Enter is a new line: pause before Enter
         for chunk in (text, "\r"):
-            self.page.js("window.__TAURI_INTERNALS__.invoke('sess_write', {id: %d, data: %s})" % (self.id, json.dumps(chunk)))
+            self.write(chunk)
             time.sleep(2)
 
     def ask(self, text, timeout=120):
@@ -204,6 +209,25 @@ def main():
         check("headless runner continues window 1's exact thread", tid2 == t1 and fig in reply2 and kiwi not in reply2,
               "thread %s reply %r" % (tid2, reply2[:80]))
         quit_(w2, t)
+
+        # ---- C: Ctrl+C twice right after sending: back at once, the new thread still recorded -------
+        known = set(threads_in(work))
+        press(t, PROFILE)
+        w3 = Window(t, seen)
+        w3.ready()
+        w3.write("Remember the word %s. Reply with just OK." % word("PEAR"))
+        time.sleep(2)  # paste guard, as in type()
+        w3.write("\r")
+        time.sleep(0.1)
+        for _ in range(2):
+            w3.write("\x03")
+            time.sleep(0.3)
+        end = time.time() + 15
+        while time.time() < end and "Back from Codex" not in (t.js("__reid.state().msg") or ""):
+            time.sleep(0.3)
+        made = sorted(set(threads_in(work)) - known)
+        check("a quick Ctrl+C exit comes back and records its new thread",
+              len(made) == 1 and state(home).get("sid") == made[0], (made, state(home).get("sid"), t.js("__reid.state().msg")))
     finally:
         for p in ours(bin_):
             try:

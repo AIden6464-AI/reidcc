@@ -396,13 +396,14 @@ pub fn thread_of(env: &Env, root: u32, since: SystemTime, skip: &mut HashSet<Pat
     None
 }
 
-/// The thread a Codex that already exited wrote, when thread_of never saw it (a message, then /quit
-/// within the second between looks): the one thread file in `cwd` changed since `since` that nothing holds
-/// open. Another window's is still held; two candidates means it can't tell, so none.
-pub fn thread_left(env: &Env, cwd: &str, since: SystemTime, skip: &HashSet<PathBuf>) -> Option<String> {
+/// The thread a Codex that already exited made, when thread_of never saw it (a message, then Ctrl+C
+/// within the second between looks): the one thread file in `cwd` created since `since` that nothing holds
+/// open. Created, not changed: a window that just quit there touched its own old thread. thread_of's skip
+/// list isn't used, since it may hold this one (seen while Codex had it closed). Two candidates: none.
+pub fn thread_left(env: &Env, cwd: &str, since: SystemTime) -> Option<String> {
     let same = |a: &str, b: &str| py::normcase(a.trim_end_matches('\\')) == py::normcase(b.trim_end_matches('\\'));
     let mut found = thread_files(env).into_iter()
-        .filter(|p| !skip.contains(p) && std::fs::metadata(p).and_then(|m| m.modified()).is_ok_and(|m| m >= since))
+        .filter(|p| std::fs::metadata(p).and_then(|m| m.created()).is_ok_and(|m| m >= since))
         .filter(|p| crate::win::file_holders(&p.to_string_lossy()).is_empty())
         .filter_map(|p| session_meta(&p))
         .filter(|pl| !helper_thread(pl) && pl.get("cwd").and_then(Value::as_str).is_some_and(|c| same(c, cwd)))
@@ -547,12 +548,12 @@ mod tests {
         let since = SystemTime::now() - Duration::from_secs(2);
         write("t-other", r"C:\elsewhere", "\"cli\"");
         write("t-helper", &work, "{\"subagent\": \"guardian\"}");
-        assert_eq!(thread_left(&env, &work, since, &HashSet::new()), None);
+        assert_eq!(thread_left(&env, &work, since), None);
         write("t-mine", &format!("{work}\\"), "\"cli\"");
-        assert_eq!(thread_left(&env, &work, since, &HashSet::new()).as_deref(), Some("t-mine"));
+        assert_eq!(thread_left(&env, &work, since).as_deref(), Some("t-mine"));
         // a second candidate in the folder: can't tell which was ours
         write("t-mine-too", &work, "\"cli\"");
-        assert_eq!(thread_left(&env, &work, since, &HashSet::new()), None);
+        assert_eq!(thread_left(&env, &work, since), None);
         let _ = std::fs::remove_dir_all(&home);
     }
 }

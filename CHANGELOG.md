@@ -44,7 +44,7 @@ Every Reidcc release. Newest first. Everything is beta.
 - Codex resumes both ways, like Claude Code. Each window finds its own Codex thread.
 - Codex's `/quit` is its way back, like `/reid`: the thread is recorded, `resume` reopens it, and
   `reid <codex profile>` lands in the TUI with `Back from Codex. r resumes it.` A thread made just before
-  a quick `/quit` is still found.
+  a quick exit (Ctrl+C twice right after sending) is still found.
 - Codex profiles take the proxy: `capture`, `slim` and `ultra` (`optimize` stays Claude-only). Measured on
   codex-cli 0.172.0: `slim` −12.0% and `ultra` −13.1% input tokens, but a fresh slimmed thread gets no
   server cache (numbers on the docs' proxy page).

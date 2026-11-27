@@ -11,6 +11,8 @@ REIDCC = os.path.dirname(os.path.dirname(HERE))
 PYDIR = os.path.join(REIDCC, "python")
 RELEASE = os.environ.get("REIDCC_BIN") or os.path.join(REIDCC, "rs", "target", "release")  # REIDCC_BIN: test another build
 LINKED = ("personas", "mds", "json", "assets")
+# check names hold → and ·: a cp1252 console would crash printing them (tui_parity.py does the same)
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 def junction(link, target):

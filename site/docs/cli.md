@@ -35,7 +35,7 @@ Codex has no `/reid`, so its own exit is the way back.
 
 | Command | Does |
 |---|---|
-| `/quit` (or a clean exit) | Ends the session and returns to Reidcc, like `/reid`: the TUI shows `Back from Codex. r resumes it.`, a session window turns into the launcher at once. Reidcc found the Codex thread while it ran (or, after a very quick exit, from the one thread file left in the folder), so `r` / **resume** reopens that exact thread |
+| `/quit` (or a clean exit) | Ends the session and returns to Reidcc, like `/reid`: the TUI shows `Back from Codex. r resumes it.`, a session window turns into the launcher at once. Reidcc found the Codex thread while it ran (or, after a very quick exit such as Ctrl+C twice right after sending, from the one thread file it made in the folder), so `r` / **resume** reopens that exact thread |
 | A non-zero exit | Stays on screen: `Codex ended with code <n>. See the output above.` |
 
 ## Examples
