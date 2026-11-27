@@ -211,6 +211,13 @@ def main():
               any(l.strip() == "stopped" for l in v.lines()) and not left, left)
 
         # ---- 2b: ctrl+e tune: this chat's effort reaches the engine, reid.json stays as it is ---------
+        v.type("/effort high")
+        v.key(ENTER)
+        check("/effort high is this chat's effort, not a message",
+              "· high" in v.controls() and not any("› /effort" in l for l in v.lines()), v.controls())
+        v.type("/effort default")
+        v.key(ENTER)
+        check("/effort default undoes it", "· high" not in v.controls(), v.controls())
         v.key(CTRL_E)
         check("ctrl+e opens the tune panel on the picked profile", any(l.strip().startswith("tune %s" % CL) for l in v.lines()), v.lines()[:4])
         v.key(DOWN)

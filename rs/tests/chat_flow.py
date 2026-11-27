@@ -174,6 +174,25 @@ def main():
         check("stop ends the turn (meta: stopped) and takes its engine down", r["meta"] == "stopped" and not left, (r["meta"], left))
 
         # ---- 2b: tune: this chat's effort reaches the engine, reid.json stays as it is ----------------
+        before = c.st()["turns"]
+        c.js("__chat.type('/effort high')")
+        c.js("__chat.click('#go')")
+        end = time.time() + 20
+        while time.time() < end and not c.st()["note"]:
+            time.sleep(0.2)
+        st = c.st()
+        check("/effort high is this chat's effort, not a message",
+              c.js("__chat.tunes()")[CL].get("effort") == "high" and st["turns"] == before and "effort high" in st["note"], st)
+        c.js("__chat.type('/effort nope')")
+        c.js("__chat.click('#go')")
+        time.sleep(0.5)
+        st = c.st()
+        check("/effort nope lists the levels and keeps the text", "effort is one of" in st["note"]
+              and c.js("document.getElementById('field').value") == "/effort nope", st)
+        c.js("__chat.type('/effort default')")
+        c.js("__chat.click('#go')")
+        time.sleep(0.5)
+        check("/effort default undoes it", "effort" not in c.js("__chat.tunes()")[CL], c.js("__chat.tunes()"))
         c.js("document.querySelector('#tune').click()")
         end = time.time() + 20
         while time.time() < end and not c.js("document.querySelectorAll('#teffort option').length"):

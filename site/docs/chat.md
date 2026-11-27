@@ -36,6 +36,15 @@ when something else holds it, the composer says so and offers `focus window` or 
 - **Beside the model in the launcher:** for the profile. Saved in `reid.json` as `effort`, `mcp_off` and `plugins`.
 - **In a chat:** for that chat's turns only. `reid.json` stays as it is. The model can change here too.
 
+In a chat you can also type it, in the window or the terminal:
+
+| Type | Does |
+|---|---|
+| `/model sonnet` | the next turns run sonnet |
+| `/effort high` | the next turns run at high effort |
+| `/effort default` | back to the profile's own |
+| `/model` or `/effort` | opens tune |
+
 ## In a terminal
 
 `c` in the TUI, or `reid --chat [profile]`, opens the same chat in text.

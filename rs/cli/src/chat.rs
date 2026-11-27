@@ -303,6 +303,18 @@ fn short_count(n: u64) -> String {
     }
 }
 
+/// `/model sonnet` -> ("model", Some("sonnet")), `/effort` -> ("effort", None); anything else is a message.
+fn slash_tune(prompt: &str) -> Option<(&'static str, Option<&str>)> {
+    let mut words = prompt.split_whitespace();
+    let key = match words.next()? {
+        "/model" => "model",
+        "/effort" => "effort",
+        _ => return None,
+    };
+    let value = words.next();
+    words.next().is_none().then_some((key, value))
+}
+
 /// A string field of a `reid --stream` event, cleaned for the screen.
 fn field_of(event: &Value, key: &str) -> String {
     clean(event[key].as_str().unwrap_or_default())
@@ -338,6 +350,9 @@ impl Chat {
         let prompt = self.field.trim().to_string();
         if self.turn.is_some() || prompt.is_empty() {
             return;
+        }
+        if let Some((key, value)) = slash_tune(&prompt) {
+            return self.tune_typed(key, value);
         }
         let profile = self.picked();
         let from = self.switching().then(|| self.cur.clone());
@@ -655,6 +670,34 @@ impl Chat {
         self.tunes.insert(profile, tune);
     }
 
+    /// `/model sonnet`, `/effort high`, `/effort default`: the tune panel's choice typed in the box; alone, it opens the panel.
+    fn tune_typed(&mut self, key: &'static str, value: Option<&str>) {
+        let Some(value) = value else {
+            self.field.clear();
+            return self.open_tune();
+        };
+        let profile = self.picked();
+        let efforts: &[&str] = if self.engine(&profile) == "codex" { &tuning::CODEX_EFFORTS } else { &tuning::CLAUDE_EFFORTS };
+        if key == "effort" && value != "default" && !efforts.contains(&value) {
+            self.flash = format!("effort is one of default · {}", efforts.join(" · "));
+            return;
+        }
+        let own = reidcc::text(&self.own(&profile), key);
+        let tune = self.tunes.entry(profile.clone()).or_default();
+        if value == "default" || value == own {
+            tune.remove(key);
+        } else {
+            tune.insert(key.into(), Value::String(value.into()));
+        }
+        let now = match tune.get(key).and_then(Value::as_str) {
+            Some(chosen) => chosen.to_string(),
+            None if own.is_empty() => "default".into(),
+            None => format!("{own} (the profile's)"),
+        };
+        self.field.clear();
+        self.flash = format!("{profile} · {key} {now} · from the next turn, this chat only");
+    }
+
     fn plugin_on(&self, profile: &str, id: &str) -> bool {
         let chat = self.tunes.get(profile).and_then(|tune| tune.get("plugins")).and_then(|p| p.get(id)).and_then(Value::as_bool);
         chat.unwrap_or_else(|| self.choices.get(profile).and_then(|c| c.plugins.iter().find(|p| p.id == id)).is_some_and(|p| p.on))
@@ -931,6 +974,15 @@ mod tests {
     #[test]
     fn token_counts_stay_short() {
         assert_eq!([5, 999, 19_881, 99_949, 99_999, 120_400].map(short_count), ["5", "999", "19.9k", "99.9k", "100k", "120k"]);
+    }
+
+    #[test]
+    fn slash_model_and_effort_are_tune_not_messages() {
+        assert_eq!(slash_tune("/model sonnet"), Some(("model", Some("sonnet"))));
+        assert_eq!(slash_tune("/effort"), Some(("effort", None)));
+        assert_eq!(slash_tune("/effort high please"), None);
+        assert_eq!(slash_tune("/models"), None);
+        assert_eq!(slash_tune("set /model sonnet"), None);
     }
 
     #[test]

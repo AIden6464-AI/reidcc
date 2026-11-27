@@ -382,6 +382,27 @@ function pickValue(sel: HTMLSelectElement, key: "model" | "effort"): void {
   if (sel.value) t[key] = sel.value; else delete t[key];
   tuneButton();
 }
+/** /model sonnet, /effort high, /effort default: the tune panel's choice typed in the box; alone, it opens the panel */
+async function slashTune(key: "model" | "effort", value: string | undefined): Promise<void> {
+  const p = pickedProfile();
+  if (!value) {
+    field.value = "";
+    tunebox.hidden = false;
+    primary();
+    return void drawTune();
+  }
+  const tn = (tunings[p] ??= await invoke<Tuning>("chat_tuning", { id, profile: p }));
+  clearNote();
+  if (key === "effort" && value !== "default" && !tn.efforts.includes(value)) {
+    return showNote("tune", `effort is one of ${["default", ...tn.efforts].join(" · ")}`, []);
+  }
+  const t = tuneOf(p), own = tn.own[key];
+  if (value === "default" || value === own) delete t[key]; else t[key] = value;
+  field.value = "";
+  primary();
+  if (!tunebox.hidden) void drawTune();
+  showNote("tune", `${p} · ${key} ${t[key] ?? (own ? `${own} (the profile's)` : "default")} · from the next turn, this chat only`, []);
+}
 tmodel.onchange = () => pickValue(tmodel, "model");
 teffort.onchange = () => pickValue(teffort, "effort");
 $("tune").onclick = () => {
@@ -422,6 +443,8 @@ function primary(): void {
 async function send(): Promise<void> {
   const prompt = field.value.trim();
   if (running || !prompt) return;
+  const slash = /^\/(model|effort)(?:\s+(\S+))?$/.exec(prompt);
+  if (slash) return slashTune(slash[1] as "model" | "effort", slash[2]);
   const profile = pickedProfile();
   const from = switching() ? cur : null;
   clearNote();

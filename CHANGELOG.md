@@ -23,6 +23,7 @@ Every Reidcc release. Newest first. Everything is beta.
 - **tune**, beside the model: a profile's effort, and single MCP servers and plugins on or off.
   Saved in `reid.json` as `effort`, `mcp_off` and `plugins`.
 - In a chat, **tune** changes model, effort, servers and plugins for that chat only. `reid.json` stays as it is.
+  Or type it: `/model sonnet`, `/effort high`, `/effort default`.
 - On a Codex profile the launcher's mcp row reads **set in tune ›**: Codex's servers, plugins and effort are set
   there. tools, chrome, connectors and safe mode stay greyed out (Claude only).
 
