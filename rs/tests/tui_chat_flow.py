@@ -293,8 +293,11 @@ def main():
         v.key(ENTER, 0)
         v.idle(60)
         note = v.note()
-        check("claude is refused while its session is in the terminal",
-              note.startswith("in terminal") and ("%s · codex" % CX) in v.bar(), (note, v.bar()))
+        # a switch carries the chat into a new Claude session, so the held one doesn't matter: the
+        # terminal's window holds the folder (SPEC-0.2.6 Part 2)
+        check("switching back to claude is refused while the terminal holds the folder",
+              note.startswith("locked") and "A Reidcc window is open in this folder." in note and ("%s · codex" % CX) in v.bar(),
+              (note, v.bar()))
         check("a refused switch leaves no divider and writes no handoff",
               "codex → claude" not in term.text() and open(hp, encoding="utf-8").read() == h0)
         for p_ in ours(bin_):
@@ -308,9 +311,13 @@ def main():
             except psutil.Error:
                 pass
         end = time.time() + 10
-        while time.time() < end and v.note():
+        while time.time() < end and cmdlines(bin_, "--id"):
             time.sleep(0.3)
-        check("once the terminal lets go, the note clears", not v.note(), v.note())
+        v.key(ENTER, 0)
+        v.idle(90)
+        screen = term.text()
+        check("once the terminal lets go, the switch runs and carries the chat",
+              "context carried:" in screen and ("%s · claude" % CL) in v.bar() and not v.note(), (screen[-600:], v.note()))
         v.key(ESC, 0.8)
         check("esc leaves the chat for the profile list", "r resume · c chat" in term.text(), term.text()[-300:])
         v.key("q", 0)

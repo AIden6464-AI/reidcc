@@ -17,7 +17,7 @@ const HELP: &str = r#"reid -- Reidcc, in the terminal.
     reid --resume <profile> --id ID   continue that session, in this folder
     reid -l                   list profiles
     reid --chat [profile]     chat with Claude Code and Codex in this folder, in the terminal
-    reid --stream <profile> [--read-only] [--resume ID] [--with JSON] [--switch-from P] PROMPT
+    reid --stream <profile> [--read-only] [--resume ID] [--with JSON] [--chat ID] [--switch-from P] PROMPT
                               one headless turn, its events as JSON lines
     reid --dry [profile]      print what would run, don't run it
     reid --dry -v [profile]   ... and the prompt and settings files it adds
@@ -285,7 +285,7 @@ fn run(ctx: &'static Ctx, mut args: Vec<String>) -> R<i32> {
     Ok(end.rc)
 }
 
-const STREAM_USAGE: &str = "reid --stream <profile> [--read-only] [--resume ID] [--switch-from PROFILE [--tests TEXT] [--note TEXT]] [PROMPT]";
+const STREAM_USAGE: &str = "reid --stream <profile> [--read-only] [--resume ID] [--chat ID] [--switch-from PROFILE [--tests TEXT] [--note TEXT]] [PROMPT]";
 
 /// reid --stream: one headless turn, its events as JSON lines (SPEC-unified-interface, Milestone 1).
 /// --switch-from writes .reid\handoff.md from that profile's work and hands it to this turn.
@@ -317,7 +317,7 @@ fn stream(ctx: &Ctx, cfg: &reidcc::Obj, args: &[String]) -> R<i32> {
     while let Some(a) = args.get(i) {
         match a.as_str() {
             "--read-only" => mode = Mode::ReadOnly,
-            "--resume" | "--switch-from" | "--tests" | "--note" | "--with" => {
+            "--resume" | "--switch-from" | "--tests" | "--note" | "--with" | "--chat" => {
                 let Some(v) = args.get(i + 1) else { return reidcc::err(format!("{a} needs a value. {STREAM_USAGE}")) };
                 opt.insert(a.as_str(), v.as_str());
                 i += 1;
@@ -358,7 +358,8 @@ fn stream(ctx: &Ctx, cfg: &reidcc::Obj, args: &[String]) -> R<i32> {
         None => None,
     };
     let mut emit = |e: &Event| out!("{}", e.to_json());
-    let turn = Turn { profile: name, folder: &cwd, prompt: &prompt, mode, resume: opt.get("--resume").copied(), switch };
+    let turn = Turn { profile: name, folder: &cwd, prompt: &prompt, mode, resume: opt.get("--resume").copied(), switch,
+                      chat: opt.get("--chat").copied() };
     match reidcc::stream::run(ctx, cfg, &turn, &mut emit) {
         Ok(rc) => Ok(rc),
         Err(e) => {

@@ -5,7 +5,7 @@
 //! asking the model nicely.
 
 use crate::engines::{self, engine_of};
-use crate::{locks, profiles, proxy, remember_session, session, Ctx, Obj, ReidError};
+use crate::{locks, profiles, proxy, remember_session, session, transcript, Ctx, Obj, ReidError};
 use serde_json::{json, Value};
 use std::io::{BufRead, Read, Write};
 use std::process::{Command, Stdio};
@@ -41,6 +41,8 @@ pub enum Event {
     Usage { context_pct: Option<u8>, cost_usd: Option<f64>, tokens: Option<Tokens> },
     Done { exit_code: i32 },
     Error(EngineError),
+    /// One line for the chat about the turn itself (how a switch carried the conversation).
+    Note { text: String },
 }
 
 /// Token counts as the engine reports them. Codex's turn.completed usage is the thread's running total:
@@ -84,6 +86,7 @@ impl Event {
             Event::Usage { context_pct, cost_usd, tokens } => json!({"type": "usage", "context_pct": context_pct, "cost_usd": cost_usd,
                 "tokens": tokens.as_ref().map(Tokens::to_json)}),
             Event::Done { exit_code } => json!({"type": "done", "exit_code": exit_code}),
+            Event::Note { text } => json!({"type": "note", "text": text}),
             Event::Error(EngineError::Engine { message }) => json!({"type": "error", "kind": "engine", "message": message}),
             Event::Error(EngineError::Refused { message }) => json!({"type": "error", "kind": "refused", "message": message}),
             Event::Error(EngineError::Unknown { exit_code, raw }) => json!({"type": "error", "kind": "unknown", "exit_code": exit_code, "raw": raw}),
@@ -314,6 +317,9 @@ pub struct Turn<'a> {
     /// Switch: `.reid\handoff.md`, written and put before the prompt once the turn holds its locks
     /// (a refused switch writes nothing)
     pub switch: Option<crate::handoff::Switch<'a>>,
+    /// The chat this turn belongs to: the turn goes in its transcript, and a switch carries the
+    /// transcript into a new session of this turn's engine (SPEC-0.2.6 Part 2).
+    pub chat: Option<&'a str>,
 }
 
 /// Run one turn, sending each event to `emit`. Ok(exit code) once the engine ran (its failures come
@@ -325,15 +331,52 @@ pub fn run(ctx: &Ctx, cfg: &Obj, turn: &Turn, emit: &mut dyn FnMut(&Event)) -> R
     if let Some(id) = turn.resume.filter(|id| !locks::valid_id(id)) {
         return refuse(format!("{id} isn't a session id."));
     }
+    if let Some(id) = turn.chat.filter(|id| !locks::valid_id(id)) {
+        return refuse(format!("{id} isn't a chat id."));
+    }
     // read-only can't trust a profile that turns the engine's own guards off
     let own = crate::args(prof);
     if let Some(arg) = own.iter().find(|arg| own_guards(arg, engine)).filter(|_| turn.mode == Mode::ReadOnly) {
         return refuse(format!("Read-only can't run {} with {arg} in its args. Take it out, or use another profile.", turn.profile));
     }
     let mut launch = engines::build(ctx, cfg, turn.profile, &[], Some(turn.folder), true)?;
-    let res = launch_turn(ctx, prof, turn, engine, &mut launch, &own, emit);
+    let mut said = transcript::Recorder::default();
+    let res = launch_turn(ctx, prof, turn, engine, &mut launch, &own, &mut |e: &Event| {
+        said.push(e);
+        emit(e)
+    });
     launch.remove_temps();
+    // only a turn that ran: a refused one leaves no trace
+    if let Some(chat) = turn.chat.filter(|_| said.ran) {
+        let model = prof.get("model").and_then(Value::as_str).unwrap_or_default();
+        if let Err(e) = transcript::append(ctx, chat, &said.records(turn.profile, engine, model, turn.prompt)) {
+            emit(&Event::Note { text: format!("the chat transcript wasn't saved: {}", e.0) });
+        }
+    }
     res
+}
+
+/// A switch in a chat: the chat's transcript as a new session of `engine`, so the turn resumes the whole
+/// conversation. Some(id) when the engine took it; None with the text to put before the prompt when it
+/// didn't (or there's nothing to carry: then the text is empty). Never fails the turn.
+fn carry(ctx: &Ctx, chat: &str, engine: &str, folder: &str, env: &crate::Env, emit: &mut dyn FnMut(&Event),
+         native: impl Fn(&str, &[transcript::Turn], &str, &crate::Env) -> crate::R<String>) -> (Option<String>, String) {
+    let all = transcript::turns(&transcript::read(ctx, chat));
+    if all.is_empty() {
+        return (None, String::new());
+    }
+    let (n, turns) = (all.len(), transcript::fit(all, transcript::budget(engine)));
+    match native(engine, &turns, folder, env) {
+        Ok(id) => {
+            emit(&Event::Note { text: format!("context carried: {n} turns in a new {engine} session") });
+            (Some(id), String::new())
+        }
+        Err(e) => {
+            emit(&Event::Note { text: format!("context passed as text: {engine} didn't take the session ({})", e.0) });
+            (None, format!("The conversation so far (from Reidcc's chat transcript; other agents' replies are labelled):\n\n{}\n---\n\n",
+                           transcript::as_text(&turns)))
+        }
+    }
 }
 
 fn refuse(message: String) -> Result<i32, EngineError> {
@@ -344,8 +387,19 @@ fn refuse(message: String) -> Result<i32, EngineError> {
 fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch: &mut engines::Launch, own: &[String],
                emit: &mut dyn FnMut(&Event)) -> Result<i32, EngineError> {
     let claude = engine == "claude";
-    let mut sid = turn.resume.map(String::from);
-    if let Some(id) = turn.resume {
+    // a switch in a chat resumes the session it carries the chat into, not the profile's old one
+    let carrying = turn.chat.is_some() && turn.switch.is_some();
+    // that session is new, so the folder goes first: a busy folder refuses before anything is written
+    // shortcut: a proxy that fails to start after this leaves the carried session unused; it's an
+    // ordinary session the engine lists, so nothing breaks
+    let early_folder = if carrying && turn.mode == Mode::Write { Some(locks::folder(ctx, turn.folder, None)?) } else { None };
+    let (carried, before) = match (turn.chat, &turn.switch) {
+        (Some(chat), Some(_)) => carry(ctx, chat, engine, turn.folder, &launch.env, emit, transcript::native),
+        _ => (None, String::new()),
+    };
+    let resume = if carrying { carried.as_deref() } else { turn.resume };
+    let mut sid = resume.map(String::from);
+    if let Some(id) = resume {
         let there = match engine {
             "claude" => session::session_exists(id),
             "opencode" => engines::opencode::session_exists(&launch.env, turn.folder, id),
@@ -366,7 +420,7 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
         if turn.mode == Mode::Write {
             argv.push("--auto".into()); // run can't ask: what the turn's agent doesn't deny is allowed
         }
-        let id = turn.resume.map(String::from).unwrap_or_else(engines::opencode::new_session_id);
+        let id = resume.map(String::from).unwrap_or_else(engines::opencode::new_session_id);
         argv.extend(["--session".into(), id.clone()]); // the prompt comes on stdin
         sid = Some(id);
     }
@@ -384,7 +438,7 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
             // so the composer's `edits · no shell` holds
             argv.extend(["--disallowedTools", "Bash", "PowerShell"].map(String::from));
         }
-        match turn.resume {
+        match resume {
             Some(id) => argv.extend(["--resume".into(), id.into()]),
             None => {
                 let id = uuid::Uuid::new_v4().to_string();
@@ -404,7 +458,7 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
             // with approvals on, Codex's auto-reviewer can wave a patch past the read-only sandbox
             argv.extend(["-c".into(), "approval_policy=\"never\"".into()]);
         }
-        if let Some(id) = turn.resume {
+        if let Some(id) = resume {
             argv.extend(["resume".into(), id.into()]);
         }
         argv.push("-".into()); // the prompt comes on stdin
@@ -416,7 +470,11 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
         Some(id) => Some(locks::session(ctx, &locks::record(id, engine, turn.profile, turn.folder, mode))?),
         None => None, // a new Codex thread: locked once Codex names it
     };
-    let folder_lock = if turn.mode == Mode::Write { Some(locks::folder(ctx, turn.folder, sid.as_deref())?) } else { None };
+    let folder_lock = match early_folder {
+        Some(lock) => Some(lock),
+        None if turn.mode == Mode::Write => Some(locks::folder(ctx, turn.folder, sid.as_deref())?),
+        None => None,
+    };
     let mut running_proxy = match proxy::plan(ctx, prof)? {
         Some(plan) => {
             let started = proxy::start(ctx, turn.profile, &plan)?;
@@ -425,9 +483,10 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
         }
         None => None,
     };
+    let ask = before + turn.prompt;
     let prompt = match &turn.switch {
-        Some(switch) => crate::handoff::prompt(&crate::handoff::write(switch)?.1, turn.prompt),
-        None => turn.prompt.to_string(),
+        Some(switch) => crate::handoff::prompt(&crate::handoff::write(switch)?.1, &ask),
+        None => ask,
     };
     let res = spawn(ctx, turn, &prompt, engine, launch, &mut sid, &mut session_lock, emit);
     proxy::stop(running_proxy.as_mut());
@@ -564,6 +623,35 @@ mod tests {
         let ev = run("claude", &[r#"{"type":"result","is_error":true,"subtype":"error_during_execution","errors":["boom"]}"#]);
         assert_eq!(ev, vec![Event::Usage { context_pct: None, cost_usd: None, tokens: None },
                             Event::Error(EngineError::Engine { message: "boom".into() })]);
+    }
+
+    #[test]
+    fn a_switch_the_engine_refuses_passes_the_chat_as_text() {
+        let home = tempfile_dir();
+        let ctx = Ctx::at(&home);
+        let env = crate::Env::new();
+        let mut notes = vec![];
+        let mut emit = |e: &Event| notes.push(e.to_json()["text"].as_str().unwrap_or_default().to_string());
+        // nothing in the chat yet: nothing to carry, no note
+        let none = carry(&ctx, "c1", "codex", &home, &env, &mut emit, |_, _, _, _| unreachable!());
+        assert_eq!(none, (None, String::new()));
+        let mut rec = transcript::Recorder::default();
+        rec.push(&Event::TextDelta { text: "PERIWINKLE".into() });
+        transcript::append(&ctx, "c1", &rec.records("cl", "claude", "opus", "remember the codeword")).unwrap();
+        let refused = carry(&ctx, "c1", "codex", &home, &env, &mut emit, |_, _, _, _| crate::err("format changed"));
+        assert_eq!(refused.0, None);
+        assert!(refused.1.contains("User: remember the codeword\n\nAssistant: [claude · opus]\nPERIWINKLE"), "{}", refused.1);
+        let took = carry(&ctx, "c1", "codex", &home, &env, &mut emit, |engine, turns, _, _| Ok(format!("{engine}-{}", turns.len())));
+        assert_eq!(took, (Some("codex-1".into()), String::new()));
+        assert_eq!(notes, ["context passed as text: codex didn't take the session (format changed)",
+                           "context carried: 1 turns in a new codex session"]);
+        let _ = std::fs::remove_dir_all(home);
+    }
+
+    fn tempfile_dir() -> String {
+        let dir = std::env::temp_dir().join(format!("reid_carry_{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir.to_string_lossy().into_owned()
     }
 
     #[test]

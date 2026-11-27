@@ -14,6 +14,7 @@ pub mod pyjson;
 pub mod session;
 pub mod stream;
 pub mod term;
+pub mod transcript;
 pub mod win;
 
 use indexmap::IndexMap;

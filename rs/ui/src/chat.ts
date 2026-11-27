@@ -32,6 +32,8 @@ const engines: Record<string, string> = {};
 let cur = "";
 /** each profile's session in this window: the next turn with it continues that one */
 const sids: Record<string, string> = {};
+/** this window's chat transcript (reid --stream --chat): a switch carries it into the next engine */
+const chatId = crypto.randomUUID();
 let turns = 0, readOnly = false, running = false, began = 0, tick = 0;
 let context: number | null | undefined, cost = 0;
 /** the thread's token counts so far, when the engine reports them (Codex does; null otherwise, never zeros) */
@@ -132,6 +134,9 @@ function onEvent(e: Ev, profile: string): void {
         break;
       case "error":
         onError(e);
+        break;
+      case "note":
+        tt.reply.insertBefore(el("div", "carried", String(e.text ?? "")), tt.caret);
         break;
     }
   });
@@ -469,7 +474,7 @@ async function send(): Promise<void> {
   };
   try {
     const changes = tunes[profile] && Object.keys(tunes[profile]).length ? tunes[profile] : null;
-    await invoke("chat_send", { id, profile, prompt, readOnly: turnRo, resume: sids[profile] ?? null, switchFrom: from, with: changes, chan });
+    await invoke("chat_send", { id, profile, prompt, readOnly: turnRo, resume: sids[profile] ?? null, switchFrom: from, with: changes, chat: chatId, chan });
   } catch (e) {
     void finish({ kind: "exit", rc: 1, stopped: false, err: String(e) }, turnRo);
   }

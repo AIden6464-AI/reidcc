@@ -108,6 +108,8 @@ struct Chat {
     cur: String,
     pick: usize,
     sids: HashMap<String, String>,
+    /// this chat's transcript (`reid --stream --chat`): a switch carries it into the next engine
+    chat: String,
     turns: usize,
     read_only: bool,
     field: String,
@@ -367,7 +369,7 @@ impl Chat {
         self.cur = profile.clone();
         self.blocks.push(Block::Ask { who: format!("{profile} · {}", self.engine(&profile)), text: prompt.clone() });
         (self.context, self.cost, self.tokens, self.scroll) = (None, 0.0, None, 0);
-        let mut args = vec!["--stream".to_string(), profile.clone()];
+        let mut args = vec!["--stream".to_string(), profile.clone(), "--chat".into(), self.chat.clone()];
         if self.read_only {
             args.push("--read-only".into());
         }
@@ -454,6 +456,7 @@ impl Chat {
                     _ => self.blocks.push(Block::Text(text)),
                 }
             }
+            "note" => self.blocks.push(Block::Info(field_of(event, "text"))),
             "tool_call" => self.blocks.push(Block::Tool {
                 name: field_of(event, "name").to_lowercase(),
                 summary: field_of(event, "summary"),
@@ -911,7 +914,7 @@ pub(super) fn run(tui: &mut Tui, profile: &str) -> T<()> {
     };
     let mut chat = Chat {
         folder: tui.cwd.clone(), cfg: cfg.clone(), tunes: HashMap::new(), choices: HashMap::new(), models: HashMap::new(), tuning: None,
-        cur: profile.into(), pick, profiles: all, sids: HashMap::new(), turns: 0, read_only: false,
+        cur: profile.into(), pick, profiles: all, sids: HashMap::new(), chat: reidcc::transcript::new_chat_id(), turns: 0, read_only: false,
         field: String::new(), blocks: vec![], note: Note::None, polled: Instant::now(), turn: None, context: None, cost: 0.0, tokens: None,
         scroll: 0, terminal: None, flash: String::new(),
     };
