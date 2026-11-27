@@ -55,7 +55,8 @@ def threads_in(work, helpers=False):
 def headless(bin_, env, work, args):
     """reid <profile> exec --json …: (thread id from Codex's own output, last reply, rc)."""
     p = subprocess.run([os.path.join(bin_, "reid.exe"), PROFILE, "exec", "--json", "--skip-git-repo-check"] + args,
-                       env=env, cwd=work, capture_output=True, text=True, encoding="utf-8", timeout=180)
+                       env=env, cwd=work, capture_output=True, text=True, encoding="utf-8", timeout=180,
+                       stdin=subprocess.DEVNULL)  # codex exec waits on a stdin that never closes (a background run)
     tid, reply = None, ""
     for line in p.stdout.splitlines():
         try:
