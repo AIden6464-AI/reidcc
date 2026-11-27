@@ -193,8 +193,10 @@ Given after Milestone 1 was built, in answer to the open questions it left. His 
     figure as `context unknown`, never 0%.
   - **Read-only, checked against the installed binaries:**
     - Claude: `--permission-mode default --disallowedTools Write Edit NotebookEdit Bash PowerShell
-      EnterWorktree`. Those tools leave the session, including for subagents. Plan mode alone only
-      made the model hold back by choice.
+      EnterWorktree mcp__*`. Those tools leave the session, including for subagents. Plan mode alone only
+      made the model hold back by choice. `mcp__*` was added on 2026-11-27: before it, an MCP tool
+      the settings allowed still ran in a read-only turn. On claude 2.1.332 the deny wins over the
+      allow, and the tool is gone from the turn.
     - Codex: `-c sandbox_mode="read-only" -c approval_policy="never"`. With `-s read-only` alone,
       Codex's auto-reviewer approved a patch past the sandbox, because Reid's `approval_policy` is
       `on-request`. `exec resume` has no `-s`, so `-c` covers new and resumed threads alike.
