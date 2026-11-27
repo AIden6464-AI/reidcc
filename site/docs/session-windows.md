@@ -23,9 +23,20 @@ From left to right: the folder, `PROFILE · main`, the persona if there is one, 
 | `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste |
 | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` | Bigger / smaller / reset text |
 
+## Reidcc in the window
+
+Click **RC** on the bar and the launcher opens beside the terminal. Click it again for full, and again to close it.
+`Alt+2` opens it beside and `Alt+1` full; they never reach the engine. The terminal keeps its size either way.
+
+When a session ends (`/reid`, Codex's `/quit`, or the engine exits), the window you're in turns into Reidcc.
+
 ## Snap (beta)
 
-Drag session windows together to share one frame of up to four live panes. Drag the frame's header to move them together, or a pane's header to pull it out. Double-click a header to maximize it.
+Drag session windows together to share one frame of up to four live panes. Drag the frame's header to move them together, or a pane's header to pull it out. Double-click a header to maximize it. Reidcc docks into a frame the same way.
+
+## Rigs (beta)
+
+A rig is a saved frame. **save rig** on the frame's header names it; open it again from the launcher, and the same sessions open in the same layout.
 
 ## Windows Terminal instead
 

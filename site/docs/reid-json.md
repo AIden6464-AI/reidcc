@@ -31,6 +31,9 @@ Your profiles, in your Reidcc folder. The launcher writes it as you make changes
 |---|---|
 | `engine` | `claude` (the default) or `codex` |
 | `model` | The model. Empty means the engine's default |
+| `effort` | Reasoning effort: Claude `low`…`max`, Codex `minimal`…`xhigh`. Set with **tune** |
+| `mcp_off` | MCP server names this profile leaves out, as a list. Set with **tune** |
+| `plugins` | Installed plugins turned on or off: `{"name@marketplace": false}`. Set with **tune** |
 | `settings` | Sign-in file: `json/*.json` for Claude Code (API mode), `codex/*.toml` for Codex |
 | `persona` | A persona file |
 | `mode` | `replace` replaces the engine's prompt with the persona; otherwise it's added |

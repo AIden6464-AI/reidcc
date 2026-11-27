@@ -126,7 +126,7 @@ struct Init {
     test: bool,
     /// the smallest size the main layout fits in (logical px); below it the page folds to medium (the form)
     main_min: (f64, f64),
-    /// the bar's title: "Reidcc 0.2.2" (" dev" on a dev build)
+    /// the bar's title: "Reidcc 0.2.5" (" dev" on a dev build)
     title: String,
 }
 
@@ -222,7 +222,7 @@ fn parent(app: &AppHandle) -> Option<tauri::Window> {
     panel::launcher_window(app)
 }
 
-/// "Reidcc 0.2.2", and " dev" on a dev build (REIDCC_DEV set at build time), so the two copies tell apart.
+/// "Reidcc 0.2.5", and " dev" on a dev build (REIDCC_DEV set at build time), so the two copies tell apart.
 pub fn app_title() -> String {
     format!("Reidcc {}{}", env!("CARGO_PKG_VERSION"), if option_env!("REIDCC_DEV").is_some() { " dev" } else { "" })
 }

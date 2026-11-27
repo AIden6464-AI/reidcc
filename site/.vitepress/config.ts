@@ -70,6 +70,7 @@ export default async () => {
           { text: "personas", link: "/docs/personas" },
           { text: "memory", link: "/docs/memory" },
           { text: "engines", link: "/docs/engines" },
+          { text: "chat", link: "/docs/chat" },
           { text: "session windows", link: "/docs/session-windows" },
           { text: "sizes and the mini pod", link: "/docs/sizes" },
           { text: "settings", link: "/docs/settings" },

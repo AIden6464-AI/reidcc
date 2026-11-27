@@ -35,7 +35,7 @@ jobs:
           cd main
           git rm -rq --ignore-unmatch . && git clean -fdq   # start empty, keep main's history
           cd ../dev
-          for p in LICENSE.md .gitignore reidcc.ico assets docs personas/plain.md \
+          for p in LICENSE.md CHANGELOG.md .gitignore reidcc.ico assets docs personas/plain.md \
                    .github/workflows/ci.yml .github/workflows/release.yml .github/workflows/pages.yml site \
                    rs/.gitignore rs/Cargo.toml rs/Cargo.lock rs/app rs/cli rs/core rs/ui; do
             cp -r --parents "$p" ../main/
