@@ -35,7 +35,7 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
       - name: Tokens match the app
-        run: diff <(sed -n '/^:root/,/^}/p' rs/ui/src/style.css) site/.vitepress/theme/tokens.css
+        run: diff <(sed -n '/^:root/,/^}/p' rs/ui/src/tokens.css) site/.vitepress/theme/tokens.css
       - name: Build
         working-directory: site
         env:

@@ -5,6 +5,6 @@
   --emerald: #00C463; --bronze: #C99A45; --oxide: #C0584B;
   --ui: Inter, Geist, "Segoe UI Variable Text", "Segoe UI", Helvetica, "Lucida Sans Unicode", sans-serif;
   --mono: "Geist Mono", "JetBrains Mono", "Cascadia Mono", Consolas, Menlo, monospace;
-  --pad: 40px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
   color-scheme: dark;
 }
