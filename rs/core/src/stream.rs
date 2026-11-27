@@ -7,6 +7,7 @@
 use crate::engines::{self, engine_of};
 use crate::{locks, profiles, proxy, remember_session, session, transcript, Ctx, Obj, ReidError};
 use serde_json::{json, Value};
+use std::cell::Cell;
 use std::io::{BufRead, Read, Write};
 use std::process::{Command, Stdio};
 use windows_sys::Win32::System::Threading::{CREATE_NO_WINDOW, CREATE_SUSPENDED};
@@ -22,7 +23,7 @@ pub enum Mode {
     ReadOnly,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum EngineError {
     /// The engine reported it (Claude's result is_error, Codex's turn.failed / error).
     Engine { message: String },
@@ -32,7 +33,7 @@ pub enum EngineError {
     Unknown { exit_code: i32, raw: String },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Event {
     Started { session_id: String },
     TextDelta { text: String },
@@ -47,7 +48,7 @@ pub enum Event {
 
 /// Token counts as the engine reports them. Codex's turn.completed usage is the thread's running total:
 /// a resumed turn counts the turns before it too.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Tokens {
     /// everything sent, cached part included
     pub input: u64,
@@ -364,8 +365,9 @@ pub fn run(ctx: &Ctx, cfg: &Obj, turn: &Turn, emit: &mut dyn FnMut(&Event)) -> R
 }
 
 /// A switch in a chat: the chat's transcript as a new session of `engine`, so the turn resumes the whole
-/// conversation. Some(id) when the engine took it; None with the text to put before the prompt when it
-/// didn't (or there's nothing to carry: then the text is empty). Never fails the turn.
+/// conversation. Some(id) when the engine took it. The text is the conversation to put before the prompt
+/// when it didn't, or when the engine won't resume it after all (empty when there's nothing to carry).
+/// Never fails the turn.
 fn carry(ctx: &Ctx, chat: &str, engine: &str, folder: &str, env: &crate::Env, emit: &mut dyn FnMut(&Event),
          native: impl Fn(&str, &[transcript::Turn], &str, &crate::Env) -> crate::R<String>) -> (Option<String>, String) {
     let all = transcript::turns(&transcript::read(ctx, chat));
@@ -373,18 +375,61 @@ fn carry(ctx: &Ctx, chat: &str, engine: &str, folder: &str, env: &crate::Env, em
         return (None, String::new());
     }
     let (n, turns) = (all.len(), transcript::fit(all, transcript::budget(engine)));
+    let text = format!("The conversation so far (from Reidcc's chat transcript; other agents' replies are labelled):\n\n{}\n---\n\n",
+                       transcript::as_text(&turns));
     match native(engine, &turns, folder, env) {
         Ok(id) => {
             let turns = if n == 1 { "1 turn".to_string() } else { format!("{n} turns") };
             emit(&Event::Note { text: format!("context carried: {turns} in a new {engine} session") });
-            (Some(id), String::new())
+            (Some(id), text)
         }
         Err(e) => {
             emit(&Event::Note { text: format!("context passed as text: {engine} didn't take the session ({})", e.0) });
-            (None, format!("The conversation so far (from Reidcc's chat transcript; other agents' replies are labelled):\n\n{}\n---\n\n",
-                           transcript::as_text(&turns)))
+            (None, text)
         }
     }
+}
+
+/// A carried session's turn. Its events wait until the engine answers (text or a tool call). The engine
+/// didn't resume the session when it ends first with an error, or when it names another session as it
+/// starts (Codex starts an empty thread for an id it can't load: then `stop` ends it there, before it
+/// does anything). Then the events are dropped (the chat never sees the dead session's id) and `retry`
+/// runs the turn once, as a new session with the conversation as text. Nothing ran in the first try, so
+/// nothing runs twice; a failure in the retry (sign-in, network) is the turn's own and shows as usual.
+fn resume_or_retry<S>(state: &mut S, emit: &mut dyn FnMut(&Event), engine: &str, carried: &str,
+                      first: impl FnOnce(&mut S, &mut dyn FnMut(&Event), &Cell<bool>) -> Result<i32, EngineError>,
+                      retry: impl FnOnce(&mut S, &mut dyn FnMut(&Event)) -> Result<i32, EngineError>) -> Result<i32, EngineError> {
+    let mut held = Some(vec![]);
+    let stop = Cell::new(false);
+    let res = first(state, &mut |e: &Event| {
+        if matches!(e, Event::Started { session_id } if session_id != carried) && held.is_some() {
+            stop.set(true);
+        }
+        if !matches!(e, Event::TextDelta { .. } | Event::ToolCall { .. }) {
+            if let Some(events) = held.as_mut() {
+                events.push(e.clone());
+                return;
+            }
+        }
+        for h in held.take().unwrap_or_default() {
+            emit(&h);
+        }
+        emit(e);
+    }, &stop);
+    let Some(events) = held else { return res }; // it answered: everything went out as it came
+    let error = events.iter().find_map(|e| if let Event::Error(error) = e { Some(Event::Error(error.clone()).to_json()) } else { None });
+    let why = if stop.get() {
+        "it started a new session instead".to_string()
+    } else if let Some(error) = error.filter(|_| res.is_ok()) {
+        error["message"].as_str().or(error["raw"].as_str()).unwrap_or_default().lines().next().unwrap_or_default().to_string()
+    } else {
+        for e in &events {
+            emit(e);
+        }
+        return res;
+    };
+    emit(&Event::Note { text: format!("context passed as text: {engine} didn't resume the session ({why})") });
+    retry(state, emit)
 }
 
 fn refuse(message: String) -> Result<i32, EngineError> {
@@ -394,19 +439,20 @@ fn refuse(message: String) -> Result<i32, EngineError> {
 /// The engine's argv for this turn, its locks and proxy, the handoff on a switch; then the turn.
 fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch: &mut engines::Launch, own: &[String],
                emit: &mut dyn FnMut(&Event)) -> Result<i32, EngineError> {
-    let claude = engine == "claude";
     // a switch in a chat resumes the session it carries the chat into, not the profile's old one
     let carrying = turn.chat.is_some() && turn.switch.is_some();
     // that session is new, so the folder goes first: a busy folder refuses before anything is written
     // shortcut: a proxy that fails to start after this leaves the carried session unused; it's an
     // ordinary session the engine lists, so nothing breaks
     let early_folder = if carrying && turn.mode == Mode::Write { Some(locks::folder(ctx, turn.folder, None)?) } else { None };
-    let (carried, before) = match (turn.chat, &turn.switch) {
+    let (carried, text) = match (turn.chat, &turn.switch) {
         (Some(chat), Some(_)) => carry(ctx, chat, engine, turn.folder, &launch.env, emit, transcript::native),
         _ => (None, String::new()),
     };
+    // test hook, debug builds only: an engine that won't resume the carried session (switch_flow part 9)
+    #[cfg(debug_assertions)]
+    let carried = carried.map(|id| if std::env::var_os("REIDCC_TEST_DEAD_RESUME").is_some() { format!("{id}0") } else { id });
     let resume = if carrying { carried.as_deref() } else { turn.resume };
-    let mut sid = resume.map(String::from);
     if let Some(id) = resume.filter(|_| !carrying) { // a carried session was checked as it was written
         let there = match engine {
             "claude" => session::session_exists(id),
@@ -420,64 +466,19 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
     let mode = if turn.mode == Mode::ReadOnly { "read-only" } else { "write" };
     if engine == "opencode" {
         engines::opencode::turn_agent(&mut launch.env, turn.mode == Mode::ReadOnly);
-        let model = engines::opencode::turn_args(prof, &launch.env, turn.folder);
-        let argv = &mut launch.argv;
-        argv.insert(1, "run".into()); // right after the exe: --standalone and the profile's flags follow
-        argv.extend(["--format", "json", "--agent", engines::opencode::TURN_AGENT].map(String::from));
-        argv.extend(model);
-        if turn.mode == Mode::Write {
-            argv.push("--auto".into()); // run can't ask: what the turn's agent doesn't deny is allowed
-        }
-        let id = resume.map(String::from).unwrap_or_else(engines::opencode::new_session_id);
-        argv.extend(["--session".into(), id.clone()]); // the prompt comes on stdin
-        sid = Some(id);
-    }
-    let argv = &mut launch.argv;
-    if claude {
-        argv.extend(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"].map(String::from));
-        if turn.mode == Mode::ReadOnly {
-            argv.extend(["--permission-mode".into(), "default".into(), "--disallowedTools".into()]);
-            argv.extend(CLAUDE_WRITE_TOOLS.map(String::from));
-        } else {
-            if !own.iter().any(|arg| arg.starts_with("--permission-mode") || arg.contains("dangerously")) {
-                argv.extend(["--permission-mode".into(), "acceptEdits".into()]); // -p can't ask, so edits are allowed up front
-            }
-            // edit-only (Part 6), whatever permission mode the profile brings: shell goes through open terminal,
-            // so the composer's `edits · no shell` holds
-            argv.extend(["--disallowedTools", "Bash", "PowerShell"].map(String::from));
-        }
-        match resume {
-            Some(id) => argv.extend(["--resume".into(), id.into()]),
-            None => {
-                let id = uuid::Uuid::new_v4().to_string();
-                argv.extend(["--session-id".into(), id.clone()]);
-                sid = Some(id);
-            }
-        }
-    } else if engine == "codex" {
-        argv.extend(["exec", "--json", "--skip-git-repo-check"].map(String::from));
-        let sandbox = if turn.mode == Mode::ReadOnly { Some("read-only") }
-                      else if own.iter().any(|arg| own_guards(arg, "codex")) { None } // the profile chose its own
-                      else { Some("workspace-write") };
-        if let Some(sandbox) = sandbox {
-            argv.extend(["-c".into(), format!("sandbox_mode=\"{sandbox}\"")]);
-        }
-        if turn.mode == Mode::ReadOnly {
-            // with approvals on, Codex's auto-reviewer can wave a patch past the read-only sandbox
-            argv.extend(["-c".into(), "approval_policy=\"never\"".into()]);
-        }
-        if let Some(id) = resume {
-            argv.extend(["resume".into(), id.into()]);
-        }
-        argv.push("-".into()); // the prompt comes on stdin
     }
     launch.env.insert("REID_PROFILE".into(), turn.profile.into());
+    let base = launch.argv.clone();
+    let mut sid = engine_args(prof, turn, engine, own, launch, resume);
 
     // the session first: "open in another window" says more than "someone's writing here"
-    let mut session_lock = match &sid {
-        Some(id) => Some(locks::session(ctx, &locks::record(id, engine, turn.profile, turn.folder, mode))?),
-        None => None, // a new Codex thread: locked once Codex names it
+    let lock = |sid: &Option<String>| -> Result<Option<locks::Lock>, EngineError> {
+        match sid {
+            Some(id) => Ok(Some(locks::session(ctx, &locks::record(id, engine, turn.profile, turn.folder, mode))?)),
+            None => Ok(None), // a new Codex thread: locked once Codex names it
+        }
     };
+    let mut session_lock = lock(&sid)?;
     let folder_lock = match early_folder {
         Some(lock) => Some(lock),
         None if turn.mode == Mode::Write => Some(locks::folder(ctx, turn.folder, sid.as_deref())?),
@@ -486,21 +487,100 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
     let mut running_proxy = match proxy::plan(ctx, prof)? {
         Some(plan) => {
             let started = proxy::start(ctx, turn.profile, &plan)?;
-            launch.env.extend(proxy::env(&started, !claude));
+            launch.env.extend(proxy::env(&started, engine != "claude"));
             Some(started)
         }
         None => None,
     };
-    let ask = before + turn.prompt;
-    let prompt = match &turn.switch {
-        Some(switch) => crate::handoff::prompt(&crate::handoff::write(switch)?.1, &ask),
-        None => ask,
+    let handoff = match &turn.switch {
+        Some(switch) => Some(crate::handoff::write(switch)?.1),
+        None => None,
     };
-    let res = spawn(ctx, turn, &prompt, engine, launch, &mut sid, &mut session_lock, emit);
+    let prompt = |before: &str| {
+        let ask = format!("{before}{}", turn.prompt);
+        match &handoff {
+            Some(md) => crate::handoff::prompt(md, &ask),
+            None => ask,
+        }
+    };
+    let go_on = Cell::new(false);
+    let res = if let Some(id) = &carried {
+        let mut state = (launch, sid, session_lock);
+        let res = resume_or_retry(&mut state, emit, engine, id,
+            |(launch, sid, session_lock), emit, stop| spawn(ctx, turn, &prompt(""), engine, launch, sid, session_lock, emit, stop),
+            |(launch, sid, session_lock), emit| {
+                *session_lock = None; // the dead session's
+                launch.argv = base.clone();
+                *sid = engine_args(prof, turn, engine, own, launch, None);
+                *session_lock = lock(sid)?;
+                spawn(ctx, turn, &prompt(&text), engine, launch, sid, session_lock, emit, &go_on)
+            });
+        (_, sid, session_lock) = state;
+        res
+    } else {
+        spawn(ctx, turn, &prompt(&text), engine, launch, &mut sid, &mut session_lock, emit, &go_on)
+    };
     proxy::stop(running_proxy.as_mut());
     drop((folder_lock, session_lock));
     let _ = remember_session(ctx, turn.profile, turn.folder, sid.as_deref(), engine);
     res
+}
+
+/// The turn's flags on the engine's argv, resuming `resume` or starting a new session; the session's id
+/// when it's known before the engine starts (a new Codex thread is named by Codex).
+fn engine_args(prof: &Obj, turn: &Turn, engine: &str, own: &[String], launch: &mut engines::Launch, resume: Option<&str>) -> Option<String> {
+    let argv = &mut launch.argv;
+    match engine {
+        "opencode" => {
+            argv.insert(1, "run".into()); // right after the exe: --standalone and the profile's flags follow
+            argv.extend(["--format", "json", "--agent", engines::opencode::TURN_AGENT].map(String::from));
+            argv.extend(engines::opencode::turn_args(prof, &launch.env, turn.folder));
+            if turn.mode == Mode::Write {
+                argv.push("--auto".into()); // run can't ask: what the turn's agent doesn't deny is allowed
+            }
+            let id = resume.map(String::from).unwrap_or_else(engines::opencode::new_session_id);
+            argv.extend(["--session".into(), id.clone()]); // the prompt comes on stdin
+            Some(id)
+        }
+        "claude" => {
+            argv.extend(["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages"].map(String::from));
+            if turn.mode == Mode::ReadOnly {
+                argv.extend(["--permission-mode".into(), "default".into(), "--disallowedTools".into()]);
+                argv.extend(CLAUDE_WRITE_TOOLS.map(String::from));
+            } else {
+                if !own.iter().any(|arg| arg.starts_with("--permission-mode") || arg.contains("dangerously")) {
+                    argv.extend(["--permission-mode".into(), "acceptEdits".into()]); // -p can't ask, so edits are allowed up front
+                }
+                // edit-only (Part 6), whatever permission mode the profile brings: shell goes through open terminal,
+                // so the composer's `edits · no shell` holds
+                argv.extend(["--disallowedTools", "Bash", "PowerShell"].map(String::from));
+            }
+            let (flag, id) = match resume {
+                Some(id) => ("--resume", id.to_string()),
+                None => ("--session-id", uuid::Uuid::new_v4().to_string()),
+            };
+            argv.extend([flag.into(), id.clone()]);
+            Some(id)
+        }
+        _ => {
+            argv.extend(["exec", "--json", "--skip-git-repo-check"].map(String::from));
+            let sandbox = if turn.mode == Mode::ReadOnly { Some("read-only") }
+                          else if own.iter().any(|arg| own_guards(arg, "codex")) { None } // the profile chose its own
+                          else { Some("workspace-write") };
+            if let Some(sandbox) = sandbox {
+                argv.extend(["-c".into(), format!("sandbox_mode=\"{sandbox}\"")]);
+            }
+            if turn.mode == Mode::ReadOnly {
+                // with approvals on, Codex's auto-reviewer can wave a patch past the read-only sandbox
+                argv.extend(["-c".into(), "approval_policy=\"never\"".into()]);
+            }
+            if let Some(id) = resume {
+                argv.extend(["resume".into(), id.into()]);
+            }
+            argv.push("-".into()); // the prompt comes on stdin
+            resume.map(String::from)
+        }
+    }
 }
 
 /// A profile arg that sets the engine's own permission guards (or turns them off). Matched loosely on
@@ -516,8 +596,9 @@ fn own_guards(arg: &str, engine: &str) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// `stop`, once `emit` sets it, ends the engine where it is (a carried session it didn't resume).
 fn spawn(ctx: &Ctx, turn: &Turn, prompt: &str, engine: &'static str, launch: &engines::Launch, sid: &mut Option<String>,
-         session_lock: &mut Option<locks::Lock>, emit: &mut dyn FnMut(&Event)) -> Result<i32, EngineError> {
+         session_lock: &mut Option<locks::Lock>, emit: &mut dyn FnMut(&Event), stop: &Cell<bool>) -> Result<i32, EngineError> {
     use std::os::windows::io::AsRawHandle;
     use std::os::windows::process::CommandExt;
     let mut child = Command::new(&launch.argv[0]).args(&launch.argv[1..]).env_clear().envs(&launch.env)
@@ -545,7 +626,7 @@ fn spawn(ctx: &Ctx, turn: &Turn, prompt: &str, engine: &'static str, launch: &en
     }
     let mut parser = Parser::new(engine, turn.folder);
     let mut failed = false;
-    for line in std::io::BufReader::new(child.stdout.take().expect("piped")).split(b'\n').map_while(Result::ok) {
+    'read: for line in std::io::BufReader::new(child.stdout.take().expect("piped")).split(b'\n').map_while(Result::ok) {
         for event in parser.line(&String::from_utf8_lossy(&line)) {
             match &event {
                 Event::Started { session_id } => {
@@ -561,6 +642,10 @@ fn spawn(ctx: &Ctx, turn: &Turn, prompt: &str, engine: &'static str, launch: &en
                 _ => {}
             }
             emit(&event);
+            if stop.get() {
+                let _ = child.kill(); // the job takes anything it started with it, below
+                break 'read;
+            }
         }
     }
     let code = child.wait().map_err(engines::io)?.code().unwrap_or(1);
@@ -651,7 +736,7 @@ mod tests {
         assert_eq!(refused.0, None);
         assert!(refused.1.contains("User: remember the codeword\n\nAssistant: [claude · opus]\nPERIWINKLE"), "{}", refused.1);
         let took = carry(&ctx, "c1", "codex", &home, &env, &mut emit, |engine, turns, _, _| Ok(format!("{engine}-{}", turns.len())));
-        assert_eq!(took, (Some("codex-1".into()), String::new()));
+        assert_eq!(took, (Some("codex-1".into()), refused.1.clone()), "the text comes either way: a retry needs it");
         assert_eq!(notes, ["context passed as text: codex didn't take the session (format changed)",
                            "context carried: 1 turn in a new codex session"]);
         let _ = std::fs::remove_dir_all(home);
@@ -661,6 +746,81 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("reid_carry_{}", uuid::Uuid::new_v4().simple()));
         std::fs::create_dir_all(&dir).unwrap();
         dir.to_string_lossy().into_owned()
+    }
+
+    /// One scripted try: these events, then this result.
+    fn tried(events: Vec<Event>, res: Result<i32, EngineError>) -> impl FnOnce(&mut u32, &mut dyn FnMut(&Event), &Cell<bool>) -> Result<i32, EngineError> {
+        move |tries, emit, stop| {
+            *tries += 1;
+            for e in &events {
+                emit(e);
+                if stop.get() {
+                    return Ok(1); // spawn kills the engine there
+                }
+            }
+            res
+        }
+    }
+
+    fn started(id: &str) -> Event {
+        Event::Started { session_id: id.into() }
+    }
+
+    fn failed(message: &str) -> Event {
+        Event::Error(EngineError::Engine { message: message.into() })
+    }
+
+    /// (what the chat saw, as JSON types and ids, how many tries, the result)
+    fn retried(first: Vec<Event>, first_res: Result<i32, EngineError>, retry: Vec<Event>, retry_res: Result<i32, EngineError>)
+               -> (Vec<String>, u32, Result<i32, EngineError>) {
+        let (mut seen, mut tries) = (vec![], 0);
+        let res = resume_or_retry(&mut tries, &mut |e: &Event| {
+            let j = e.to_json();
+            seen.push(format!("{} {}", j["type"].as_str().unwrap(), j["session_id"].as_str().or(j["text"].as_str()).or(j["message"].as_str()).unwrap_or_default()));
+        }, "codex", "carried", tried(first, first_res), |tries, emit| tried(retry, retry_res)(tries, emit, &Cell::new(false)));
+        (seen, tries, res)
+    }
+
+    #[test]
+    fn a_carried_session_that_answers_streams_as_it_comes() {
+        let (seen, tries, res) = retried(
+            vec![started("carried"), Event::TextDelta { text: "hi".into() }, failed("later"), Event::Done { exit_code: 1 }], Ok(1),
+            vec![], Ok(0));
+        assert_eq!(seen, ["started carried", "text_delta hi", "error later", "done "], "an error after it answered is the turn's own");
+        assert_eq!((tries, res), (1, Ok(1)));
+        // no text at all but no error (an empty reply): it went fine, nothing to retry
+        let (seen, tries, _) = retried(vec![started("carried"), Event::Done { exit_code: 0 }], Ok(0), vec![], Ok(0));
+        assert_eq!((seen, tries), (vec!["started carried".to_string(), "done ".to_string()], 1));
+        // a tool call counts as answering too
+        let (seen, tries, _) = retried(vec![started("carried"), Event::ToolCall { name: "read".into(), summary: "a".into() }], Ok(0), vec![], Ok(0));
+        assert_eq!((seen.len(), tries), (2, 1));
+    }
+
+    #[test]
+    fn a_carried_session_the_engine_wont_resume_runs_once_more_as_text() {
+        let (seen, tries, res) = retried(
+            vec![started("carried"), failed("session not found\nmore"), Event::Done { exit_code: 1 }], Ok(1),
+            vec![started("fresh"), Event::TextDelta { text: "ok".into() }, Event::Done { exit_code: 0 }], Ok(0));
+        // the dead session's id never reaches the chat: its next turn resumes the fresh one
+        assert_eq!(seen, ["note context passed as text: codex didn't resume the session (session not found)",
+                          "started fresh", "text_delta ok", "done "]);
+        assert_eq!((tries, res), (2, Ok(0)));
+        // the retry fails too (signed out, offline): one retry only, and its error shows
+        let (seen, tries, res) = retried(vec![started("carried"), failed("offline"), Event::Done { exit_code: 1 }], Ok(1),
+                                         vec![failed("offline"), Event::Done { exit_code: 1 }], Ok(1));
+        assert_eq!(seen[1..], ["error offline".to_string(), "done ".to_string()]);
+        assert_eq!((tries, res), (2, Ok(1)));
+        // reid couldn't start the engine at all: no retry, what it said goes out
+        let (seen, tries, res) = retried(vec![started("carried")], Err(EngineError::Refused { message: "no".into() }), vec![], Ok(0));
+        assert_eq!((seen, tries, res), (vec!["started carried".to_string()], 1, Err(EngineError::Refused { message: "no".into() })));
+        // Codex can't load the thread and starts an empty one instead: stopped at its first event, before it
+        // answers or runs anything, then run once more as text
+        let (seen, tries, res) = retried(
+            vec![started("empty-thread"), Event::ToolCall { name: "shell".into(), summary: "rm x".into() }, Event::TextDelta { text: "Unknown".into() }], Ok(0),
+            vec![started("fresh"), Event::TextDelta { text: "ok".into() }], Ok(0));
+        assert_eq!(seen, ["note context passed as text: codex didn't resume the session (it started a new session instead)",
+                          "started fresh", "text_delta ok"]);
+        assert_eq!((tries, res), (2, Ok(0)));
     }
 
     #[test]

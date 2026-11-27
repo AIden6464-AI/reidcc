@@ -162,8 +162,13 @@ Where the build differs from the spec:
   when a carried turn needs a tool's result.
 - The native writers live in `transcript.rs` with the transcript, not in `handoff.rs`.
 - The window is per engine, not per model: Claude 200k, Codex 272k, OpenCode 128k (tokens).
-- The fallback covers a session that can't be written or that the engine doesn't list after writing. A
-  session that's written and listed but then fails to resume isn't caught.
+- The fallback covers a session that can't be written, one the engine doesn't list after writing, and one it
+  then won't resume: the resume errors before any text or tool call, or names another session as it starts
+  (Codex `exec resume` of an id it can't load starts an empty thread; Reidcc stops it at that first event).
+  The turn then runs once more as a new session with the text; one retry, so a sign-in or network failure
+  shows at once. The chat never sees the dead session's id; the next turn resumes the new one.
+- OpenCode `run --session <unknown id>` makes a session with that id, so a dead resume there can't be seen;
+  only the `session export` check after the import covers it.
 - A writing switch takes the folder lock before it carries, so a busy folder refuses before a session is made.
 - OpenCode tune: effort only. MCP servers and plugins on or off for OpenCode aren't built.
 
@@ -180,9 +185,10 @@ Part 4 at build:
 6. Not checked (cosmetic).
 
 Part 5 at build:
-1-3. `switch_flow` 28/28: every direction, a three-engine chat, 240-message sessions, a transcript over
+1-3. `switch_flow` 44/44: every direction, a three-engine chat, 240-message sessions, a transcript over
    OpenCode's 60% with the gap line.
-4. The fallback is a unit test (a writer that fails); no broken file forced end-to-end.
+4. The write fallback is a unit test (a writer that fails). The resume fallback is end-to-end: `switch_flow`
+   part 9 (debug build, `REIDCC_TEST_DEAD_RESUME`) for Claude and Codex.
 5. OpenCode through `reid --stream` (`opencode_flow` 18/18) and in a session window (`session_flow`). The GUI
    chat wasn't driven with an OpenCode profile.
 6. `cargo test --workspace`, `milestone1_flow` 31/31, `chat_flow` 46/46, `tui_chat_flow` 43/43.

@@ -13,6 +13,9 @@ whole conversation it never saw.
   7  a folder whose path is too long for Reidcc to know Claude's session folder: the switch falls back to
      text and the turn runs; once Claude has made that folder, the next switch carries natively
   8  a writing switch into a busy folder is refused before anything is carried
+  9  (debug build) an engine that won't resume the carried session: the turn runs once more as a new
+     session with the conversation as text, the chat only ever sees the new id, and the next turn
+     resumes it
 
 Reidcc runs on a temp REIDCC_HOME; the engine sessions it makes are deleted afterwards.
 
@@ -47,6 +50,7 @@ def of(evs, kind):
     return [e for e in evs if e.get("type") == kind]
 
 
+t_start = time.time()
 root = tempfile.mkdtemp(prefix="reidsw_")
 work, home = os.path.join(root, "work"), os.path.join(root, "home")
 os.makedirs(work)
@@ -79,8 +83,9 @@ def folder_lock(folder):
     return os.path.join(home, "locks", "%016x.lock" % h)
 
 
-def turn(profile, prompt, *extra, chat_id=None, cwd=None):
-    p = subprocess.run([REID, "--stream", profile, "--chat", chat_id or chat, *extra, prompt], cwd=cwd or work, env=env, capture_output=True,
+def turn(profile, prompt, *extra, chat_id=None, cwd=None, reid=REID, more_env=None):
+    p = subprocess.run([reid, "--stream", profile, "--chat", chat_id or chat, *extra, prompt], cwd=cwd or work,
+                       env=dict(env, **(more_env or {})), capture_output=True,
                        text=True, encoding="utf-8", timeout=400, stdin=subprocess.DEVNULL)
     evs = events(p.stdout)
     made.extend((ENGINE[profile], e["session_id"]) for e in of(evs, "started"))
@@ -208,6 +213,31 @@ try:
     refused = [e for e in of(evs, "error") if e.get("kind") == "refused"]
     check("8 refused: the folder is busy", refused and "open in this folder" in refused[0]["message"], evs)
     check("8 nothing was carried", not of(evs, "note") and not of(evs, "started"), evs)
+
+    # 9 an engine that won't resume the carried session (the debug build's test hook resumes an id that
+    # doesn't exist, after carrying the real session)
+    debug = os.path.join(os.path.dirname(os.path.dirname(HERE)), "rs", "target", "debug", "reid.exe")
+    if not os.path.exists(debug):
+        print("skip  9: no debug build (cargo build -p reid)")
+    else:
+        dead = str(uuid.uuid4())
+        evs, rc, err = turn("oc", "Remember the codeword DEADEND-12. Reply with just: noted.", chat_id=dead)
+        for n, (src, dst) in enumerate([("oc", "cl"), ("cl", "cx")], 1):
+            name = f"9 {ENGINE[dst]}"
+            evs, rc, err = turn(dst, "What codeword did I give you? Answer with it only.", "--switch-from", src, chat_id=dead,
+                                reid=debug, more_env={"REIDCC_TEST_DEAD_RESUME": "1"})
+            notes = [e["text"] for e in of(evs, "note")]
+            check(f"{name}: carried, then passed as text when it wouldn't resume",
+                  len(notes) == 2 and notes[0] == carried(2 * n - 1, ENGINE[dst])  # each step adds its turn and a follow-up
+                  and notes[1].startswith(f"context passed as text: {ENGINE[dst]} didn't resume the session ("), (notes, err[-300:]))
+            started = [e["session_id"] for e in of(evs, "started")]
+            errors = of(evs, "error")
+            check(f"{name}: one started, the new session's; no error shown", len(started) == 1 and not errors, (started, errors))
+            check(f"{name}: the retry knows the conversation", "DEADEND-12" in said_in(evs) and rc == 0, (said_in(evs), err[-300:]))
+            if started:
+                evs, rc, err = turn(dst, "Say the codeword again, nothing else.", "--resume", started[0], chat_id=dead)
+                check(f"{name}: the next turn resumes the new session", [e["session_id"] for e in of(evs, "started")] in ([started[0]], [])
+                      and not of(evs, "note") and "DEADEND-12" in said_in(evs) and rc == 0, (evs[:2], said_in(evs), err[-300:]))
 finally:
     opencode = shutil.which("opencode")
     claude_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
@@ -222,6 +252,14 @@ finally:
             for d in codex_dirs:
                 for f in glob.glob(os.path.join(d, "sessions", "*", "*", "*", f"*{sid}.jsonl")):
                     os.remove(f)
+    # Codex sessions this run carried but never used (part 9's dead resumes): their cwd is in the temp folder
+    for d in codex_dirs:
+        for f in glob.glob(os.path.join(d, "sessions", "*", "*", "*", "rollout-*.jsonl")):
+            try:
+                if os.path.getmtime(f) > t_start and json.loads(open(f, encoding="utf-8").readline())["payload"]["cwd"].startswith(root):
+                    os.remove(f)
+            except (OSError, ValueError, KeyError):
+                pass
     # every Claude session folder this run's temp folders made (the stopped and fallback turns' too)
     for d in glob.glob(os.path.join(claude_dir, "projects", slug(root)[:200] + "*")):
         shutil.rmtree(d, ignore_errors=True)

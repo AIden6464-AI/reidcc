@@ -16,7 +16,7 @@ Every Reidcc release. Newest first. Everything is beta.
 - Switching engines in a chat carries the whole conversation. The next engine gets it as a session of its
   own and answers from everything said so far, by any engine.
 - Long chats keep the first turn and the newest that fit in 60% of the next engine's window.
-- If an engine won't take the session, the conversation goes along as text, and the chat says so.
+- If an engine won't take the session, or won't resume it, the conversation goes along as text, and the chat says so.
 - Each chat's transcript is kept in Reidcc's `chats\` folder.
 
 ## 0.2.5 beta · 2026-11-27: one chat over Claude Code and Codex

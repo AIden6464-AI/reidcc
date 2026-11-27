@@ -29,8 +29,8 @@ shows `context carried: 5 turns in a new claude session`.
 
 - A chat longer than 60% of the next engine's window carries the first turn and the newest ones that fit,
   with one line where the gap is.
-- If the engine won't take the session, the conversation goes in front of your message as text, and the
-  chat says `context passed as text`. The turn still runs.
+- If the engine won't take the session, or won't resume it, the conversation goes in front of your message
+  as text, and the chat says `context passed as text`. The turn still runs, once.
 - The transcript stays in Reidcc's `chats\` folder, one file per chat. It keeps the tool lines, not their output.
 
 ## Open terminal
