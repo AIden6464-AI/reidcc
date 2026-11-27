@@ -544,6 +544,7 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
         }
     };
     let go_on = Cell::new(false);
+    let title_env = (engine == "opencode").then(|| launch.env.clone());
     let res = if let Some(id) = &carried {
         let mut state = (launch, sid, session_lock);
         let res = resume_or_retry(&mut state, emit, engine, id,
@@ -563,6 +564,10 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
     proxy::stop(running_proxy.as_mut());
     drop((folder_lock, session_lock));
     let _ = remember_session(ctx, turn.profile, turn.folder, sid.as_deref(), engine);
+    // a new OpenCode session (not a resumed or carried one, which has its name) is named after its ask
+    if let (Some(env), Some(id), Ok(_)) = (&title_env, sid.as_deref().filter(|id| Some(*id) != resume), &res) {
+        engines::opencode::set_title(env, turn.folder, id, turn.prompt);
+    }
     res
 }
 

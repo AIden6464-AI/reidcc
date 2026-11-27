@@ -185,7 +185,14 @@ Part 4 at build:
 4. Verified: Claude resumes a hand-built 240-message session with `[ran in …]` text.
 5. Verified: Codex `exec resume` of a 240-message rollout, and interactive `codex resume <id>` of a thread
    built from a switch, in a Reidcc session window (`codex_resume_flow` D): it answers from the Claude turn.
-6. Not checked (cosmetic).
+6. Checked 2026-11-27, each engine's own list for a chat carried across all three:
+   - OpenCode `session list`: every Reidcc session read "Untitled session", carried or not: a `--standalone`
+     run or an import makes no title (OpenCode's server does). Reidcc now names a new session after its ask
+     and a carried one after the chat's first ask (`session.update`; `opencode_flow` 2 checks it).
+   - Codex `codex resume` picker: lists no `exec` thread, a plain `codex exec` one included, so neither chat
+     turns nor carried threads show. Codex's choice; `open terminal` resumes by id.
+   - Claude `claude --resume` picker: lists no `-p` session, carried or not ("No sessions in this project
+     yet"). Claude's choice; `open terminal` resumes by id.
 
 Part 5 at build:
 1-3. `switch_flow` 48/48: every direction, a three-engine chat, 240-message sessions, a transcript over

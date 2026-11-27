@@ -49,6 +49,29 @@ pub fn session_exists(env: &Env, cwd: &str, id: &str) -> bool {
     run_capture(&argv, env, Some(cwd), ASK_TIMEOUT).is_some_and(|(code, _, _)| code == 0)
 }
 
+/// A session's name in OpenCode's own list: the ask's first line, up to 60 characters.
+fn title(ask: &str) -> String {
+    let line = ask.trim().lines().next().unwrap_or_default().trim();
+    match line.char_indices().nth(60) {
+        Some((cut, _)) => format!("{}…", line[..cut].trim_end()),
+        None => line.to_string(),
+    }
+}
+
+/// Names a session after `ask` in OpenCode's own list (`session list`, the TUI's sessions). A standalone run
+/// or import gets no title (OpenCode's server makes them), so it would read "Untitled session". Best effort.
+pub fn set_title(env: &Env, cwd: &str, id: &str, ask: &str) {
+    let (Ok(exe), name) = (find_opencode(), title(ask)) else { return };
+    if name.is_empty() {
+        return;
+    }
+    let mut env = env.clone();
+    env.insert("PWD".into(), cwd.into()); // OpenCode's folder (see build)
+    let argv = [exe, "api".into(), "--standalone".into(), "session.update".into(), "--param".into(),
+                format!("sessionID={id}"), "-d".into(), json!({"title": name}).to_string()];
+    let _ = run_capture(&argv, &env, Some(cwd), ASK_TIMEOUT);
+}
+
 /// `opencode api <operation>`'s answer, or None.
 fn api(env: &Env, cwd: &str, operation: &str) -> Option<Value> {
     let argv = [find_opencode().ok()?, "api".into(), "--standalone".into(), operation.into()];
@@ -201,6 +224,14 @@ pub fn build(ctx: &Ctx, cfg: &Obj, name: &str, prof: &Obj, extra: &[String], cwd
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn titles_are_the_first_line_cut_at_60_chars() {
+        assert_eq!(title("  Fix the tests\nthen push  "), "Fix the tests");
+        assert_eq!(title(""), "");
+        assert_eq!(title(&"é".repeat(70)), format!("{}…", "é".repeat(60)));
+        assert_eq!(title(&"x".repeat(60)), "x".repeat(60));
+    }
 
     #[test]
     fn turn_agent_sets_the_guards_and_keeps_a_replace_persona() {

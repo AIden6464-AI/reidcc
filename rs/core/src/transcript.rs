@@ -403,7 +403,10 @@ fn opencode(turns: &[Turn], folder: &str, env: &Env) -> R<String> {
     let imported = run(&["session", "import", &file, "--standalone"]);
     let _ = std::fs::remove_file(&file);
     match imported {
-        Some((0, _, _)) if engines::opencode::session_exists(&env, folder, &id) => Ok(id),
+        Some((0, _, _)) if engines::opencode::session_exists(&env, folder, &id) => {
+            engines::opencode::set_title(&env, folder, &id, turns.first().map_or("", |(ask, _)| ask.as_str()));
+            Ok(id)
+        }
         Some((0, _, _)) => err("OpenCode doesn't list the session Reidcc imported."),
         Some((_, out, errs)) => err(format!("OpenCode didn't import the session: {}", (out + &errs).lines().next().unwrap_or_default())),
         None => err("OpenCode didn't import the session in time."),

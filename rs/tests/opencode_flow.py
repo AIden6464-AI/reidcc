@@ -2,7 +2,8 @@
 folder, against the real OpenCode with the user's own setup (its default model).
 
   1  a writing turn streams (started with a ses_ id Reidcc picked, a tool line, text, tokens) and edits a file
-  2  --resume continues that session: it remembers the file
+  2  --resume continues that session: it remembers the file; OpenCode's own list names the session after its
+     first ask (a standalone run makes no title), and the resume doesn't rename it
   3  read-only: told to write and to run a shell command, nothing changes
   4  read-only refuses a profile whose args pick another agent or --auto
   5  effort is the model's variant: a real one runs, a made-up one comes back as OpenCode's error
@@ -96,6 +97,10 @@ try:
     evs, rc, err = stream(["oc", "--resume", sid, "What is the name of the file you just created? Answer with the name only."])
     check("2 the same session", [e["session_id"] for e in of(evs, "started")] in ([sid], []) and rc == 0, (evs[:2], err[-300:]))
     check("2 it remembers", "hello.txt" in text_of(evs), text_of(evs))
+    listed = subprocess.run([shutil.which("opencode") or "opencode", "session", "list"], cwd=work, capture_output=True,
+                            text=True, encoding="utf-8", timeout=60).stdout
+    row = next((l for l in listed.splitlines() if l.startswith(sid)), "")
+    check("2 OpenCode's list names it after the first ask", "\tCreate the file hello.txt containing exactly: hi from openco…\t" in row, listed[-600:])
 
     # 3 read-only
     evs, rc, err = stream(["oc", "--read-only", "Do two things with your tools: create the file b.txt containing hi, and run the shell command: echo hi > c.txt"])

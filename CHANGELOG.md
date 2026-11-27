@@ -10,6 +10,7 @@ Every Reidcc release. Newest first. Everything is beta.
 - Model from `opencode models`; effort is the model's variant, set in **tune**.
 - Sign-in is OpenCode's own setup, or an `opencode\*.json` file laid over it. Your `~/.config/opencode` isn't touched.
 - Chat turns edit files without a shell; read-only turns only read and search.
+- OpenCode's own session list names Reidcc's sessions after their first ask, not "Untitled session".
 - No proxy, tools or MCP rows on OpenCode yet.
 
 ### Switch
