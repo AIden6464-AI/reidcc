@@ -29,6 +29,14 @@ def site():
         d = os.path.join(OUT, "gate_" + step)
         for f in sorted(os.listdir(d)):
             cut(os.path.join(d, f), os.path.join("frames", pre + f.replace(".png", ".webp")), 800, 74)
+    # the emblem (the hand), played before the gate: rest 8 + grow 20 + leaves 13 + ignite 10 + open 20, its
+    # 640x900 frames cut to the gate's 800:704 (y 170-733 holds all the art: it sits at y 201-702)
+    # -> 640x563 (er00, eg00, el00, ei00, eo00 ...)
+    for step in ("rest", "grow", "leaves", "ignite", "open"):
+        d = os.path.join(OUT, "emblem_" + step)
+        for f in sorted(os.listdir(d)):
+            im = Image.open(os.path.join(d, f)).convert("RGB").crop((0, 170, 640, 733))
+            im.save(os.path.join(pub, "frames", "e" + step[0] + f.replace(".png", ".webp")), "WEBP", quality=74, method=6)
     cut(os.path.join(OUT, "gate_ghost.png"), r"art\ghost-800.webp", 800, 74)  # the 404's ghost lines
     cut(BRAND + r"\Classical Blueprint Flow with Emerald Signal-1.png", r"art\flow-1120.webp", 1120)
     cut(BRAND + r"\Engraved Compass and Marble Hand Emblem.png", r"art\emblem-144.webp", 144, 85)
@@ -36,9 +44,7 @@ def site():
     # the favicon: 32px PNG (reidcc.ico carries every size up to 256 and weighs 150 KB)
     Image.open(BRAND + r"\Reidcc Logo - Engraved RC.png").convert("RGBA").resize((32, 32), Image.LANCZOS).save(
         os.path.join(pub, "favicon.png"), optimize=True)
-    for shot in ("session-window", "launcher"):
-        cut(os.path.join(root, "docs", shot + ".png"), os.path.join("shots", shot + ".webp"), 1000, 82)
-    cut(os.path.join(root, "rs", "tests", "gui_shots", "settings.png"), r"shots\settings.webp", 1000, 82)
+    # site\public\shots come from rs\tests\site_shots.py (a clean demo home), not from here
     # og image 1200x630: the flow band on canvas
     band = Image.open(BRAND + r"\Classical Blueprint Flow with Emerald Signal-1.png").convert("RGB").crop((40, 250, 1632, 640))
     band = band.resize((1200, round(band.height * 1200 / band.width)), Image.LANCZOS)

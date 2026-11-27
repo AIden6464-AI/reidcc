@@ -26,7 +26,10 @@ const sizes = [
   { name: "pod", key: "Alt+3", w: 184, h: 56 },
 ].map((z) => ({ ...z, src: withBase(`/shots/size-${z.name}.webp`) }));
 const emblemSrc = withBase("/art/emblem-144.webp");
-const firstFrame = withBase("/frames/r00.webp");
+// the hand (assets\emblem.json, medium's opening in the app): [frame prefix, frames, start ms, ms], at the app's
+// PACE (rs\ui\src\gate.ts). Frames cut by make_assets.py --site.
+const HAND: [string, number, number, number][] = [["er", 8, 0, 250], ["eg", 20, 250, 500], ["el", 13, 750, 330], ["ei", 10, 1080, 250], ["eo", 20, 1330, 490]];
+const PACE = 1.375;
 
 const root = ref<HTMLElement>();
 let stop = () => {};
@@ -70,8 +73,10 @@ onMounted(() => {
     }, 240);
   }
 
-  // ---- the gate: the app's own frames (assets\gate.json: rise 6 / ignite 8 in 360ms, open 30 in 480ms).
-  // Only r00 is in the first load; the rest are fetched after the page has loaded (the 700 KB budget).
+  // ---- the hand, then the gate. The hand grows, its leaves come out, the emerald ignites and the view zooms
+  // into it, to dark (~2.5s); then the gate rises out of the lines and ignites (assets\gate.json: rise 6 /
+  // ignite 8 in 360ms, open 30 in 480ms). Only the first frame is in the first load; the rest are fetched
+  // after the page has loaded (the 700 KB budget). Reduced motion: the ready gate, no hand.
   const hero = $("#hero"), canvas = $<HTMLCanvasElement>("#gate");
   const g = canvas.getContext("2d")!, tag = $("#gatetag"), copy = $(".copy"), stage = $(".stage");
   const load = (pre: string, n: number) => Array.from({ length: n }, (_, i) => {
@@ -89,24 +94,33 @@ onMounted(() => {
   };
 
   hero.classList.add("in");
-  const first = new Image(); first.src = firstFrame; draw(first);
+  const first = new Image(); first.src = withBase(reduced ? "/frames/r00.webp" : "/frames/er00.webp"); draw(first);
   const afterLoad = (fn: () => void) => document.readyState === "complete" ? fn() : on(window, "load", fn, { once: true });
+  // draws each frame from its start time, resolves after ms
+  const play = (frames: { im: HTMLImageElement; at: number }[], ms: number) => new Promise<void>((done) => {
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const t = now - t0;
+      draw((frames.findLast((f) => f.at <= t) ?? frames[0]).im);
+      t < ms ? raf(tick) : done();
+    };
+    raf(tick);
+  });
   afterLoad(() => {
     if (!alive) return;
     rise = load("r", 6); ignite = load("i", 8);
     const ready = ignite[7];
     if (reduced) { draw(ready); risen = true; open = load("o", 30); return; }
+    const hand = HAND.flatMap(([pre, n, start, ms]) => load(pre, n).map((im, i) => ({ im, at: (start + ms * i / n) * PACE })));
+    const handEnd = (HAND[4][2] + HAND[4][3]) * PACE;
     // rise out of the lines, ignite the keystone (one frame per ~26ms, as in the app)
-    const seq = [...rise, ...ignite];
-    Promise.all(seq.map((im) => im.decode().catch(() => {}))).then(() => {
+    const gate = [...rise, ...ignite].map((im, i, a) => ({ im, at: 360 * i / a.length }));
+    Promise.all([...hand, ...gate].map((f) => f.im.decode().catch(() => {}))).then(async () => {
       if (!alive) return;
-      const t0 = performance.now();
-      const tick = (now: number) => {
-        const i = Math.floor((now - t0) / (360 / seq.length));
-        draw(seq[Math.min(Math.max(i, 0), seq.length - 1)]);
-        if (i < seq.length - 1) raf(tick); else { risen = true; open = load("o", 30); render(); }
-      };
-      raf(tick);
+      setTag("open");
+      await play(hand, handEnd);
+      await play(gate, 360);
+      risen = true; open = load("o", 30); render();
     });
   });
 
@@ -236,7 +250,8 @@ onBeforeUnmount(() => stop());
   <div class="rc-home" ref="root">
     <div class="progress" aria-hidden="true"></div>
 
-    <!-- The gate: rises on load (the app's rise + ignite frames), opens as you scroll (its open frames). -->
+    <!-- The hand, then the gate: on load the hand's opening plays and the gate rises after it (the app's frames);
+         the gate opens as you scroll (its open frames). -->
     <section class="hero" id="hero">
       <div class="stage"><div class="wrap">
         <div class="copy" data-reveal>
@@ -251,7 +266,7 @@ onBeforeUnmount(() => stop());
           <div class="hint" style="--i:5">folder <span class="sep">→</span> profile <span class="sep">→</span> open gate <span class="scrollcue">· scroll to open</span></div>
         </div>
         <div class="frame gate" data-measure>
-          <canvas id="gate" width="800" height="704" role="img" aria-label="The gate: an engraved stone arch with lion doors and one emerald point"></canvas>
+          <canvas id="gate" width="800" height="704" role="img" aria-label="A marble hand over an engraved compass, then the gate: an engraved stone arch with lion doors and one emerald point"></canvas>
           <span class="tag cap" id="gatetag">reidcc · ready</span>
         </div>
       </div></div>

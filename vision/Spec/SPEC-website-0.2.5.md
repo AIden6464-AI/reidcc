@@ -228,5 +228,13 @@ page and the landing page's footer. No dates, no adjectives. It says plans can c
   - `dist\` is clean of personal paths, emails, keys and `m2cl`/`m2cx`.
   
   Page shots are in `website-0.2.5/`.
+- **The hand first** (Reid, 2026-11-27: "Make the hand like thoughting the house be on the first page with
+  its animation then the gate one"):
+  - The hero plays medium's emblem opening (the hand grows, leaves, emerald ignites, zoom to dark, ~2.5s at
+    the app's PACE), then the gate rises and ignites as before. Scrolling still opens the gate.
+  - The frames are `site/public/frames/e{r,g,l,i,o}NN.webp`: 71 frames, 640×563 (cut to the gate's ratio),
+    1.9 MB. They load after the page's load event; only `er00` is in the first load, which is now 235 KB.
+  - Reduced motion skips the hand.
+  - `make_assets.py --site` makes them and no longer overwrites the shots.
 - **Not done (Part 5):** the short-pitch sentence. It belongs in `reidcc-voice.md` (a vision note), the
   README and the about screen together, and needs Reid's OK on the note first.
