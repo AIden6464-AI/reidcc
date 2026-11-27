@@ -208,6 +208,8 @@ def main():
         check(".reid/handoff.md was written", os.path.exists(os.path.join(work, ".reid", "handoff.md")))
         check("codex answered read-only, its unreported context left out of the meta line",
               bool(r.get("text")) and "context" not in r["meta"] and r["meta"].endswith("read-only") and not r.get("changed"), r)
+        check("the newest turn is in view (the stream followed it after the stopped turn)",
+              c.js("(s => s.scrollHeight - s.scrollTop - s.clientHeight < 40)(document.getElementById('stream'))"))
         side = c.js("[document.querySelector('#meters').textContent, document.querySelector('#context').textContent]")
         check("the bar and the sidebar leave it out too: no 'unknown', no —",
               side[0] == "ready" and not any(w in side[1] for w in ("context", "unknown", "—")), side)

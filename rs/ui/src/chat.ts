@@ -86,7 +86,8 @@ function ask(profile: string, q: string, undo: () => void): void {
   const tools = el("div", "tools");
   const caret = el("span", "caret");
   reply.append(tools, caret);
-  keep(() => col.append(a, reply));
+  col.append(a, reply);
+  stream.scrollTop = stream.scrollHeight; // sending brings you to your message, even after scrolling up
   t = { reply, tools, text: null, raw: "", caret, sawText: false, ro: readOnly, undo };
 }
 
