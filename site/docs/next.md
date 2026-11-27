@@ -9,6 +9,9 @@ The plan after 0.2.5. Plans can change.
 OpenCode becomes a third engine beside Claude Code and Codex. It works the same way they do: in chat,
 `reid --stream`, resume and tune, and as a turn to switch to or from through `.reid/handoff.md`.
 
+Switching engines becomes a full context switch. Today `.reid/handoff.md` carries the changed files and
+the diff stat. In 0.2.6 the next engine gets the conversation so far as well.
+
 ## 0.2.7
 
 Cleanup under the hood: one engine interface for all three, a typed profile model, and the old Python copy
