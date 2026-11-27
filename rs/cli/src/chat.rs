@@ -115,7 +115,7 @@ struct Chat {
     turn: Option<Turn>,
     context: Option<u8>,
     cost: f64,
-    /// "19.9k in · 5 out" when the engine reported token counts (Codex does), never zeros
+    /// "19.9k in · 5 out": the thread's token counts so far, when the engine reports them (Codex does), never zeros
     tokens: Option<String>,
     scroll: i64,
     terminal: Option<Child>,

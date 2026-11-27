@@ -42,7 +42,8 @@ pub enum Event {
     Error(EngineError),
 }
 
-/// One turn's token counts, as the engine reports them (Codex's turn.completed usage).
+/// Token counts as the engine reports them. Codex's turn.completed usage is the thread's running total:
+/// a resumed turn counts the turns before it too.
 #[derive(Debug, PartialEq)]
 pub struct Tokens {
     /// everything sent, cached part included
@@ -247,7 +248,7 @@ fn codex_line(json: &Value) -> Vec<Event> {
             summary: summary(&item["arguments"]),
         },
         ("item.completed", "web_search") => Event::ToolCall { name: "web_search".into(), summary: text_of(&item["query"]) },
-        // exec --json has token counts, but no context window or cost
+        // exec --json has token counts (the thread's total so far), but no context window or cost
         ("turn.completed", _) => Event::Usage { context_pct: None, cost_usd: None, tokens: Tokens::from_codex(&json["usage"]) },
         ("turn.failed", _) => Event::Error(EngineError::Engine { message: text_of(&json["error"]["message"]) }),
         ("error", _) => Event::Error(EngineError::Engine { message: text_of(&json["message"]) }),

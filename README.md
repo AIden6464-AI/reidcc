@@ -181,7 +181,7 @@ A profile selects its engine (`claude` or `codex`) on the `name` row. Profiles w
 - **Persona and memory:** uses the same persona files and `reidcc_memory.md` (`add to Codex's prompt` or `replace Codex's prompt`). Generated files live in `codex\prompts\<profile>.md`; nothing is written to `~/.codex`.
 - **Session flow:** Codex statusline (`model · folder · context · 5h · weekly`), `REIDCC · codex · <profile>` tab title, and `/quit` returns to the Reidcc TUI.
 - **Resume:** works both ways, like Claude. Reidcc finds the Codex thread while the session runs, and `resume` reopens it (`codex resume <id>`, or `--last` when the id isn't known yet).
-- **Proxy:** per-session `capture`, `slim` and `ultra` add-ons for Codex traffic (`proxy\codex_*_addon.py`; `optimize` is Claude-only). See `vision\Spec\SPEC-codex-proxy.md`.
+- **Proxy:** per-session `capture`, `slim` and `ultra` add-ons for Codex traffic (`proxy\codex_*_addon.py`; `optimize` is Claude-only). Measured on codex-cli 0.172.0: `slim` −12.0%, `ultra` −13.1% input tokens, but no server cache on a fresh slimmed thread (numbers in `site\docs\proxy.md`). See `vision\Spec\SPEC-codex-proxy.md`.
 
 ### OpenCode *(proposed)*
 

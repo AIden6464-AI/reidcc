@@ -34,7 +34,7 @@ let cur = "";
 const sids: Record<string, string> = {};
 let turns = 0, readOnly = false, running = false, began = 0, tick = 0;
 let context: number | null | undefined, cost = 0;
-/** the last turn's token counts, when the engine reports them (Codex does; null otherwise, never zeros) */
+/** the thread's token counts so far, when the engine reports them (Codex does; null otherwise, never zeros) */
 type Tokens = { in: number; cached: number | null; out: number };
 let tokens: Tokens | null = null;
 /** the held session the note is waiting on, and its poll */

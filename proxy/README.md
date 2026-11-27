@@ -254,7 +254,7 @@ Codex profiles get their own add-ons (`vision\Spec\SPEC-codex-proxy.md`). Reidcc
 | `proxy` | Codex add-on |
 |---|---|
 | `capture` | [codex_capture_addon.py](codex_capture_addon.py): read-only, one folder per distinct setup in `codex_prompts\` (instructions, tools, context, messages, summary) |
-| `slim` / `ultra` | [codex_slim_addon.py](codex_slim_addon.py): shortens Codex's tool docs in the first request of a session. Every name, schema and `exec` TypeScript declaration stays byte for byte. Measured on Codex 0.170.0: tools 48,493 → 36,782 chars, a `reply ok` run 19,013 → 16,612 tokens |
+| `slim` / `ultra` | [codex_slim_addon.py](codex_slim_addon.py): shortens Codex's tool docs in the first request of a session. Every name, schema and `exec` TypeScript declaration stays byte for byte. Measured on Codex 0.170.0: tools 48,493 → 36,782 chars, a `reply ok` run 19,013 → 16,612 tokens. On 0.172.0 (2026-11-26): 20,012 → 17,606 (`slim`, −12.0%) and 17,390 (`ultra`, −13.1%), but a fresh slimmed thread got 0 cached tokens where plain Codex got 7.5k–15.5k; see `site/docs/proxy.md` |
 | `optimize` | not offered: Codex sends a stable prefix and then only deltas, so there's nothing to reorder |
 
 `proxy_drop` takes a namespace (`mcp__cua_repl`) or a tool (`collaboration.spawn_agent`). Codex trusts the CA through `CODEX_CA_CERTIFICATE`.
