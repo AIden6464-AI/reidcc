@@ -221,6 +221,12 @@ pub async fn chat_send(st: crate::S<'_>, chats: State<'_, Chats>, id: u32, profi
         s.chars().skip(s.chars().count().saturating_sub(600)).collect::<String>()
     });
     *turn = Some(child);
+    // `stop` may have come between the guard above and the spawn: kill the child it couldn't see yet
+    if c.stopped.load(Ordering::Relaxed) {
+        if let Some(child) = turn.as_mut() {
+            let _ = child.kill();
+        }
+    }
     drop(turn);
     let chat = c.clone();
     std::thread::spawn(move || {

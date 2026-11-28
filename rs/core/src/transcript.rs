@@ -203,7 +203,7 @@ pub fn fit(turns: Vec<Turn>, budget: usize) -> Vec<Turn> {
         if n <= cap { text } else { format!("{}… [{} characters cut]", text.chars().take(cap).collect::<String>(), n - cap) }
     };
     let mut turns: Vec<Turn> = turns.into_iter().map(|(a, b)| (cut(a), cut(b))).collect();
-    let size = |t: &Turn| t.0.len() + t.1.len();
+    let size = |t: &Turn| t.0.chars().count() + t.1.chars().count(); // the budget is in characters
     if turns.iter().map(size).sum::<usize>() <= budget {
         return turns;
     }
@@ -273,7 +273,17 @@ fn version(argv: Vec<String>, env: &Env, fallback: &str) -> String {
 fn write_lines(path: &Path, lines: &[Value]) -> R<()> {
     std::fs::create_dir_all(path.parent().unwrap_or(path)).map_err(engines::io)?;
     let body: String = lines.iter().map(|l| format!("{l}\n")).collect();
-    std::fs::write(path, body).map_err(engines::io)
+    // written beside the target and renamed: a crash mid-write must not leave a truncated session in
+    // the engine's own history, where it lists as a real thread
+    let tmp = PathBuf::from(format!("{}.tmp", path.display()));
+    if let Err(e) = std::fs::write(&tmp, body) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(engines::io(e));
+    }
+    std::fs::rename(&tmp, path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        engines::io(e)
+    })
 }
 
 /// The folder Claude Code keeps `folder`'s sessions in: its path with every other character a dash. Past
@@ -501,6 +511,10 @@ mod tests {
         // cut on characters, never inside one
         let wide = fit(vec![turn(&"é".repeat(300), "ü")], 400);
         assert!(wide[0].0.starts_with(&"é".repeat(100)) && wide[0].0.ends_with("[200 characters cut]"));
+        // the budget is in characters, not bytes: five 110-character turns fit 560 even though their
+        // UTF-8 is 1100 bytes (which is what used to be measured)
+        let wide: Vec<Turn> = (0..5).map(|_| turn(&"é".repeat(100), &"ü".repeat(10))).collect();
+        assert_eq!(fit(wide, 560).len(), 5);
     }
 
     #[test]
@@ -543,6 +557,21 @@ mod tests {
         assert_eq!(iso_utc(4_107_542_399_999), "2100-02-28T23:59:59.999Z"); // 2100 isn't a leap year
         assert_eq!(iso_utc(1_795_775_415_123), "2026-11-27T10:30:15.123Z");
         assert!(iso_utc(now_ms()).starts_with("20"));
+    }
+
+    #[test]
+    fn a_session_file_is_written_whole_or_not_at_all() {
+        let dir = std::env::temp_dir().join(format!("reid_wl_{}", uuid::Uuid::new_v4().simple()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("s.jsonl");
+        write_lines(&file, &[json!({"a": 1})]).unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "{\"a\":1}\n");
+        assert!(!dir.join("s.jsonl.tmp").exists(), "the temp file is renamed away");
+        // a path that can't be written leaves neither a temp file nor a partial session
+        std::fs::write(dir.join("not a dir"), "x").unwrap();
+        assert!(write_lines(&dir.join("not a dir").join("s.jsonl"), &[json!({"a": 1})]).is_err());
+        assert!(!dir.join("not a dir.tmp").exists());
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
