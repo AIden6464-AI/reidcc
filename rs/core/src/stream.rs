@@ -492,8 +492,19 @@ fn launch_turn(ctx: &Ctx, prof: &Obj, turn: &Turn, engine: &'static str, launch:
     // test hook, debug builds only: an engine that won't resume the carried session (switch_flow part 9)
     #[cfg(debug_assertions)]
     let carried = carried.map(|id| if std::env::var_os("REIDCC_TEST_DEAD_RESUME").is_some() { format!("{id}0") } else { id });
+    // OpenCode makes a session for any id it's given (`run --session`), so a carried session that's gone
+    // can't be seen in its output. Check it here instead: the turn runs once with the text, as for the others.
+    let carried = match carried {
+        Some(id) if engine == "opencode" && !engines::opencode::session_exists(&launch.env, turn.folder, &id) => {
+            emit(&Event::Note {
+                text: format!("context passed as text: {engine} didn't resume the session (session not found)"),
+            });
+            None
+        }
+        other => other,
+    };
     let resume = if carrying { carried.as_deref() } else { turn.resume };
-    if let Some(id) = resume.filter(|_| !carrying) { // a carried session was checked as it was written
+    if let Some(id) = resume.filter(|_| !carrying) { // a carried session was checked as it was written (and above)
         let there = match engine {
             "claude" => session::session_exists(id),
             "opencode" => engines::opencode::session_exists(&launch.env, turn.folder, id),
@@ -794,8 +805,10 @@ mod tests {
     }
 
     /// One scripted try: these events, then this result.
-    fn tried(events: Vec<Event>, res: Result<i32, EngineError>) -> impl FnOnce(&mut u32, &mut dyn FnMut(&Event), &Cell<bool>) -> Result<i32, EngineError> {
-        move |tries, emit, stop| {
+    type Try = dyn FnOnce(&mut u32, &mut dyn FnMut(&Event), &Cell<bool>) -> Result<i32, EngineError>;
+
+    fn tried(events: Vec<Event>, res: Result<i32, EngineError>) -> Box<Try> {
+        Box::new(move |tries, emit, stop| {
             *tries += 1;
             for e in &events {
                 emit(e);
@@ -804,7 +817,7 @@ mod tests {
                 }
             }
             res
-        }
+        })
     }
 
     fn started(id: &str) -> Event {

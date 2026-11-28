@@ -170,8 +170,10 @@ Where the build differs from the spec:
   (Codex `exec resume` of an id it can't load starts an empty thread; Reidcc stops it at that first event).
   The turn then runs once more as a new session with the text; one retry, so a sign-in or network failure
   shows at once. The chat never sees the dead session's id; the next turn resumes the new one.
-- OpenCode `run --session <unknown id>` makes a session with that id, so a dead resume there can't be seen;
-  only the `session export` check after the import covers it.
+- OpenCode `run --session <unknown id>` makes a session with that id, so a dead resume there can't be seen in
+  its output. A carried OpenCode session is therefore checked with `session export` before the turn runs; when
+  it's gone the turn runs once with the conversation as text, the same fallback as the other two (this is also
+  what lets `switch_flow` part 9 exercise it).
 - A writing switch takes the folder lock before it carries, so a busy folder refuses before a session is made.
 - OpenCode tune: effort only. MCP servers and plugins on or off for OpenCode aren't built.
 

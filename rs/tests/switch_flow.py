@@ -224,7 +224,7 @@ try:
     else:
         dead = str(uuid.uuid4())
         evs, rc, err = turn("oc", "Remember the codeword DEADEND-12. Reply with just: noted.", chat_id=dead)
-        for n, (src, dst) in enumerate([("oc", "cl"), ("cl", "cx")], 1):
+        for n, (src, dst) in enumerate([("oc", "cl"), ("cl", "cx"), ("cx", "oc")], 1):
             name = f"9 {ENGINE[dst]}"
             evs, rc, err = turn(dst, "What codeword did I give you? Answer with it only.", "--switch-from", src, chat_id=dead,
                                 reid=debug, more_env={"REIDCC_TEST_DEAD_RESUME": "1"})
