@@ -85,10 +85,13 @@ class Window:
         self.page.js("window.__TAURI_INTERNALS__.invoke('sess_write', {id: %d, data: %s})" % (self.id, json.dumps(data)))
 
     def type(self, text):
-        # Codex reads fast input as a paste, where Enter is a new line: pause before Enter
-        for chunk in (text, "\r"):
-            self.write(chunk)
-            time.sleep(2)
+        # Codex reads fast input as a paste, where Enter is a new line, and drops a `?` from a burst:
+        # one character per write, pause, then Enter
+        for ch in text:
+            self.write(ch)
+            time.sleep(0.01)
+        time.sleep(2)
+        self.write("\r")
 
     def ask(self, text, timeout=120):
         """Send a message and wait for Codex's turn to finish ("Worked for …"); the screen, or None."""
