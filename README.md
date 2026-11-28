@@ -11,7 +11,7 @@
 
 ---
 
-Reidcc is a launcher built on Claude Code and Codex for people who want things simple. Pick a folder and a profile and you are coding in seconds, with your persona, long-term memory and settings already set up. Every session shows where it is, which profile is running, and how much context and limit you have used. Its request proxy (`proxy`) lives here too; its memory system, ACA, is a plugin with its own repo.
+Reidcc is a launcher built on Claude Code, Codex and OpenCode for people who want things simple. Pick a folder and a profile and you are coding in seconds, with your persona, long-term memory and settings already set up. Every session shows where it is, which profile is running, and how much context and limit you have used. Its request proxy (`proxy`) lives here too; its memory system, ACA, is a plugin with its own repo.
 
 **Status:** Windows 10 and 11 · **beta** (everything is) · installer and self-updates from
 [Releases](https://github.com/AIden6464-AI/reidcc/releases/latest) · **docs:** [aiden6464-ai.github.io/reidcc](https://aiden6464-ai.github.io/reidcc/) (built from `site\`).
@@ -89,7 +89,7 @@ reidcc\
 │                     (core\, cli\, app\ = Tauri, ui\ = the window's TypeScript, tests\ = acceptance flows)
 ├─ vision\            how Reidcc looks and talks: palette, design & motion, voice, branding\ art
 │  ├─ SPEC-vision-v1.md  vision version 1: sizes, session windows, snap, headless, rigs (session window and snap betas built)
-│  ├─ Spec\           proxy, gate (built), tui (proposed), codex-opencode (Codex built, OpenCode proposed),
+│  ├─ Spec\           proxy, gate (built), tui (proposed), codex-opencode (both built),
 │                     codex-signin-persona (built), codex-proxy (built), rust-rewrite (stage 0 built),
 │                     rust-tui-gui (1:1 TUI + GUI in Rust, built, shipping since 0.2.0), app,
 │                     github-repo (installer + updater, built), unified-interface (Step 0 and Milestones 1,
@@ -145,9 +145,9 @@ The flow is `folder → profile → open gate` in both the GUI and the TUI. The 
 reid                    Open the TUI in a terminal, or the GUI when launched as an app
 reid <profile> [args]   Launch a profile in the current folder; extra args go to its engine
 reid -c / reid "do X"   Anything that isn't a profile goes to the default profile's engine
-reid --resume [profile] Resume the last session (Claude or Codex), with that profile or its own
+reid --resume [profile] Resume the last session (Claude Code, Codex or OpenCode), with that profile or its own
 reid --resume <profile> --id ID   Resume that session, in this folder
-reid --chat [profile]   Chat with Claude Code and Codex in this folder, in the terminal
+reid --chat [profile]   Chat with Claude Code, Codex or OpenCode in this folder, in the terminal
 reid --stream <profile> [--read-only] [--resume ID] [--with JSON] [--switch-from PROFILE] PROMPT
                         Run one headless turn and print its events as JSON lines
 reid --dry [-v] [profile]   Show the exact command and proxy plan (-v: the prompt and settings files too)
@@ -163,7 +163,7 @@ reid -h                 Full CLI help
 
 ## Engines
 
-A profile selects its engine (`claude` or `codex`) on the `name` row. Profiles without an `engine` field default to `claude`. Unsupported fields stay visible and greyed out so nothing is hidden.
+A profile selects its engine (`claude`, `codex` or `opencode`) on the `name` row. Profiles without an `engine` field default to `claude`. Unsupported fields stay visible and greyed out so nothing is hidden.
 
 ### Claude Code
 
@@ -183,9 +183,13 @@ A profile selects its engine (`claude` or `codex`) on the `name` row. Profiles w
 - **Resume:** works both ways, like Claude. Reidcc finds the Codex thread while the session runs, and `resume` reopens it (`codex resume <id>`, or `--last` when the id isn't known yet).
 - **Proxy:** per-session `capture`, `slim` and `ultra` add-ons for Codex traffic (`proxy\codex_*_addon.py`; `optimize` is Claude-only). Measured on codex-cli 0.172.0: `slim` −12.0%, `ultra` −13.1% input tokens, but no server cache on a fresh slimmed thread (numbers in `site\docs\proxy.md`). See `vision\Spec\SPEC-codex-proxy.md`.
 
-### OpenCode *(proposed)*
+### OpenCode
 
-Researched for `--standalone` per-launch config via `OPENCODE_CONFIG` / `OPENCODE_CONFIG_CONTENT` and `opencode\prompts\`. Not built yet (see `vision\Spec\SPEC-codex-opencode.md`).
+- **Native launch:** the vendored `opencode.exe` (never the npm `.cmd` shim), always `--standalone`, so a private server reads the per-launch config layer (`OPENCODE_CONFIG_CONTENT`) and your own `~/.config/opencode` is never touched.
+- **Sign-in and model:** OpenCode's own providers, or an `opencode\*.json` config file laid over them; the model list comes from `opencode models` and effort is the model's variant.
+- **Persona and memory:** the same persona files and `reidcc_memory.md`, in `opencode\prompts\<profile>.md` (`add to` OpenCode's prompt, or `replace` it).
+- **Sessions and resume:** session windows and `reid --stream` use `--session <id>`, and Reidcc names a session after its first ask in OpenCode's own list.
+- **Chat:** edits turns edit files without a shell; read-only turns only read and search. No proxy, tools or MCP rows yet (see `vision\Spec\SPEC-codex-opencode.md` and `SPEC-0.2.6.md`).
 
 ---
 
@@ -246,7 +250,8 @@ Reidcc runs on Rust since 0.2.0 (`rs\`: Tauri 2 + TypeScript + `portable-pty` + 
 | **Unified interface · Milestone 1** | Built on `dev` (core + CLI) | `reid --stream`: one headless turn on Claude or Codex as JSON-line events (started, text, tool call, usage, done, error); context stays unknown when the engine doesn't report it. **Read-only** uses each CLI's own flags (Claude loses its write tools; Codex runs in a read-only sandbox). **Switch** writes `.reid\handoff.md` (changed files, diff stat, optional tests and note) and passes it to the next engine. **Locks** are held by the OS and freed if a process dies: one window per session; session windows share a folder, a headless write turn needs it alone. Acceptance test 30/30 |
 | **Unified interface · Milestone 2** | GUI and TUI built on `dev` | **open chat** (beside resume) opens a chat window on the launcher's folder and profile: one composer over Claude Code and Codex, each turn a `reid --stream` child. It streams text and tool lines, `stop` kills the turn, and after a write turn a collapsible **changed** block (from git) opens to each file's diff. Picking another profile turns `send` into `switch → <engine>`, with a `.reid/handoff.md` divider. **open terminal** resumes that session in a session window. Lock refusals show in the composer (`focus window`, `send read-only`). Acceptance test 41/41. In the TUI, `c` (or `reid --chat [profile]`) opens the same chat in text: tab picks the profile, ctrl+r read-only, ctrl+t open terminal, ctrl+d the diff. Acceptance test 40/40 |
 | **Unified interface · Milestone 2C** | Built on `dev` | Model, effort, MCP servers and plugins. In the launcher, **tune** beside the model sets a profile's effort and turns single MCP servers and plugins off or on (profile keys `effort`, `mcp_off`, `plugins`). In a chat, **tune** (TUI: ctrl+e) changes model, effort, servers and plugins for that chat's turns only; reid.json stays as it is |
-| **0.2.5 beta polish** | Built on `dev`, not released | Turns read `edits` or `read-only`, and the composer says what the next turn may do before you send (`edits · no shell` for Claude, `edits · shell` for Codex). Three or more tool lines in a row fold into one (`ran N commands ›`). Context and cost show only when the engine reports them. The chat column caps at 720px, centred. `--text3` is `#7F7A73`, clearing 4.5:1 contrast |
+| **0.2.5 beta polish** | Released 2026-11-27 | Turns read `edits` or `read-only`, and the composer says what the next turn may do before you send (`edits · no shell` for Claude, `edits · shell` for Codex). Three or more tool lines in a row fold into one (`ran N commands ›`). Context and cost show only when the engine reports them. The chat column caps at 720px, centred. `--text3` is `#7F7A73`, clearing 4.5:1 contrast |
+| **0.2.6 beta** | Release candidate on `dev` | **OpenCode** is the third engine: session windows, chat, `reid --stream`, resume, persona and memory, model and effort, read-only through its own permissions. **Switching** engines in a chat now carries the whole conversation into a session of the next engine, tool calls with their output's end; when an engine won't take or resume it, the chat goes as text and says so |
 
 <p align="center">
   <img src="docs/session-window.png" alt="Reidcc session window beta" width="900" />
@@ -282,5 +287,5 @@ Reidcc is source-available under the [PolyForm Noncommercial License 1.0.0](LICE
 
 <p align="center">
   <img src="vision/branding/Reidcc%20Logo%20-%20Engraved%20RC.png" alt="Reidcc Logo" width="64" /><br />
-  <code>Reidcc · built on Claude Code and Codex · only the essentials</code>
+  <code>Reidcc · built on Claude Code, Codex and OpenCode · only the essentials</code>
 </p>

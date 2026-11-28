@@ -71,10 +71,11 @@ stay on one screen, and changes save as you make them.
 
 ### Chat
 
-**open chat**, beside resume, is one composer over Claude Code and Codex in the launcher's folder.
+**open chat**, beside resume, is one composer over Claude Code, Codex and OpenCode in the launcher's folder.
 Each turn streams its text and tool lines, and `stop` ends it. After a turn that edits files, a
 **changed** block opens to each file's diff. Pick another profile and `send` becomes `switch → <engine>`:
-the next engine gets a handoff with what changed. **open terminal** continues the same session in a
+the next engine carries the whole conversation into a session of its own and answers from everything
+said so far, with tool calls and the end of their output. **open terminal** continues the same session in a
 session window. In a terminal: `reid --chat [profile]`.
 
 **tune**, beside the model, sets a profile's effort and turns single MCP servers and plugins off or on.
@@ -83,9 +84,9 @@ In a chat, tune changes them for that chat only.
 ```text
 reid                      the TUI in a terminal, the window when started as an app
 reid <profile> [args]     start that profile in the current folder
-reid --resume [profile]   resume the last session (Claude or Codex)
+reid --resume [profile]   resume the last session (Claude Code, Codex or OpenCode)
 reid --resume <profile> --id ID   resume that session, in this folder
-reid --chat [profile]     chat with Claude Code and Codex, in the terminal
+reid --chat [profile]     chat with Claude Code, Codex or OpenCode, in the terminal
 reid --dry <profile>      show the exact command without running it
 reid -l                   list profiles
 reid --edit / --mem       open reid.json / your memory file
@@ -98,11 +99,12 @@ See [CHANGELOG.md](CHANGELOG.md) for what each release changed.
 
 ### Profiles
 
-A profile picks its engine (`claude` or `codex`), model, sign-in, persona and switches. They live in
+A profile picks its engine (`claude`, `codex` or `opencode`), model, sign-in, persona and switches. They live in
 `%USERPROFILE%\Reidcc\reid.json`; the window edits them, or open it with `reid --edit`.
 
 - **Sign-in:** your Claude subscription, or a settings file in `json\` for an API key (the key stays in
   that file). Codex uses your `codex login`, or a provider `.toml` in `codex\` (LM Studio, OpenRouter...).
+  OpenCode uses its own providers, or an `opencode\*.json` config file.
 - **Persona:** any Markdown file in `personas\`, added to the engine's prompt or replacing it.
 - **Memory:** `reidcc_memory.md`, given to sessions that have memory on.
 - **Statusline:** `~/folder · PROFILE · PERSONA   context 42% · limit 61%` in every Claude session.
