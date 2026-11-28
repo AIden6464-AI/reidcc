@@ -4,7 +4,7 @@
 //! follow the Python so the two can be read side by side.
 
 use crate::console::{self, Interrupt};
-use reidcc::engines::{self, codex, is_codex, ENGINES};
+use reidcc::engines::{self, codex, ENGINES};
 use reidcc::term::{is_tty, write, BRONZE, OXIDE, R, TEXT, TEXT2, TEXT3};
 use reidcc::{load_config, load_state, memory_path, on, profile, profiles, proxy, py, pyjson, save_json, session,
              show_path, text, Ctx, Obj, ReidError, BASE_MODELS};
@@ -509,8 +509,9 @@ impl Tui {
         // right pane: the selected profile, the same rows as the GUI form
         let persona = if on(&p, "persona").is_some() { persona_name(&p) } else { String::new() };
         // the shared tags (SPEC-one-look Part 2): `claude · persona plain · memory`, lowercase
-        let cx = is_codex(&p);
-        let mut tags: Vec<String> = vec![(if cx { "codex" } else { "claude" }).into()];
+        let engine = engines::engine_name(&p);
+        let cx = engine != "claude";
+        let mut tags: Vec<String> = vec![engine.into()];
         if !persona.is_empty() {
             tags.push(format!("persona {persona}"));
         }
@@ -519,12 +520,12 @@ impl Tui {
         }
         let mcp = text(&p, "mcp");
         let boxed = |on: bool, label: &str| format!("{}{label}", if on { "✓ " } else { "· " });
-        let tool = if cx { "Codex" } else { "Claude Code" };
-        if cx && on(&p, "settings").is_none() && codex::login_cached(ctx).is_none() {
+        let tool = engines::tool_name(engine);
+        if engine == "codex" && on(&p, "settings").is_none() && codex::login_cached(ctx).is_none() {
             self.check_login();
         }
         let settings = text(&p, "settings");
-        let sign_in = if !settings.is_empty() { settings } else if cx { codex::login_label(ctx) } else { "subscription".into() };
+        let sign_in = if !settings.is_empty() { settings } else { profile::signin_default(ctx, engine) };
         let model = text(&p, "model");
         let px = proxy::list(&p).join("+");
         let rows: Vec<(&str, String)> = vec![
@@ -546,7 +547,7 @@ impl Tui {
         ];
         let lw: i64 = 22; // profile list width
         let rw = 20.max(w - lw - 5); // right pane width
-        let greyed: &[&str] = if cx { &["tools", "mcp"] } else { &[] };
+        let greyed: &[&str] = match engine { "claude" => &[], "opencode" => &["tools", "mcp", "proxy"], _ => &["tools", "mcp"] };
         let mut right = vec![format!("{TEXT}{B}{name}{R}   {DIM}{}{R}", tags.join(" · ")), String::new()];
         for (k, v) in &rows {
             if *k == "switches" {
@@ -728,11 +729,12 @@ impl Tui {
     }
 
     /// Returns true for "quit".
-    fn after_session(&mut self, rc: i32, back: bool, codex: bool) -> bool {
+    fn after_session(&mut self, rc: i32, back: bool, engine: &str) -> bool {
         let rc_s = (rc as u32).to_string(); // Windows exit codes are unsigned, as Python prints them
-        if codex {
-            // Codex has no /reid: quitting it comes back here
-            self.msg = if rc == 0 { "Back from Codex. r resumes it.".into() } else { format!("Codex ended with code {rc_s}. See the output above.") };
+        if engine != "claude" {
+            // Codex and OpenCode have no /reid: quitting them comes back here
+            let tool = engines::tool_name(engine);
+            self.msg = if rc == 0 { format!("Back from {tool}. r resumes it.") } else { format!("{tool} ended with code {rc_s}. See the output above.") };
             write("\x1b[?1049h");
             return false;
         }
@@ -761,7 +763,7 @@ impl Tui {
                 self.msg = e.0;
                 Ok(false)
             }
-            Ok(end) => Ok(self.after_session(end.rc, end.back, is_codex(&prof(cfg, name)))),
+            Ok(end) => Ok(self.after_session(end.rc, end.back, engines::engine_name(&prof(cfg, name)))),
         }
     }
 
@@ -776,7 +778,7 @@ impl Tui {
         if !lcwd.is_empty() && py::isdir(&lcwd) {
             self.cwd = lcwd; // the engines find sessions by folder
         }
-        let sid = reidcc::resume_id(&last, if is_codex(&prof(cfg, name)) { "codex" } else { "claude" });
+        let sid = reidcc::resume_id(&last, engines::engine_name(&prof(cfg, name)));
         self.launch(cfg, name, Some(&sid))
     }
 
@@ -854,9 +856,10 @@ impl Tui {
             let p = prof(&cfg, &name);
             let persona = text(&p, "persona");
             let mcp = text(&p, "mcp");
-            let cx = is_codex(&p);
-            let tool = if cx { "Codex" } else { "Claude Code" };
-            if cx && on(&p, "settings").is_none() && codex::login_cached(ctx).is_none() {
+            let engine = engines::engine_name(&p);
+            let cx = engine != "claude";
+            let tool = engines::tool_name(engine);
+            if engine == "codex" && on(&p, "settings").is_none() && codex::login_cached(ctx).is_none() {
                 self.check_login();
             }
             let model = text(&p, "model");
@@ -869,7 +872,7 @@ impl Tui {
                     "engine" => engine_str(&p),
                     "model" => if !model.is_empty() { model.clone() } else if cx { "engine default".into() } else { "provider default".into() },
                     "auth" => if !settings.is_empty() { format!("{}{settings}", if cx { "" } else { "api · " }) }
-                              else if cx { codex::login_label(ctx) } else { "subscription".into() },
+                              else { profile::signin_default(ctx, engine) },
                     "persona" => if persona.is_empty() { "none".into() } else { persona.clone() },
                     "mode" => if persona.is_empty() { "needs a persona".into() }
                               else if text(&p, "mode") == "replace" { format!("replace {tool}'s prompt") }
@@ -960,10 +963,13 @@ impl Tui {
                 setk(p, "model", Value::Null);
                 setk(p, "settings", Value::Null);
                 let no_opt = ENGINES[i] == "codex" && proxy::drop_optimize(p);
-                let on_ = if ENGINES[i] == "codex" { engines::claude_only_on(p) } else { vec![] };
+                let no_proxy = ENGINES[i] == "opencode" && p.remove("proxy").is_some(); // OpenCode has no proxy
+                let on_ = if ENGINES[i] != "claude" { engines::claude_only_on(p) } else { vec![] };
                 self.msg = format!("Engine is now {}. Model and sign-in reset to its defaults.", ENGINES[i])
                     + if no_opt { " optimize is Claude's, so it's off." } else { "" }
-                    + &if on_.is_empty() { String::new() } else { format!(" Codex can't use {}: turn it off to open the gate.", on_.join(", ")) };
+                    + if no_proxy { " OpenCode doesn't go through the proxy, so it's off." } else { "" }
+                    + &if on_.is_empty() { String::new() } else {
+                        format!(" {} can't use {}: turn it off to open the gate.", engines::tool_name(ENGINES[i]), on_.join(", ")) };
             }
             "model" => {
                 // each engine lists its own models: Claude's names, or the ones other Codex profiles use
@@ -978,6 +984,11 @@ impl Tui {
                     opts.extend(same);
                     opts.extend(["provider default".into(), "type a model id…".into()]);
                 } else {
+                    if engine == "opencode" {
+                        let listed = engines::opencode::models(); // provider/model, from opencode models
+                        same.retain(|m| !listed.contains(m));
+                        same.extend(listed);
+                    }
                     opts.extend(same);
                     opts.extend(["engine default".into(), "type a model id…".into()]);
                 }
@@ -998,22 +1009,24 @@ impl Tui {
                 }
             }
             "auth" => {
-                let cx = engine == "codex";
-                let files = profile::signin_files(ctx, cx);
-                let mut opts = vec![if cx { codex::login_label(ctx) } else { "subscription".into() }];
+                let files = profile::signin_files(ctx, &engine);
+                let mut opts = vec![profile::signin_default(ctx, &engine)];
                 opts.extend(files);
                 opts.push("type a path…".into());
                 let cur = match prof(cfg, name).get("settings") {
                     Some(Value::String(s)) => opts.iter().position(|o| o == s).unwrap_or(0),
                     _ => 0,
                 };
-                let crumb = if cx { "sign-in (codex login is your terminal's; a .toml file sets another provider)" }
-                            else { "sign-in (a settings file means API mode)" };
+                let crumb = match engine.as_str() {
+                    "codex" => "sign-in (codex login is your terminal's; a .toml file sets another provider)",
+                    "opencode" => "sign-in (OpenCode's own setup; a .json file in opencode\\ sets another provider)",
+                    _ => "sign-in (a settings file means API mode)",
+                };
                 let Some(i) = self.pick(&format!("settings · {name} · {crumb}"), &opts, cur)? else { return Ok(None) };
                 if i == 0 {
                     setk(prof_mut(cfg, name), "settings", Value::Null);
                 } else if i == opts.len() - 1 {
-                    let v = self.ask(if cx { "provider .toml path" } else { "settings.json path" }, "");
+                    let v = self.ask(match engine.as_str() { "codex" => "provider .toml path", "opencode" => "provider .json path", _ => "settings.json path" }, "");
                     self.set_path(cfg, name, "settings", v);
                 } else {
                     setk(prof_mut(cfg, name), "settings", Value::String(opts[i].clone()));
@@ -1054,7 +1067,7 @@ impl Tui {
                 let p = prof_mut(cfg, name);
                 let m = if p.get("mode").and_then(Value::as_str) == Some("replace") { "append" } else { "replace" };
                 p.insert("mode".into(), Value::String(m.into()));
-                let tool = if engine == "codex" { "Codex" } else { "Claude Code" };
+                let tool = engines::tool_name(&engine);
                 self.msg = if m == "replace" {
                     format!("The persona now replaces {tool}'s prompt, including its tool guidance. Add is the safe one.")
                 } else {
@@ -1071,6 +1084,9 @@ impl Tui {
                 let p = prof_mut(cfg, name);
                 let v = on(p, &key).is_none();
                 setk(p, &key, Value::Bool(v));
+            }
+            "proxy" if engine == "opencode" => {
+                self.msg = "OpenCode doesn't go through the proxy: it talks to many providers.".into();
             }
             "proxy" => {
                 let mut opts = vec!["off".to_string()];

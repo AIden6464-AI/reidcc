@@ -174,10 +174,10 @@ function back(note: string) {
 }
 
 function ended(rc: number, isBack: boolean) {
-  const codex = info.engine === "codex";
+  const tool = ({ codex: "Codex", opencode: "OpenCode" } as Record<string, string>)[info.engine];
   if (isBack) return back("Back from the session.");
-  // Codex has no /reid: its /quit is the way back, so it turns back at once like /reid does
-  if (rc === 0 && codex) return back("Back from Codex.");
+  // Codex and OpenCode have no /reid: quitting them is the way back, so they turn back at once like /reid does
+  if (rc === 0 && tool) return back(`Back from ${tool}.`);
   if (rc === 0) {
     state = "finished";
     drawMeters();

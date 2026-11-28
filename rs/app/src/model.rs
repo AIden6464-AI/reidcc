@@ -3,7 +3,7 @@
 //! does them, and the page applies them (ui\src\main.ts). Every change loads reid.json fresh,
 //! changes it and saves it at once, as `App.apply` does.
 
-use reidcc::engines::{self, codex, is_codex};
+use reidcc::engines::{self, codex, is_codex, opencode};
 use reidcc::{profile, profiles, proxy, py, pyjson, Ctx, Obj};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -77,7 +77,8 @@ pub struct Refresh {
     pub mode_disabled: bool,
     /// widget -> disabled (proxy, tools, mcp, safe, chrome, connectors)
     pub disabled: Map<String, Value>,
-    pub codex: bool,
+    /// the hover on `set in tune ›`; empty for Claude, which has its own rows for these
+    pub tune_note: String,
     pub ready: bool,
     pub status: String,
     pub preview: String,
@@ -112,6 +113,8 @@ pub struct Model {
     pub folder: String,
     /// set when a background `codex login status` should start
     pub want_login_check: bool,
+    /// `opencode models`, read the first time an OpenCode profile is shown
+    opencode_models: Option<Vec<String>>,
     pub ops: Vec<Op>,
 }
 
@@ -202,7 +205,7 @@ fn opt(v: Option<String>) -> Value {
 impl Model {
     pub fn new(ctx: Ctx, cli: Vec<String>, folder: String) -> Model {
         Model { ctx, cli, current: None, names: vec![], not_ready: None, login_busy: false, folder,
-                want_login_check: false, ops: vec![] }
+                want_login_check: false, opencode_models: None, ops: vec![] }
     }
 
     pub fn take(&mut self) -> Vec<Op> {
@@ -284,7 +287,7 @@ impl Model {
         if let Some(i) = self.names.iter().position(|n| n == name) {
             self.push(Op::Select { index: i });
         }
-        let engine = text_or(&p, "engine", "claude");
+        let engine = engines::engine_name(&p).to_string();
         let cx = is_codex(&p);
         // each engine lists its own models: Claude's names, or the ones other Codex profiles use
         let mut used: Vec<String> = vec![];
@@ -298,9 +301,14 @@ impl Model {
         }
         used.sort();
         let mut models: Vec<String> = if engine == "claude" { reidcc::BASE_MODELS.iter().map(|m| s(m)).collect() } else { vec![] };
+        if engine == "opencode" {
+            let listed = self.opencode_models.get_or_insert_with(opencode::models); // ~1 s, once per run
+            used.retain(|m| !listed.contains(m));
+            models.extend(listed.iter().cloned());
+        }
         models.extend(used);
-        let mut auths = vec![self.login_choice(cx)];
-        auths.extend(profile::signin_files(&self.ctx, cx));
+        let mut auths = vec![profile::signin_default(&self.ctx, &engine)];
+        auths.extend(profile::signin_files(&self.ctx, &engine));
         if cx && !on(&p, "settings") && codex::login_cached(&self.ctx).is_none() {
             self.want_login_check = true;
         }
@@ -338,7 +346,7 @@ impl Model {
             name: s(name),
             engine: engine.clone(),
             model,
-            auth: if settings.is_empty() { self.login_choice(cx) } else { settings },
+            auth: if settings.is_empty() { profile::signin_default(&self.ctx, &engine) } else { settings },
             persona: if persona.is_empty() { s(NO_PERSONA) } else { persona },
             mode: text_or(&p, "mode", "append"),
             proxy: if px.is_empty() { s("off") } else { px },
@@ -353,17 +361,13 @@ impl Model {
             models,
             auths,
             personas: pvals,
-            proxies: std::iter::once(s("off")).chain(proxy::choices(cx).iter().map(|c| s(c))).collect(),
+            // OpenCode doesn't go through the proxy
+            proxies: std::iter::once(s("off")).chain(proxy::choices(cx).iter().filter(|_| engine != "opencode").map(|c| s(c))).collect(),
             tools_choices: TOOLS_CHOICES.iter().map(|c| s(c)).collect(),
             mcps: mvals,
         };
         self.push(Op::Fields(Box::new(f)));
         self.refresh(cfg);
-    }
-
-    /// The first sign-in choice: `subscription` for Claude, `codex login · <status>` for Codex.
-    fn login_choice(&self, cx: bool) -> String {
-        if cx { codex::login_label(&self.ctx) } else { s(SUB) }
     }
 
     /// After the background `codex login status`: update the sign-in row.
@@ -375,11 +379,11 @@ impl Model {
         if !is_codex(&p) {
             return;
         }
-        let mut auths = vec![self.login_choice(true)];
-        auths.extend(profile::signin_files(&self.ctx, true));
+        let mut auths = vec![codex::login_label(&self.ctx)];
+        auths.extend(profile::signin_files(&self.ctx, "codex"));
         self.push(Op::Var { key: s("auths"), value: serde_json::to_string(&auths).unwrap() });
         if !on(&p, "settings") {
-            self.push(Op::Var { key: s("auth"), value: self.login_choice(true) });
+            self.push(Op::Var { key: s("auth"), value: codex::login_label(&self.ctx) });
         }
         self.refresh(&cfg);
     }
@@ -391,15 +395,16 @@ impl Model {
         let persona = if on(&p, "persona") { profile::persona_name(&p) } else { String::new() };
         // the shared tags (SPEC-one-look Part 2): `claude · persona plain · memory`, lowercase. Greyed
         // fields say "Claude only" on hover, so no tag explains them (4.7).
-        let cx = is_codex(&p);
-        let mut tags = vec![s(if cx { "codex" } else { "claude" })];
+        let engine = engines::engine_name(&p);
+        let cx = engine != "claude";
+        let mut tags = vec![s(engine)];
         if !persona.is_empty() {
             tags.push(format!("persona {persona}"));
         }
         if on(&p, "memory") {
             tags.push(s("memory"));
         }
-        let tool = if cx { "Codex" } else { "Claude Code" };
+        let tool = engines::tool_name(engine);
         let mut disabled = Map::new();
         let live = [("tools", p.contains_key("tools")), ("mcp", on(&p, "mcp")),
                     ("safe", on(&p, "safe")), ("chrome", on(&p, "no_chrome")), ("connectors", on(&p, "no_connectors"))];
@@ -414,7 +419,11 @@ impl Model {
             mode_texts: [format!("add to {tool}'s prompt"), format!("replace {tool}'s prompt")],
             mode_disabled: persona.is_empty(),
             disabled,
-            codex: cx,
+            tune_note: match engine {
+                "codex" => s("Codex: MCP servers, plugins and effort are set in tune. tools, chrome, connectors and safe mode are Claude only."),
+                "opencode" => s("OpenCode: effort is set in tune. Proxy, tools, MCP and the switches are Claude's (memory works)."),
+                _ => String::new(),
+            },
             ..Default::default()
         };
         if let Some(e) = error {
@@ -457,17 +466,20 @@ impl Model {
             put(&mut p, "model", Value::Null);
             put(&mut p, "settings", Value::Null); // sign-in files are per engine too
             let no_opt = engine == "codex" && proxy::drop_optimize(&mut p);
+            let no_proxy = engine == "opencode" && p.shift_remove("proxy").is_some();
             set_profile(&mut cfg, &cur, p);
             if !self.save(&cfg) { return; }
             self.load_profile(&cfg, &cur); // new model and sign-in lists for the new engine
-            let tail = if no_opt { " optimize is Claude's, so it's off." } else { "" };
+            let tail = if no_opt { " optimize is Claude's, so it's off." }
+                       else if no_proxy { " OpenCode doesn't go through the proxy, so it's off." } else { "" };
             self.push(say(format!("Engine is now {engine}. Model and sign-in reset to its defaults.{tail}"), "quiet", &[], Some(3.0)));
             return;
         }
         let mode_changed = text_or(&p, "mode", "append") != v.mode;
         put(&mut p, "model", Value::String(py::strip(&v.model).to_string()));
         let auth = &v.auth;
-        put(&mut p, "settings", opt((auth != SUB && !auth.starts_with(codex::LOGIN)).then(|| auth.clone())));
+        let default = auth == SUB || auth.starts_with(codex::LOGIN) || *auth == profile::signin_default(&self.ctx, "opencode");
+        put(&mut p, "settings", opt((!default).then(|| auth.clone())));
         put(&mut p, "persona", opt((v.persona != NO_PERSONA).then(|| v.persona.clone())));
         let mode = on(&p, "persona").then(|| v.mode.clone());
         put(&mut p, "mode", opt(mode));
@@ -561,8 +573,8 @@ impl Model {
         if let Some(mut cfg) = self.cfg() {
             let n = Self::unique(&cfg, "new");
             // the settings page's default engine; a Codex profile starts on Codex's own default model
-            let codex = cfg.get("default_engine").and_then(Value::as_str) == Some("codex");
-            profiles_mut(&mut cfg).insert(n.clone(), if codex { json!({"engine": "codex"}) } else { json!({"model": "opus"}) });
+            let engine = cfg.get("default_engine").and_then(Value::as_str).filter(|e| *e != "claude" && engines::ENGINES.contains(e)).map(String::from);
+            profiles_mut(&mut cfg).insert(n.clone(), match engine { Some(e) => json!({"engine": e}), None => json!({"model": "opus"}) });
             if !self.save(&cfg) { return; }
             self.reload(Some(&n));
         }

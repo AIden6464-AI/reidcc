@@ -172,7 +172,8 @@ async fn snapshot(folder: &str) -> Option<String> {
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn chat_send(st: crate::S<'_>, chats: State<'_, Chats>, id: u32, profile: String, prompt: String, read_only: bool,
-                       resume: Option<String>, switch_from: Option<String>, with: Option<Value>, chan: Channel<Out>) -> Result<(), String> {
+                       resume: Option<String>, switch_from: Option<String>, with: Option<Value>, chat: String,
+                       chan: Channel<Out>) -> Result<(), String> {
     let c = chats.get(id)?;
     if c.turn.lock().unwrap().is_some() {
         return Err(TURN_RUNNING.into());
@@ -180,7 +181,7 @@ pub async fn chat_send(st: crate::S<'_>, chats: State<'_, Chats>, id: u32, profi
     c.stopped.store(false, Ordering::Relaxed);
     let cli = st.m.lock().unwrap().cli.clone();
     let mut args: Vec<String> = cli[1..].to_vec();
-    args.extend(["--stream".into(), profile]);
+    args.extend(["--stream".into(), profile, "--chat".into(), chat]); // the window's transcript: a switch carries it
     if read_only {
         args.push("--read-only".into());
     }
@@ -220,6 +221,12 @@ pub async fn chat_send(st: crate::S<'_>, chats: State<'_, Chats>, id: u32, profi
         s.chars().skip(s.chars().count().saturating_sub(600)).collect::<String>()
     });
     *turn = Some(child);
+    // `stop` may have come between the guard above and the spawn: kill the child it couldn't see yet
+    if c.stopped.load(Ordering::Relaxed) {
+        if let Some(child) = turn.as_mut() {
+            let _ = child.kill();
+        }
+    }
     drop(turn);
     let chat = c.clone();
     std::thread::spawn(move || {

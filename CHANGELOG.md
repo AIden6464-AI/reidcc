@@ -2,6 +2,25 @@
 
 Every Reidcc release. Newest first. Everything is beta.
 
+## 0.2.6 beta · unreleased: OpenCode, and switching that carries the conversation
+
+### OpenCode
+- **OpenCode** is the third engine, beside Claude Code and Codex. Pick it on a profile's `name` row.
+- It runs in session windows, in chat and in `reid --stream`, with resume, persona and memory.
+- Model from `opencode models`; effort is the model's variant, set in **tune**.
+- Sign-in is OpenCode's own setup, or an `opencode\*.json` file laid over it. Your `~/.config/opencode` isn't touched.
+- Chat turns edit files without a shell; read-only turns only read and search.
+- OpenCode's own session list names Reidcc's sessions after their first ask, not "Untitled session".
+- No proxy, tools or MCP rows on OpenCode yet.
+
+### Switch
+- Switching engines in a chat carries the whole conversation. The next engine gets it as a session of its
+  own and answers from everything said so far, by any engine.
+- Long chats keep the first turn and the newest that fit in 60% of the next engine's window.
+- If an engine won't take the session, or won't resume it, the conversation goes along as text, and the chat says so.
+- Tool calls go along with the end of their output (2 KB), so the next engine sees why a test run failed.
+- Each chat's transcript is kept in Reidcc's `chats\` folder.
+
 ## 0.2.5 beta · 2026-11-27: one chat over Claude Code and Codex
 
 ### Chat

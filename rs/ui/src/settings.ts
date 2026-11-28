@@ -29,7 +29,7 @@ export class Settings {
       this.section("sessions open in", this.choice("open_in", [["reidcc", "Reidcc session window"], ["terminal", "Windows Terminal"]])),
       this.section("terminal colours", this.choice("colors", [["reidcc", "Reidcc palette"], ["engine", "the engine's own · no translate"]]),
         this.note("Session windows move Claude Code's colours into Reidcc's palette. Sessions opened after a change use it.")),
-      this.section("default engine", this.choice("engine", [["claude", "claude"], ["codex", "codex"]]),
+      this.section("default engine", this.choice("engine", [["claude", "claude"], ["codex", "codex"], ["opencode", "opencode"]]),
         this.note("a new profile starts on this engine")),
       this.section("default size", this.choice("start_size", [["main", "main"], ["medium", "medium"], ["small", "small"]]),
         this.note("Reidcc opens at this size. Alt+1 and Alt+2 still switch while it's open.")),

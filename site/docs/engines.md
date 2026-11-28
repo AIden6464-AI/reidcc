@@ -2,7 +2,7 @@
 
 # Engines
 
-A profile runs one of two engines: **Claude Code** or **Codex**. Choose it on the profile's `name` row. A profile without an `engine` field runs Claude Code.
+A profile runs one of three engines: **Claude Code**, **Codex** or **OpenCode**. Choose it on the profile's `name` row. A profile without an `engine` field runs Claude Code.
 
 ## Claude Code
 
@@ -20,7 +20,17 @@ A profile runs one of two engines: **Claude Code** or **Codex**. Choose it on th
 - **Usage:** chat shows Codex's real token counts, the thread's total so far (`19.9k in · 5 out`, cached in the side panel). Codex reports no context window or cost, so those stay hidden.
 - **Proxy:** `capture`, `slim` and `ultra` work on Codex too (from source only; `optimize` is Claude Code only). See [proxy](./proxy).
 
-## Both
+## OpenCode
 
-- **tune**, beside the model: effort, and single MCP servers and plugins off or on. See [chat](./chat#tune).
-- **open chat** talks to either engine from one composer, and switches between them mid-task. See [chat](./chat).
+- **Sign-in:** OpenCode's own setup (its providers and keys), shown as `opencode setup`, or an `opencode\*.json` config file laid over it.
+- **Model and effort:** `provider/model` from `opencode models`. Effort is the model's variant (`high`, `max`), set in **tune**.
+- **Persona and memory:** written per launch to `opencode\prompts\<profile>.md`, added to OpenCode's prompt or replacing it. Your `~/.config/opencode` isn't touched.
+- **Session:** OpenCode's own screen in a session window. Quitting it returns to Reidcc.
+- **Resume:** Reidcc picks each session's id, so **resume** reopens it.
+- **Chat:** turns edit files but have no shell; read-only turns only read and search. Tokens and cost show as OpenCode reports them.
+- **Not on OpenCode:** the proxy, the tools and MCP rows, and Claude's switches (greyed out).
+
+## All three
+
+- **tune**, beside the model: effort for every engine; single MCP servers and plugins off or on for Claude Code and Codex. See [chat](./chat#tune).
+- **open chat** talks to any engine from one composer, and switches between them mid-task with the whole conversation. See [chat](./chat).

@@ -15,7 +15,7 @@ use tauri::Manager;
 pub struct View {
     /// "reidcc" or "terminal"
     open_in: String,
-    /// "claude" or "codex": what `new profile` makes
+    /// "claude", "codex" or "opencode": what `new profile` makes
     engine: String,
     /// "main", "medium" or "small": the size the launcher opens at
     start_size: String,
@@ -35,7 +35,7 @@ fn view(st: &App) -> View {
     let sys_temp = std::env::var("TEMP").unwrap_or_default();
     View {
         open_in: if key("open_in") == "terminal" { "terminal" } else { "reidcc" }.into(),
-        engine: if key("default_engine") == "codex" { "codex" } else { "claude" }.into(),
+        engine: reidcc::engines::ENGINES.iter().find(|e| **e == key("default_engine")).copied().unwrap_or("claude").into(),
         start_size: crate::sizes::start_size(&key("start_size")).into(),
         colors: if key("colors") == "engine" { "engine" } else { "reidcc" }.into(),
         version: env!("CARGO_PKG_VERSION").into(),

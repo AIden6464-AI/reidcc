@@ -144,7 +144,7 @@ pub fn start(ctx: &Ctx, name: &str, plan: &Plan) -> R<Proxy> {
         .map_err(|e| crate::ReidError(e.to_string()))?;
     let logs = py::join(&ctx.proxy_dir, &["logs"]);
     std::fs::create_dir_all(&logs).map_err(crate::engines::io)?;
-    let log_path = py::join(&logs, &[&format!("{}.log", log_name(name))]);
+    let log_path = py::join(&logs, &[&format!("{}-{port}.log", log_name(name))]); // one log per session, not per profile
     let log = std::fs::File::create(&log_path).map_err(crate::engines::io)?;
     let mut env = environ();
     env.extend(plan.env.clone());

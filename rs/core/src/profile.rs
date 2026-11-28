@@ -1,6 +1,6 @@
 //! What the screens say about a profile: its one-line summary and its launch check.
 
-use crate::engines::{self, codex, is_codex};
+use crate::engines::{self, codex};
 use crate::{on, profiles, proxy, py, text, Ctx, Obj};
 use serde_json::Value;
 
@@ -16,8 +16,9 @@ fn stem(path: &str) -> String {
 pub fn summary(ctx: &Ctx, cfg: &Obj, name: &str) -> String {
     let empty = Obj::new();
     let p = profiles(cfg).get(name).and_then(Value::as_object).unwrap_or(&empty);
-    let cx = is_codex(p);
-    let mut bits: Vec<String> = if cx { vec!["codex".into()] } else { vec![] };
+    let engine = engines::engine_name(p);
+    let cx = engine != "claude";
+    let mut bits: Vec<String> = if cx { vec![engine.into()] } else { vec![] };
     let model = text(p, "model");
     bits.push(if !model.is_empty() { model } else if cx { "engine default".into() } else { "provider default".into() });
     let settings = text(p, "settings");
@@ -25,7 +26,7 @@ pub fn summary(ctx: &Ctx, cfg: &Obj, name: &str) -> String {
         let miss = if py::exists(&ctx.resolve(&settings)) { "" } else { " (missing)" };
         bits.push(format!("{}{}{miss}", if cx { "" } else { "api " }, stem(&settings)));
     } else {
-        bits.push(if cx { codex::login_label(ctx) } else { "subscription".into() });
+        bits.push(signin_default(ctx, engine));
     }
     let persona = text(p, "persona");
     if !persona.is_empty() {
@@ -60,13 +61,22 @@ pub fn summary(ctx: &Ctx, cfg: &Obj, name: &str) -> String {
     bits.join(" · ")
 }
 
-/// The sign-in files an engine can use: codex\*.toml for Codex, json\*.json for Claude, stored
-/// the way reid.json keeps them (relative to the Reidcc folder), sorted.
-pub fn signin_files(ctx: &Ctx, codex: bool) -> Vec<String> {
-    let files: Vec<String> = if codex {
-        py::glob(&ctx.codex_dir, "*.toml")
-    } else {
-        py::glob(&py::join(&ctx.home, &["json"]), "*.json").into_iter().filter(|f| !f.contains("token_log")).collect()
+/// What a profile with no sign-in file uses: Claude's subscription, `codex login`, OpenCode's own setup.
+pub fn signin_default(ctx: &Ctx, engine: &str) -> String {
+    match engine {
+        "codex" => codex::login_label(ctx),
+        "opencode" => "opencode setup".into(),
+        _ => "subscription".into(),
+    }
+}
+
+/// The sign-in files an engine can use: codex\*.toml for Codex, opencode\*.json for OpenCode,
+/// json\*.json for Claude, stored the way reid.json keeps them (relative to the Reidcc folder), sorted.
+pub fn signin_files(ctx: &Ctx, engine: &str) -> Vec<String> {
+    let files: Vec<String> = match engine {
+        "codex" => py::glob(&ctx.codex_dir, "*.toml"),
+        "opencode" => py::glob(&ctx.opencode_dir, "*.json"),
+        _ => py::glob(&py::join(&ctx.home, &["json"]), "*.json").into_iter().filter(|f| !f.contains("token_log")).collect(),
     };
     let mut out: Vec<String> = files.iter().map(|f| ctx.relpath(f)).collect();
     out.sort();

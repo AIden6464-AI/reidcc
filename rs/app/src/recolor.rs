@@ -88,6 +88,13 @@ pub fn recolor(text: &str) -> (String, String) {
             out.push_str(seq);
             return (out, String::new());
         }
+        if !body.as_bytes()[end].is_ascii() {
+            // a stray ESC [ in text (a file's own bytes, say): its "final byte" is no CSI final byte,
+            // so pass the two bytes and carry on. Slicing here would split the character and panic.
+            out.push_str("\x1b[");
+            rest = body;
+            continue;
+        }
         if body.as_bytes()[end] == b'm' {
             out.push_str("\x1b[");
             out.push_str(&params(&body[..end]));
@@ -122,5 +129,12 @@ mod tests {
         let (s, rest) = recolor("ab\x1b[38;2;25");
         assert_eq!((s.as_str(), rest.as_str()), ("ab", "\x1b[38;2;25"));
         assert_eq!(recolor("x\x1b"), ("x".to_string(), "\x1b".to_string()));
+    }
+
+    #[test]
+    fn a_stray_escape_before_a_multibyte_char_passes_through() {
+        // a file's own ESC [ then a non-ASCII char: no CSI final byte, and no panic on the boundary
+        assert_eq!(recolor("\x1b[é!").0, "\x1b[é!");
+        assert_eq!(recolor("\x1b[12;\u{1b}[é").0, "\x1b[12;\u{1b}[é");
     }
 }

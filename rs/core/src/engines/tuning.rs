@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use super::codex;
+use super::{codex, opencode};
 use crate::{list, pyjson, text, Obj};
 
 pub const CLAUDE_EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
@@ -101,9 +101,14 @@ pub fn codex_args(prof: &Obj, codex_home: &str) -> Vec<String> {
     argv
 }
 
-/// Models to offer for `engine`: Claude's names, then the ones other profiles of that engine use.
+/// Models to offer for `engine`: Claude's names or what `opencode models` lists, then the ones other
+/// profiles of that engine use.
 pub fn models(cfg: &Obj, engine: &str) -> Vec<String> {
-    let mut models: Vec<String> = if engine == "claude" { crate::BASE_MODELS.map(String::from).to_vec() } else { vec![] };
+    let mut models: Vec<String> = match engine {
+        "claude" => crate::BASE_MODELS.map(String::from).to_vec(),
+        "opencode" => opencode::models(),
+        _ => vec![],
+    };
     let mut used: Vec<String> = crate::profiles(cfg).values().filter_map(Value::as_object)
         .filter(|prof| super::engine_of(prof, "").unwrap_or("claude") == engine)
         .map(|prof| text(prof, "model")).filter(|model| !model.is_empty() && !models.contains(model)).collect();
@@ -115,6 +120,11 @@ pub fn models(cfg: &Obj, engine: &str) -> Vec<String> {
 
 /// What `name` can be tuned with in `cwd`.
 pub fn choices(prof: &Obj, cwd: &str) -> Choices {
+    if super::engine_name(prof) == "opencode" {
+        // shortcut: OpenCode's MCP servers and plugins aren't offered (none to try them on, 2026-11-27); its
+        // effort is the model's variants, looked up without a profile's sign-in file
+        return Choices { efforts: opencode::variants(prof, &crate::environ(), cwd), ..Choices::default() };
+    }
     if super::is_codex(prof) {
         let (home, mcp) = match codex::login_env() {
             Ok((exe, env)) => {

@@ -100,12 +100,16 @@ struct Chat {
     /// what this chat changed per profile (SPEC-unified-interface Milestone 2C): `reid --stream --with`
     tunes: HashMap<String, Obj>,
     choices: HashMap<String, Choices>,
+    /// the models the tune panel steps through, per engine: OpenCode's list takes a second to read
+    models: HashMap<String, Vec<String>>,
     /// the tune panel's selected row while it's open
     tuning: Option<usize>,
     profiles: Vec<(String, String)>,
     cur: String,
     pick: usize,
     sids: HashMap<String, String>,
+    /// this chat's transcript (`reid --stream --chat`): a switch carries it into the next engine
+    chat: String,
     turns: usize,
     read_only: bool,
     field: String,
@@ -339,9 +343,9 @@ impl Chat {
         self.context.map(|pct| format!("context {pct}%"))
     }
 
-    /// what the next turn may do: Claude turns lose Bash and PowerShell, Codex keeps its sandboxed shell
+    /// what the next turn may do: Claude and OpenCode turns have no shell, Codex keeps its sandboxed one
     fn capability(&self, profile: &str) -> String {
-        let shell = if self.engine(profile) == "codex" { "shell" } else { "no shell" };
+        let shell = if self.engine(profile) == "codex" { "shell" } else { "no shell" }; // OpenCode: the turn agent denies bash
         format!("{} · {shell}", if self.read_only { "read-only" } else { "edits" })
     }
 
@@ -365,7 +369,7 @@ impl Chat {
         self.cur = profile.clone();
         self.blocks.push(Block::Ask { who: format!("{profile} · {}", self.engine(&profile)), text: prompt.clone() });
         (self.context, self.cost, self.tokens, self.scroll) = (None, 0.0, None, 0);
-        let mut args = vec!["--stream".to_string(), profile.clone()];
+        let mut args = vec!["--stream".to_string(), profile.clone(), "--chat".into(), self.chat.clone()];
         if self.read_only {
             args.push("--read-only".into());
         }
@@ -452,6 +456,7 @@ impl Chat {
                     _ => self.blocks.push(Block::Text(text)),
                 }
             }
+            "note" => self.blocks.push(Block::Info(field_of(event, "text"))),
             "tool_call" => self.blocks.push(Block::Tool {
                 name: field_of(event, "name").to_lowercase(),
                 summary: field_of(event, "summary"),
@@ -605,10 +610,18 @@ impl Chat {
 
     fn open_tune(&mut self) {
         let profile = self.picked();
-        if !self.choices.contains_key(&profile) {
-            self.choices.insert(profile.clone(), tuning::choices(&self.own(&profile), &self.folder));
-        }
+        self.load_choices(&profile);
         self.tuning = Some(0);
+    }
+
+    fn load_choices(&mut self, profile: &str) {
+        if !self.choices.contains_key(profile) {
+            self.choices.insert(profile.into(), tuning::choices(&self.own(profile), &self.folder));
+        }
+        let engine = self.engine(profile);
+        if !self.models.contains_key(&engine) {
+            self.models.insert(engine.clone(), tuning::models(&self.cfg, &engine));
+        }
     }
 
     fn tune_rows(&self) -> Vec<TuneRow> {
@@ -627,7 +640,7 @@ impl Chat {
         match &which {
             TuneRow::Model | TuneRow::Effort => {
                 let (key, values) = if which == TuneRow::Model {
-                    ("model", tuning::models(&self.cfg, &self.engine(&profile)))
+                    ("model", self.models.get(&self.engine(&profile)).cloned().unwrap_or_default())
                 } else {
                     ("effort", self.choices.get(&profile).map(|c| c.efforts.clone()).unwrap_or_default())
                 };
@@ -677,8 +690,9 @@ impl Chat {
             return self.open_tune();
         };
         let profile = self.picked();
-        let efforts: &[&str] = if self.engine(&profile) == "codex" { &tuning::CODEX_EFFORTS } else { &tuning::CLAUDE_EFFORTS };
-        if key == "effort" && value != "default" && !efforts.contains(&value) {
+        self.load_choices(&profile);
+        let efforts = self.choices.get(&profile).map(|c| c.efforts.clone()).unwrap_or_default();
+        if key == "effort" && value != "default" && !efforts.iter().any(|e| e == value) {
             self.flash = format!("effort is one of default · {}", efforts.join(" · "));
             return;
         }
@@ -899,8 +913,8 @@ pub(super) fn run(tui: &mut Tui, profile: &str) -> T<()> {
         return Err(Stop::Err(reidcc::ReidError(format!("No profile named {profile}."))));
     };
     let mut chat = Chat {
-        folder: tui.cwd.clone(), cfg: cfg.clone(), tunes: HashMap::new(), choices: HashMap::new(), tuning: None,
-        cur: profile.into(), pick, profiles: all, sids: HashMap::new(), turns: 0, read_only: false,
+        folder: tui.cwd.clone(), cfg: cfg.clone(), tunes: HashMap::new(), choices: HashMap::new(), models: HashMap::new(), tuning: None,
+        cur: profile.into(), pick, profiles: all, sids: HashMap::new(), chat: reidcc::transcript::new_chat_id(), turns: 0, read_only: false,
         field: String::new(), blocks: vec![], note: Note::None, polled: Instant::now(), turn: None, context: None, cost: 0.0, tokens: None,
         scroll: 0, terminal: None, flash: String::new(),
     };
